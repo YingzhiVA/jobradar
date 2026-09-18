@@ -4,7 +4,7 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
-## Unreleased
+## 1.2.0 — CVs from Word (2026-09-18)
 
 - **CVs can come from Word.** Put your `.docx` in `profile/cvs/` as it is.
   The setup check and every run make a Markdown CV of the same name from
