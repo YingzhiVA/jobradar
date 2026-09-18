@@ -140,7 +140,7 @@ def _build_sources(
     # postings to a Switzerland-focused search while still costing a normalize
     # pass each. Re-add it here if/when the search broadens to EU-remote roles.
     optional = sources_settings or Sources()
-    sources: list = [CompanyPagesSource(companies_config.get("companies", []))]
+    sources: list = [CompanyPagesSource(companies_config.get("companies") or [])]
     # ETH's own job board, per job-type category — which categories are worth
     # scanning depends on the user's role, so it is a config switch.
     if optional.eth_jobs.enabled:

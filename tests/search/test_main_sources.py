@@ -216,3 +216,12 @@ def test_location_desc_prefers_unrestricted_remote_when_remote_ok():
         **{**BASE_CONSTRAINTS.__dict__, "remote_ok": True, "remote_countries": ["Switzerland"]}
     )
     assert "based in" not in _build_location_desc(constraints)
+
+
+def test_build_sources_survives_an_all_commented_company_list():
+    # The template ships with every board commented out: {"companies": None}.
+    sources = _build_sources(
+        {"companies": None}, BASE_CONSTRAINTS, identity="x", client=object(), use_web_search=False
+    )
+    assert [type(s) for s in sources] == [CompanyPagesSource]
+    assert sources[0].companies == []

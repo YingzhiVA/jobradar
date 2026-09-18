@@ -1425,9 +1425,14 @@ class CompanyPagesSource:
 
     name = "company_pages"
 
-    def __init__(self, companies: list[dict]):
-        """companies: list of {"name": str, "ats": "greenhouse"|"lever"|"ashby", "slug": str}"""
-        self.companies = companies
+    def __init__(self, companies: list[dict] | None):
+        """companies: list of {"name": str, "ats": <one of _FETCHERS>, "slug": str}.
+
+        None is accepted and means no boards: it is what YAML gives for a
+        `companies:` key whose every entry is commented out, which is how the
+        template ships.
+        """
+        self.companies = [c for c in (companies or []) if isinstance(c, dict)]
 
     def fetch(self) -> FetchResult:
         postings: list[RawPosting] = []
@@ -1442,7 +1447,19 @@ class CompanyPagesSource:
         with httpx.Client(timeout=_TIMEOUT) as client:
             for company in self.companies:
                 name = company.get("name") or "?"
-                ats = company.get("ats", "").lower()
+                # An entry uncommented only partly (a name with no slug, or the
+                # reverse) must cost that one board, not every board: a missing
+                # key used to raise KeyError here and take the whole source down.
+                missing = [k for k in ("name", "ats", "slug") if not company.get(k)]
+                if missing:
+                    logger.warning(
+                        "Skipping %s: entry in config/companies.yaml has no %s",
+                        name, " or ".join(missing),
+                    )
+                    skipped.append(name)
+                    company_counts[name] = 0
+                    continue
+                ats = str(company.get("ats", "")).lower()
                 fetcher = _FETCHERS.get(ats)
                 if fetcher is None:
                     logger.warning(

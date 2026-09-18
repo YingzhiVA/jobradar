@@ -7,9 +7,9 @@ what you actually want next. Hard requirements (canton, workload, office days)
 are filtered out before any of that. What reaches you is at most one "best"
 match a day plus a few "okay" ones, and a day with nothing is a normal day.
 
-It finds postings itself: from company career pages (67 Swiss boards ship
-with it, across sixteen applicant-tracking systems), and from Claude's web
-search as a fallback. It never scrapes or automates LinkedIn. When you decide
+It finds postings itself: from the company career pages you choose (a
+catalogue of 65 Swiss boards across sixteen applicant-tracking systems ships
+with it, all switched off), and from Claude's web search. It never scrapes or automates LinkedIn. When you decide
 to apply, it drafts a tailored CV and cover letter in the posting's language,
 keeps a submission log, and can prepare an interview sheet from your own
 stories.
@@ -35,14 +35,23 @@ your submission log. Off by default.
 ## What it costs
 
 You pay Anthropic for what the tool reads and writes; the tool itself is
-free (MIT). Rough figures with the default models, measured in September
-2026 (details and how to check your own spend in [docs/COSTS.md](docs/COSTS.md)):
+free (MIT). What a run costs depends mostly on how many company boards you
+switch on. Rough figures with the default models, from September 2026:
 
 | Activity | About |
 | --- | --- |
-| One daily search run | $0.50–0.70 |
+| A daily run with no boards switched on (web search only) | $0.25–0.30 |
+| A daily run on the author's setup of about 65 boards | $0.50–0.80 |
 | One drafted application (CV + cover letter) | $0.25–0.45 |
-| A typical month: 22 runs, 15 applications | $17–25 |
+
+**Your first run is the exception.** It treats every posting currently open
+on the boards you chose as new, and scores all of those that pass your
+constraints in one go. With every board in the catalogue switched on that is
+roughly $4–7, seven to thirteen times a normal day; with five or ten boards,
+usually around a dollar. That is why
+no board ships switched on: start with five or ten, and add more a few at a
+time. [docs/COSTS.md](docs/COSTS.md) has the details and how to check your
+own spend.
 
 Create a dedicated API key named `jobradar` in the Claude Console and set a
 monthly spend limit there; then its usage shows on its own and cannot exceed
@@ -71,7 +80,13 @@ what you chose.
 4. **Tell it what is non-negotiable** in `config/constraints.yaml`: cantons,
    workload range, office days. The shipped example is three cantons around
    Zürich.
-5. **Check the setup**, then do a dry run (real Claude calls on sample
+5. **Pick the company boards to scan.** None are switched on. In
+   `config/companies.yaml`, remove the `# ` from all three lines of each board
+   you want. **Start with five or ten**: your first run scores every open
+   posting on the boards you chose, so it costs far more than a normal day
+   (see [What it costs](#what-it-costs)). You can add more later, a few at a
+   time. With none chosen, only web search runs.
+6. **Check the setup**, then do a dry run (real Claude calls on sample
    postings, no live sources), then a real one:
 
    ```bash
@@ -83,9 +98,8 @@ what you chose.
    The report lands in `reports/<date>.md`. Read a few real runs before you
    trust the schedule.
 
-Everything else is optional and explained in the docs below: pruning the
-company list, steering how many matches you see, the cloud schedule, the
-apply pipeline.
+Everything else is optional and explained in the docs below: steering how
+many matches you see, the cloud schedule, the apply pipeline.
 
 ## How it fits together
 
@@ -93,7 +107,7 @@ Three phases, each its own module, sharing the profile you set up once:
 
 1. **Company discovery** (`jobradar.discovery`), occasional: find companies
    worth scanning and feed them into `config/companies.yaml`. Optional; the
-   shipped list is a real Swiss watchlist to prune and extend by hand.
+   shipped catalogue is switched off, board by board, until you choose.
 2. **Search** (`jobradar.search`), the daily run: fetch postings, filter,
    score, report the few worth your time.
 3. **Apply** (`jobradar.apply`), on demand: turn chosen postings into

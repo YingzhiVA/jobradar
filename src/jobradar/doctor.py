@@ -102,18 +102,98 @@ def check_profile(root: Path) -> list[Check]:
     return checks
 
 
-def check_config(root: Path) -> list[Check]:
-    checks: list[Check] = []
-    companies = root / "config" / "companies.yaml"
+class _NoDuplicateKeysLoader(yaml.SafeLoader):
+    """PyYAML keeps the last of two identical keys and says nothing. In
+    companies.yaml that turns a half-edited entry into a silent rewrite of the
+    entry above it — uncomment `ats:`/`slug:` without `- name:` and the
+    previous company is scanned from the wrong board. Here it is an error."""
+
+
+def _construct_mapping_no_duplicates(loader, node, deep=False):
+    loader.flatten_mapping(node)
+    first_line: dict = {}
+    for key_node, _value in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in first_line:
+            raise yaml.constructor.ConstructorError(
+                None, None,
+                f"key {key!r} appears twice in one entry (lines {first_line[key]} and "
+                f"{key_node.start_mark.line + 1}) — a company's lines were probably "
+                f"only partly commented or uncommented",
+                key_node.start_mark,
+            )
+        first_line[key] = key_node.start_mark.line + 1
+    return loader.construct_mapping(node, deep=deep)
+
+
+_NoDuplicateKeysLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping_no_duplicates
+)
+
+# Above this many boards, the first run is worth a warning: it scans every
+# open posting on each of them at once. See docs/COSTS.md.
+MANY_BOARDS = 15
+
+
+def validate_companies(entries: list) -> list[str]:
+    """Problems with the entries of config/companies.yaml, one line each."""
+    from .search.sources.company_pages import _FETCHERS
+
+    problems = []
+    for i, entry in enumerate(entries, 1):
+        if not isinstance(entry, dict):
+            problems.append(f"entry {i} is not a name/ats/slug block")
+            continue
+        label = entry.get("name") or f"entry {i}"
+        missing = [k for k in ("name", "ats", "slug") if not entry.get(k)]
+        if missing:
+            problems.append(f"{label}: missing {', '.join(missing)} (uncomment all of its lines)")
+        elif str(entry["ats"]).lower() not in _FETCHERS:
+            problems.append(f"{label}: unknown ats {entry['ats']!r}")
+    return problems
+
+
+def _has_run_before(root: Path) -> bool:
+    """Whether a search has already run here. The first-run warning is only
+    true of a first run: once the seen store holds postings, the next run
+    sees only what is new since the last one."""
+    import json
+
     try:
-        data = yaml.safe_load(companies.read_text(encoding="utf-8")) or {}
-        entries = data.get("companies") or []
-        if not entries:
-            checks.append(Check("companies.yaml", WARN, "no companies listed — the daily run will have nothing to scan"))
-        else:
-            checks.append(Check("companies.yaml", OK, f"{len(entries)} companies"))
+        return bool(json.loads((root / "data" / "seen_postings.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return False
+
+
+def check_companies(root: Path) -> Check:
+    path = root / "config" / "companies.yaml"
+    try:
+        data = yaml.load(path.read_text(encoding="utf-8"), Loader=_NoDuplicateKeysLoader) or {}
     except (OSError, yaml.YAMLError) as exc:
-        checks.append(Check("companies.yaml", FAIL, str(exc).splitlines()[0]))
+        return Check("companies.yaml", FAIL, " ".join(str(exc).split())[:220])
+    entries = (data.get("companies") or []) if isinstance(data, dict) else []
+    if not entries:
+        return Check(
+            "companies.yaml", WARN,
+            "no company boards selected yet — uncomment the ones you want in "
+            "config/companies.yaml (start with a handful, see docs/COSTS.md). "
+            "Until then only web search runs.",
+        )
+    problems = validate_companies(entries)
+    if problems:
+        return Check("companies.yaml", FAIL, "; ".join(problems))
+    if len(entries) > MANY_BOARDS and not _has_run_before(root):
+        return Check(
+            "companies.yaml", WARN,
+            f"{len(entries)} boards selected — the first run scans every open posting "
+            f"on all of them at once and costs far more than a normal day; see "
+            f"docs/COSTS.md",
+        )
+    return Check("companies.yaml", OK, f"{len(entries)} boards")
+
+
+def check_config(root: Path) -> list[Check]:
+    checks: list[Check] = [check_companies(root)]
     constraints = root / "config" / "constraints.yaml"
     try:
         Constraints.from_dict(yaml.safe_load(constraints.read_text(encoding="utf-8")) or {})

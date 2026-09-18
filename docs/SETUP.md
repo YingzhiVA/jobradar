@@ -67,7 +67,7 @@ with the templates that ship in the repo.
 | File | Holds | Docs |
 | --- | --- | --- |
 | `config/constraints.yaml` | Hard requirements: cantons, workload, office days | comments in the file |
-| `config/companies.yaml` | Where to look: the career pages to scan | [DISCOVERY.md](DISCOVERY.md) |
+| `config/companies.yaml` | Where to look: the career pages to scan — none until you switch them on | [SEARCH.md](SEARCH.md) |
 | `config/search.yaml` | How the search is steered, the RAV and ETH switches | [SEARCH.md](SEARCH.md) |
 | `config/retention.yaml` | How long reports and applications stay active | [APPLY.md](APPLY.md) |
 

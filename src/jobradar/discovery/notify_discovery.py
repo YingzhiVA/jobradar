@@ -25,7 +25,7 @@ def load_suggestions(path: Path) -> list[dict]:
     if not path.exists():
         return []
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return data.get("companies", []) if isinstance(data, dict) else []
+    return (data.get("companies") or []) if isinstance(data, dict) else []
 
 
 def load_health_report(path: Path) -> str:

@@ -117,3 +117,87 @@ def test_main_reports_ready(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(doctor, "_default_connect", lambda: None)
     doctor.main([])
     assert "Ready to run" in capsys.readouterr().out
+
+
+# --- companies.yaml: opt-in list, and the traps of editing it -------------------
+
+
+def _companies(root, text):
+    (root / "config" / "companies.yaml").write_text(text, encoding="utf-8")
+    return doctor.check_companies(root)
+
+
+def test_all_commented_list_warns_and_points_at_the_file(tmp_path):
+    root = _setup(tmp_path)
+    check = _companies(root, "companies:\n  # - name: Acme\n  #   ats: greenhouse\n  #   slug: acme\n")
+    assert check.level == WARN
+    assert "no company boards selected" in check.message
+
+
+def test_half_uncommented_entry_fails_with_its_name(tmp_path):
+    root = _setup(tmp_path)
+    check = _companies(root, "companies:\n  - name: Acme\n  #   ats: greenhouse\n  #   slug: acme\n")
+    assert check.level == FAIL
+    assert "Acme: missing ats, slug" in check.message
+
+
+def test_orphaned_lines_merging_into_the_entry_above_fail(tmp_path):
+    # The Swiss Re trap: comment out a `- name:` line but not its ats/slug, and
+    # PyYAML silently hands them to the previous entry.
+    root = _setup(tmp_path)
+    check = _companies(
+        root,
+        "companies:\n"
+        "  - name: Swiss Re\n    ats: successfactors\n    slug: careers.swissre.com\n"
+        "  # - name: Jobgether\n    ats: lever\n    slug: jobgether\n",
+    )
+    assert check.level == FAIL
+    assert "appears twice" in check.message
+
+
+def test_unknown_ats_fails(tmp_path):
+    root = _setup(tmp_path)
+    check = _companies(root, "companies:\n  - name: Acme\n    ats: myspace\n    slug: acme\n")
+    assert check.level == FAIL
+    assert "unknown ats" in check.message
+
+
+def test_many_boards_warns_about_the_first_run(tmp_path):
+    root = _setup(tmp_path)
+    many = "".join(
+        f"  - name: Co {i}\n    ats: greenhouse\n    slug: co{i}\n" for i in range(doctor.MANY_BOARDS + 1)
+    )
+    check = _companies(root, "companies:\n" + many)
+    assert check.level == WARN
+    assert "first run" in check.message
+
+
+def test_a_few_boards_is_fine(tmp_path):
+    root = _setup(tmp_path)
+    check = _companies(root, "companies:\n  - name: Acme\n    ats: greenhouse\n    slug: acme\n")
+    assert check.level == OK
+    assert check.message == "1 boards"
+
+
+def test_the_shipped_company_list_is_well_formed():
+    # Holds for the public template (no active boards) and for a private copy
+    # with boards switched on alike: whatever is active must be complete, and
+    # no entry may have swallowed another's lines.
+    import yaml
+
+    text = (_ROOT / "config" / "companies.yaml").read_text(encoding="utf-8")
+    data = yaml.load(text, Loader=doctor._NoDuplicateKeysLoader) or {}
+    assert doctor.validate_companies(data.get("companies") or []) == []
+
+
+def test_many_boards_is_fine_once_a_run_has_happened(tmp_path):
+    # An established instance with many boards is not facing a first run.
+    root = _setup(tmp_path)
+    (root / "data").mkdir()
+    (root / "data" / "seen_postings.json").write_text('{"abc": {"url": "u"}}', encoding="utf-8")
+    many = "".join(
+        f"  - name: Co {i}\n    ats: greenhouse\n    slug: co{i}\n" for i in range(doctor.MANY_BOARDS + 1)
+    )
+    check = _companies(root, "companies:\n" + many)
+    assert check.level == OK
+    assert check.message == f"{doctor.MANY_BOARDS + 1} boards"

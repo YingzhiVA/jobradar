@@ -30,10 +30,56 @@ once per run as a cached prefix (about 10k tokens), so every extra posting
 scored costs only its own text; scoring runs on Haiku; only the handful of
 finalists get a Sonnet write-up.
 
+### Your first run
+
+A normal day only processes what is new since the day before. The first run
+over a board is different: every posting currently open on it is new to you,
+so all of those that pass your constraints are scored at once. Adding a board
+later costs one such catch-up for that board alone. This is why no board
+ships switched on.
+
+How much depends less on the number of boards than on how many of their
+postings survive your constraints, because the location filter drops
+out-of-area postings in code, for free:
+
+- **A large international board can be cheap to add.** When a board with
+  4,125 open postings worldwide was added to the author's instance, 80
+  reached scoring; the rest were foreign and fell away without a model call.
+- **A Swiss-only board is the expensive kind.** Nearly every open posting is
+  in Switzerland, so a board with a few hundred open roles puts most of them
+  through the model on its first run.
+
+Measured on 2026-09-18: every board in the catalogue except Jobgether, 64 in
+all, fetched and run through the free filters with the template's three
+cantons, stopping before any model call. Jobgether's own first run is the
+international-board example above.
+
+| First run, those 64 boards switched on | Postings |
+| --- | --- |
+| Open on those boards, all of them new to you | 3,726 |
+| Reach the paid stages | 1,245 |
+| Pass every filter without a model call | 716 |
+
+Adding Jobgether's 80, the whole catalogue comes to roughly **$4–7** in model
+calls at the per-call rates above, against about $0.55 for a normal day —
+once, and then back to normal. The
+Swiss boards dominate: AXA alone put 167 postings through, EY 99, Deloitte
+86. With five or ten boards a first run is usually around a dollar, though it
+depends on which: a large Swiss-only board costs more on its own than most.
+A wider location setting than the template's three cantons raises every one
+of these numbers.
+
+So: switch on the five or ten boards closest to your field, read a few
+reports, then add more a few at a time. `python -m jobradar.doctor` warns
+when more than fifteen are switched on before your first run.
+
 ### A daily run
 
-Measured on a typical weekday with the shipped company list: about 110 new
-postings fetched, 58 reaching the scorer, 3 surfaced, 5 web searches.
+These figures are from the author's setup of about 65 boards, on a weekday
+when one large board happened to be unreachable: about 110 new postings
+fetched, 58 reaching the scorer, 3 surfaced, 5 web searches. With that board
+reachable, a normal day scores closer to 80. With fewer boards switched on,
+both numbers shrink; with none, only the web search line below remains.
 
 | Stage | Model | About |
 | --- | --- | --- |
@@ -74,6 +120,7 @@ requests beyond the trial credit.
 
 | To spend less | Where |
 | --- | --- |
+| Switch on fewer boards, and add them a few at a time | `config/companies.yaml` |
 | Skip web search (the biggest single cost) | `--no-web-search`, or `JOBRADAR_WEB_SEARCH_MAX_USES` in `.env` |
 | Search less often | `schedule.frequency` in `config/search.yaml` |
 | Surface fewer finalists (fewer Sonnet write-ups) | `output.max_best`, `output.max_okay` |
