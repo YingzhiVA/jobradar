@@ -4,6 +4,23 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.1.0 — Google and NVIDIA boards (2026-09-18)
+
+- **Google, YouTube and DeepMind can be scanned.** A new `google` board type
+  reads the job feed Google publishes for job aggregators, descriptions
+  included, and keeps the Swiss roles (44 when this was written). Its slug
+  names the employers to keep: `Google|YouTube|DeepMind`.
+- **NVIDIA's Workday board works.** NVIDIA lists its countries in a place the
+  Workday connector did not read, so the board was refused as too large to
+  scope. It now narrows to the Swiss roles (about 40) before fetching any.
+- **Both ship commented out.** Pulling this release does not change your own
+  `config/companies.yaml`. To add them, copy the two entries from the
+  template: `git show upstream/master:config/companies.yaml`. Adding both
+  scores about 80 extra postings once, on the first run.
+- **The roadmap names the big-tech sites to come, and one that won't.**
+  Microsoft and Amazon are candidates. Meta is not planned: its careers site
+  forbids automated collection.
+
 ## 1.0.1 — company boards are opt-in (2026-09-18)
 
 - **No board is scanned until you choose it.** 1.0.0 shipped with 67 company
