@@ -691,7 +691,7 @@ def main(argv: list[str] | None = None) -> None:
     client = anthropic.Anthropic()
 
     companies_config = yaml.safe_load((ROOT / "config" / "companies.yaml").read_text()) or {}
-    existing_companies = companies_config.get("companies", [])
+    existing_companies = companies_config.get("companies") or []
 
     _cvs, identity, _stories = load_profile(ROOT / "profile")
     seed_names = load_seed_companies(_SEED_PATH)

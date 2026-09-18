@@ -4,6 +4,28 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.0.1 — company boards are opt-in (2026-09-18)
+
+- **No board is scanned until you choose it.** 1.0.0 shipped with 67 company
+  boards switched on. A new user's first run then scored every open posting on
+  all of them at once, costing many times a normal day, and mostly for boards
+  chosen for one person's field. `config/companies.yaml` now ships every board
+  commented out, as a catalogue to pick from. What a first run costs, and why
+  to start with a handful of boards, is in `docs/COSTS.md`.
+- **A company list with nothing switched on no longer crashes the run.** With
+  every entry commented out the file reads as an empty value, which the
+  company-board source did not accept.
+- **One half-edited entry no longer silences every board.** An entry with a
+  name but no slug, or the reverse, used to raise and take the whole
+  company-board source down for the run. Now only that board is skipped, with
+  a warning naming it.
+- **The setup check reads the company list properly.** `python -m
+  jobradar.doctor` fails on an entry uncommented only in part, on an unknown
+  applicant-tracking system, and on lines that YAML would silently hand to the
+  entry above. It warns before a first run over many boards.
+- **Two dead boards are marked.** The boards recorded for DeepMind and
+  Parashift return 404; their entries now say so.
+
 ## 1.0.0 — first public release (2026-09-18)
 
 Two things are in this release: five weeks of development after 0.5.0, during

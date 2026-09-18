@@ -1,10 +1,22 @@
-# Companies whose career pages the company_pages source scans every run.
+# The company career pages to scan, one board per entry.
 #
-# This is a real Swiss watchlist (AI, data, medtech, insurance, pharma, big
-# consulting, a few research spin-offs), kept as a starting point: prune what
-# doesn't fit you, add what does. There is deliberately no keyword list here —
-# what to surface is decided by scoring against your profile
-# (profile/identity.md and your CVs), not by job titles.
+# NOTHING IS SCANNED UNTIL YOU CHOOSE. Every entry below ships commented out.
+# To switch a board on, remove the "# " at the start of ALL THREE of its lines
+# (name, ats, slug) — then check your edit with `python -m jobradar.doctor`.
+# Uncommenting only some of an entry's lines silently hands them to the entry
+# above it, which is then scanned from the wrong board; the doctor catches that.
+#
+# START WITH A HANDFUL. Your first run treats every open posting on every board
+# you switched on as new, and scores all of those that pass your constraints:
+# a first run over many boards costs many times a normal day. Later runs only
+# see what is new since the day before. Add boards a few at a time and each
+# addition costs one such catch-up on its own. docs/COSTS.md has the numbers.
+#
+# What is here is one person's Swiss watchlist — AI, data, medtech, insurance,
+# pharma, consulting, a few research spin-offs — kept because each board's
+# quirks are written down next to it. Pick the ones in your field; add your own
+# with the formats below. There is deliberately no keyword list: what to
+# surface is decided by scoring against your profile, not by job titles.
 #
 # Each entry has three fields:
 #   name: how the company appears in reports
@@ -76,151 +88,155 @@
 # genuinely has ads there.
 
 companies:
-  - name: Frontify
-    ats: lever
-    slug: frontify
-  - name: Databricks
-    ats: greenhouse
-    slug: databricks
+  # - name: Frontify
+  #   ats: lever
+  #   slug: frontify
+  # - name: Databricks
+  #   ats: greenhouse
+  #   slug: databricks
   # DeepMind = Google's AI lab (Google proper runs a custom careers portal with
   # no Greenhouse/Lever/Ashby board).
-  - name: DeepMind
-    ats: greenhouse
-    slug: deepmind
+  # NOT WORKING: this greenhouse board returned 404 on 2026-09-18. Find the
+  # company's current board before switching it on.
+  # - name: DeepMind
+  #   ats: greenhouse
+  #   slug: deepmind
   # Swiss marketplace operator (Homegate, AutoScout24, ricardo, etc.).
   # SmartRecruiters identifier is case-insensitive.
-  - name: SMG Swiss Marketplace Group
-    ats: smartrecruiters
-    slug: SMGSwissMarketplaceGroup
+  # - name: SMG Swiss Marketplace Group
+  #   ats: smartrecruiters
+  #   slug: SMGSwissMarketplaceGroup
   # On (On Running / On Holding AG), Zurich-based sportswear. A global board
   # (~300 roles); the location pre-filter trims the non-Swiss ones before any
   # LLM cost. NOTE: quote "On" — bare `on` is a YAML 1.1 boolean (parses as True).
-  - name: "On"
-    ats: greenhouse
-    slug: onrunning
+  # - name: "On"
+  #   ats: greenhouse
+  #   slug: onrunning
   # ETH Zurich robotics spin-off.
-  - name: ANYbotics
-    ats: lever
-    slug: anybotics
+  # - name: ANYbotics
+  #   ats: lever
+  #   slug: anybotics
   # Lausanne-founded digital-employee-experience company.
-  - name: Nexthink
-    ats: smartrecruiters
-    slug: nexthink
-  - name: Unique
-    ats: personio
-    slug: unique
+  # - name: Nexthink
+  #   ats: smartrecruiters
+  #   slug: nexthink
+  # - name: Unique
+  #   ats: personio
+  #   slug: unique
   # Migrated off Greenhouse to BambooHR. The greenhouse board still answers
   # 200 but empty; the live ads are on bamboohr/squirro.
-  - name: Squirro
-    ats: bamboohr
-    slug: squirro
-  - name: Mimic
-    ats: lever
-    slug: mimic
-  - name: Auterion
-    ats: greenhouse
-    slug: auterion
-  - name: Parashift
-    ats: ashby
-    slug: parashift
-  - name: BLP Digital
-    ats: ashby
-    slug: blp-digital
-  - name: Terra Quantum
-    ats: greenhouse
-    slug: terraquantum
+  # - name: Squirro
+  #   ats: bamboohr
+  #   slug: squirro
+  # - name: Mimic
+  #   ats: lever
+  #   slug: mimic
+  # - name: Auterion
+  #   ats: greenhouse
+  #   slug: auterion
+  # NOT WORKING: this ashby board returned 404 on 2026-09-18. Find the
+  # company's current board before switching it on.
+  # - name: Parashift
+  #   ats: ashby
+  #   slug: parashift
+  # - name: BLP Digital
+  #   ats: ashby
+  #   slug: blp-digital
+  # - name: Terra Quantum
+  #   ats: greenhouse
+  #   slug: terraquantum
   # US-HQ with a Zurich office; a global board, trimmed by the location gate.
-  - name: Anthropic
-    ats: greenhouse
-    slug: anthropic
-  - name: Scandit
-    ats: greenhouse
-    slug: scandit
-  - name: Viboo
-    ats: personio
-    slug: viboo
-  - name: Kyan Health
-    ats: ashby
-    slug: kyanhealth
-  - name: DeepJudge
-    ats: ashby
-    slug: deepjudge
-  - name: EthonAI
-    ats: recruitee
-    slug: ethonai
-  - name: ELCA
-    ats: recruitee
-    slug: elca
-  - name: Crowdhouse
-    ats: recruitee
-    slug: crowdhouse
-  - name: Ubique
-    ats: recruitee
-    slug: ubique
-  - name: Neural Concept
-    ats: ashby
-    slug: neuralconcept
+  # - name: Anthropic
+  #   ats: greenhouse
+  #   slug: anthropic
+  # - name: Scandit
+  #   ats: greenhouse
+  #   slug: scandit
+  # - name: Viboo
+  #   ats: personio
+  #   slug: viboo
+  # - name: Kyan Health
+  #   ats: ashby
+  #   slug: kyanhealth
+  # - name: DeepJudge
+  #   ats: ashby
+  #   slug: deepjudge
+  # - name: EthonAI
+  #   ats: recruitee
+  #   slug: ethonai
+  # - name: ELCA
+  #   ats: recruitee
+  #   slug: elca
+  # - name: Crowdhouse
+  #   ats: recruitee
+  #   slug: crowdhouse
+  # - name: Ubique
+  #   ats: recruitee
+  #   slug: ubique
+  # - name: Neural Concept
+  #   ats: ashby
+  #   slug: neuralconcept
   # Was "Daedalean" (lever/daedalean): acquired by Destinus Group, whose board
   # is workable/destinusgroup. The old lever board still answers 200 but empty.
-  - name: Destinus Group
-    ats: workable
-    slug: destinusgroup
+  # - name: Destinus Group
+  #   ats: workable
+  #   slug: destinusgroup
     # API reports company_name: 'Destinus'
-  - name: Rivr
-    ats: lever
-    slug: rivr
-  - name: LatticeFlow
-    ats: workable
-    slug: latticeflow
-  - name: Visium
-    ats: workable
-    slug: visium
-  - name: Sophia Genetics
-    ats: workable
-    slug: sophia-genetics
-  - name: Distalmotion
-    ats: workable
-    slug: distalmotion
-  - name: Corintis
-    ats: teamtailor
-    slug: corintis
-  - name: Climeworks
-    ats: recruitee
-    slug: climeworks
-  - name: SpotMe
-    ats: greenhouse
-    slug: spotme
-  - name: ID Quantique
-    ats: greenhouse
-    slug: idquantique
-  - name: Verity
-    ats: lever
-    slug: verity
-  - name: OnlineDoctor
-    ats: personio
-    slug: onlinedoctor
+  # - name: Rivr
+  #   ats: lever
+  #   slug: rivr
+  # - name: LatticeFlow
+  #   ats: workable
+  #   slug: latticeflow
+  # - name: Visium
+  #   ats: workable
+  #   slug: visium
+  # - name: Sophia Genetics
+  #   ats: workable
+  #   slug: sophia-genetics
+  # - name: Distalmotion
+  #   ats: workable
+  #   slug: distalmotion
+  # - name: Corintis
+  #   ats: teamtailor
+  #   slug: corintis
+  # - name: Climeworks
+  #   ats: recruitee
+  #   slug: climeworks
+  # - name: SpotMe
+  #   ats: greenhouse
+  #   slug: spotme
+  # - name: ID Quantique
+  #   ats: greenhouse
+  #   slug: idquantique
+  # - name: Verity
+  #   ats: lever
+  #   slug: verity
+  # - name: OnlineDoctor
+  #   ats: personio
+  #   slug: onlinedoctor
   # Danish-HQ with a Zurich office.
-  - name: Trifork
-    ats: teamtailor
-    slug: trifork
+  # - name: Trifork
+  #   ats: teamtailor
+  #   slug: trifork
   # --- Workday (connector pre-filters multinationals to Swiss postings via the
   # board's location facet; Swiss-only boards like Swisscom are fetched whole).
   # slug = tenant:host:site. ---
   # Multinational, mostly Basel (locationCountry facet → Switzerland).
-  - name: Novartis
-    ats: workday
-    slug: novartis:wd3:Novartis_Careers
+  # - name: Novartis
+  #   ats: workday
+  #   slug: novartis:wd3:Novartis_Careers
   # Swiss-only board (no country facet, lists cities); exposes workload %
   # (Work_Shift facet: "80-100%" etc.) in postings.
-  - name: Swisscom
-    ats: workday
-    slug: swisscom:wd103:SwisscomExternalCareers
+  # - name: Swisscom
+  #   ats: workday
+  #   slug: swisscom:wd103:SwisscomExternalCareers
   # Zurich-based private bank. This board names its country facet
   # `Location_Country` rather than the standard `locationCountry`; the
   # connector reads both.
-  - name: Julius Baer
-    ats: workday
-    slug: juliusbaer:wd3:External
+  # - name: Julius Baer
+  #   ats: workday
+  #   slug: juliusbaer:wd3:External
   # Johnson & Johnson. The public careers site (careers.jnj.com) is a Phenom
   # front-end behind Cloudflare — every API path under it 403s — but its apply
   # links point at the underlying Workday board, which is open. This board has
@@ -228,9 +244,9 @@ companies:
   # Switzerland") under the flat `locations` facet, which the connector also
   # reads — without that this board would be fetched whole. Swiss sites:
   # Allschwil, Oberdorf, Schaffhausen, Zuchwil, Zug.
-  - name: Johnson & Johnson
-    ats: workday
-    slug: jj:wd5:JJ
+  # - name: Johnson & Johnson
+  #   ats: workday
+  #   slug: jj:wd5:JJ
   # Roche. Same Phenom-over-Workday setup as J&J: careers.roche.com is the
   # front-end, the board underneath is open. The 4th slug segment is REQUIRED
   # here, not an optimisation: this board's `locations` facet mixes cities,
@@ -239,92 +255,92 @@ companies:
   # Basel, Kaiseraugst and Rotkreuz are Roche's Swiss descriptors on this
   # board; drop one to narrow (Rotkreuz alone is roughly Roche Diagnostics —
   # there is no division facet, so location is the only way to reach it).
-  - name: Roche
-    ats: workday
-    slug: roche:wd3:roche-ext:Basel|Kaiseraugst|Rotkreuz
+  # - name: Roche
+  #   ats: workday
+  #   slug: roche:wd3:roche-ext:Basel|Kaiseraugst|Rotkreuz
   # Zurich-based ESG/business-intelligence data provider.
-  - name: RepRisk AG
-    ats: smartrecruiters
-    slug: repriskag
+  # - name: RepRisk AG
+  #   ats: smartrecruiters
+  #   slug: repriskag
   # Basel-based pharma/biotech CDMO.
-  - name: Lonza
-    ats: smartrecruiters
-    slug: lonza
+  # - name: Lonza
+  #   ats: smartrecruiters
+  #   slug: lonza
   # Travel & spend-management SaaS platform, Zurich.
-  - name: Perk
-    ats: ashby
-    slug: perk
+  # - name: Perk
+  #   ats: ashby
+  #   slug: perk
   # Huawei's Zurich Research Center: fundamental research in ML/AI, computer
   # vision, HPC. API reports company_name: 'Huawei Switzerland'.
-  - name: Huawei (Zurich)
-    ats: teamtailor
-    slug: huaweizurich
+  # - name: Huawei (Zurich)
+  #   ats: teamtailor
+  #   slug: huaweizurich
   # RetinAI Medical: AI/ML for ophthalmology imaging.
-  - name: Retinai
-    ats: personio
-    slug: retinai
+  # - name: Retinai
+  #   ats: personio
+  #   slug: retinai
   # Legartis: AI contract review / legal tech.
-  - name: Legartis
-    ats: personio
-    slug: legartis
+  # - name: Legartis
+  #   ats: personio
+  #   slug: legartis
   # Online travel booking (lastminute.com group).
-  - name: LastMinute.com
-    ats: smartrecruiters
-    slug: lastminutecom
+  # - name: LastMinute.com
+  #   ats: smartrecruiters
+  #   slug: lastminutecom
     # API reports company_name: 'lastminute.com'
   # PropTech: online real-estate sales agent alternative. The slug is
   # "proptech", not "neho": neho.recruitee.com 302-redirects there, and the
   # connector's client doesn't follow redirects, so "neho" fetches nothing.
-  - name: Neho
-    ats: recruitee
-    slug: proptech
+  # - name: Neho
+  #   ats: recruitee
+  #   slug: proptech
     # API reports company_name: 'Neho'
   # Digital health/therapeutics for diabetes and weight management.
-  - name: Oviva
-    ats: ashby
-    slug: oviva
+  # - name: Oviva
+  #   ats: ashby
+  #   slug: oviva
   # Artefact: global data/AI consultancy (Zürich + Lausanne offices on a
   # global board).
-  - name: Artefact
-    ats: greenhouse
-    slug: artefact
+  # - name: Artefact
+  #   ats: greenhouse
+  #   slug: artefact
   # Optiml: ETH spin-off, AI/optimisation for real-estate decarbonisation
   # planning. The only join board in this file with any ads — see the join
   # note in the header.
-  - name: Optiml
-    ats: join
-    slug: optiml
+  # - name: Optiml
+  #   ats: join
+  #   slug: optiml
   # Allthings: Basel-based proptech (property-management platform).
-  - name: Allthings
-    ats: bamboohr
-    slug: allthings
+  # - name: Allthings
+  #   ats: bamboohr
+  #   slug: allthings
   # Giotto.ai: Lausanne-based AI company. NOTE: BambooHR exposes no
   # company_name, so a BambooHR slug is confirmed by reading the postings.
-  - name: Giotto.ai
-    ats: bamboohr
-    slug: giottoai
+  # - name: Giotto.ai
+  #   ats: bamboohr
+  #   slug: giottoai
   # All of Siemens Schweiz (every division incl. Smart Infrastructure — the
   # detail page's Organization field rides along in raw), narrowed server-side
   # by the "Switzerland||" search segment. That segment is a full-text search,
   # so a few foreign postings that mention Switzerland ride along; the location
   # gate drops them before any LLM cost.
-  - name: Siemens
-    ats: avature
-    slug: "jobs.siemens.com:en_US/externaljobs:Switzerland||"
+  # - name: Siemens
+  #   ats: avature
+  #   slug: "jobs.siemens.com:en_US/externaljobs:Switzerland||"
   # apply.deloitte.ch hosts only the Swiss firm's postings, so no search
   # segment. Deloitte postings list multi-city locations ("Basel, Geneva,
   # Zurich"); the canton filter trims per-city downstream.
-  - name: Deloitte
-    ats: avature
-    slug: "apply.deloitte.ch:CHCareers:"
+  # - name: Deloitte
+  #   ats: avature
+  #   slug: "apply.deloitte.ch:CHCareers:"
   # Experienced-professionals board (EY's graduate board is a separate site,
   # not connected).
-  - name: EY
-    ats: successfactors
-    slug: careers.ey.com/ey
-  - name: Swiss Re
-    ats: successfactors
-    slug: careers.swissre.com
+  # - name: EY
+  #   ats: successfactors
+  #   slug: careers.ey.com/ey
+  # - name: Swiss Re
+  #   ats: successfactors
+  #   slug: careers.swissre.com
   # Jobgether is not an employer: it's a matching intermediary that posts
   # roles on behalf of unnamed partner companies ("This position is listed on
   # behalf of a partner company"). Two consequences worth knowing before
@@ -339,13 +355,13 @@ companies:
   # Every Swiss posting is remote with a country-level location and no town
   # anywhere in its text, so it reaches the report via constraints.yaml's
   # remote_countries and never via allowed_cantons.
-  - name: Jobgether
-    ats: lever
-    slug: jobgether
+  # - name: Jobgether
+  #   ats: lever
+  #   slug: jobgether
   # Data & AI consultancy with Zürich and Lausanne offices on a global board.
-  - name: Unit8
-    ats: workable
-    slug: unit8
+  # - name: Unit8
+  #   ats: workable
+  #   slug: unit8
     # API reports company_name: 'Unit8 SA'
   # AXA Switzerland. axa.ch's "Offene Stellen" page hands off to AXA Group's
   # careers.axa.com, an iCIMS board fronted by Jibe, whose JSON API the icims
@@ -355,34 +371,34 @@ companies:
   # Switzerland" entity tag axa.ch links with because the Swiss set also holds
   # Winterthur-based Group entities (GIE AXA, AXA Group Operations) and AXA XL
   # Zurich. Postings are dated on the board (posted_date in raw).
-  - name: AXA Switzerland
-    ats: icims
-    slug: careers.axa.com
+  # - name: AXA Switzerland
+  #   ats: icims
+  #   slug: careers.axa.com
   # Zurich Insurance. zurich.ch's job search is SAP SuccessFactors at
   # www.careers.zurich.com — keep the "www": the bare careers.zurich.com host
   # has no TLS certificate, and zurich.com itself sits behind Imperva bot
   # protection that the careers host does not share. Workload is in the title
   # ("80-100%"). Zurich's Generalagentur (sales agency) roles are listed
   # separately on jobs.ch and not connected.
-  - name: Zurich Insurance
-    ats: successfactors
-    slug: www.careers.zurich.com
+  # - name: Zurich Insurance
+  #   ats: successfactors
+  #   slug: www.careers.zurich.com
   # Takeda. jobs.takeda.com is a Radancy front-end; its apply links point at
   # an open Workday board on the unusual wd502 host, so this is config-only.
   # Swiss sites: Zurich HQ (Glattpark/Opfikon), Neuchâtel manufacturing, a
   # few Switzerland-remote. This board spells its country facet
   # `Location_Country` — see the Julius Baer note.
-  - name: Takeda
-    ats: workday
-    slug: takeda:wd502:External
+  # - name: Takeda
+  #   ats: workday
+  #   slug: takeda:wd502:External
   # Sonova (Phonak etc.). careers.sonova.com is a Phenom front-end for the US;
   # the group-wide board is SAP SuccessFactors at jobs.sonova.com, which
   # answers plain fetches. The Switzerland search is fuzzy (Stäfa is spelled
   # "Staefa" on the board, and some Chinese entries slip through; the location
   # gate drops those). Hearing-aid medical devices at the Stäfa HQ.
-  - name: Sonova
-    ats: successfactors
-    slug: jobs.sonova.com
+  # - name: Sonova
+  #   ats: successfactors
+  #   slug: jobs.sonova.com
   # UBS. jobs.ubs.com is an Infinite BrassRing Talent Gateway (ex-IBM Kenexa;
   # the Angular "TGnewUI" front-end). ubs.com itself is Akamai-walled to
   # non-browser fetches, but the Talent Gateway answers plain fetches, slowly
@@ -395,9 +411,9 @@ companies:
   # — use "Zürich|Zurich-Flughafen" to include it. Reqs come in the posting's
   # language (German reqs show up on the English site too), with section
   # labels in that language; the connector reads both.
-  - name: UBS
-    ats: brassring
-    slug: "jobs.ubs.com:25008:5012:Zürich"
+  # - name: UBS
+  #   ats: brassring
+  #   slug: "jobs.ubs.com:25008:5012:Zürich"
   # Sensirion (Stäfa ZH; environmental and flow sensors). jobs.sensirion.com
   # is Prospective's hosted "directlink" site: its list pages are behind an
   # S3 bucket that refuses direct fetches, but the same list is served by
@@ -405,6 +421,6 @@ companies:
   # careers page) and the job pages themselves answer plain fetches with a
   # JSON-LD posting. Small board, so fetched whole; the location gate trims
   # the foreign sites.
-  - name: Sensirion
-    ats: prospective
-    slug: "1000982"
+  # - name: Sensirion
+  #   ats: prospective
+  #   slug: "1000982"
