@@ -14,6 +14,7 @@ warning) rather than failing the whole run.
 from __future__ import annotations
 
 import html
+import io
 import json
 import logging
 import re
@@ -313,6 +314,16 @@ _WORKDAY_TARGET_COUNTRIES = {"switzerland"}
 # 17 of 26 Swiss postings.
 _WORKDAY_COUNTRY_FACETS = ("locationCountry", "Location_Country")
 
+# The first level of Workday's location hierarchy. NVIDIA fills it with bare
+# country names ("Switzerland") and has no country facet of either spelling
+# above, while its `locations` descriptors lead with the country ("Switzerland,
+# Zurich") instead of ending on it — so without this its 2000-posting board
+# read as unscopable. Nothing guarantees the level holds countries (a tenant
+# may put regions there), so unlike the facets above it is used only when a
+# descriptor actually names a target country; otherwise the board falls through
+# to the other checks rather than being silently skipped as "no Swiss postings".
+_WORKDAY_HIERARCHY_COUNTRY_FACET = "locationHierarchy1"
+
 # The other shape: a flat facet with one value per location and no country
 # dimension of its own. A multinational that uses it (Johnson & Johnson)
 # country-qualifies each descriptor — "Zug, Switzerland" — so the country is
@@ -387,6 +398,9 @@ def _workday_location_facets(
       treats that as "no in-scope postings"). Checked before `locations`: a
       board with both (Takeda) has the complete Swiss set only on the country
       facet.
+    - Board has neither, but its `locationHierarchy1` level names a target
+      country (NVIDIA): return `{"locationHierarchy1": [ids]}`. Never an empty
+      list: a level naming no target country may not hold countries at all.
     - Board has a flat `locations` facet with country-qualified descriptors
       (Johnson & Johnson): return `{"locations": [ids]}` for the locations in a
       target country. This is what keeps a 1750-posting global board down to the
@@ -439,6 +453,9 @@ def _workday_location_facets(
     for country_facet in _WORKDAY_COUNTRY_FACETS:
         if country_facet in by_param:
             return {country_facet: matching_ids(country_facet, _workday_names_target_country)}
+    hierarchy_ids = matching_ids(_WORKDAY_HIERARCHY_COUNTRY_FACET, _workday_names_target_country)
+    if hierarchy_ids:
+        return {_WORKDAY_HIERARCHY_COUNTRY_FACET: hierarchy_ids}
     location_ids = matching_ids(_WORKDAY_LOCATIONS_FACET, _workday_location_in_target_country)
     if location_ids:
         return {_WORKDAY_LOCATIONS_FACET: location_ids}
@@ -1400,6 +1417,71 @@ def _fetch_prospective(company_name: str, slug: str, client: httpx.Client) -> li
     return postings
 
 
+# Google publishes every open role at Google, YouTube and DeepMind as one XML
+# feed for job aggregators (~3500 postings, ~20 MB), descriptions included, so
+# one request covers the company with no detail calls. The careers site's own
+# search results and job pages are closed to crawlers by robots.txt; the feed
+# is not, and it is the only thing this connector reads. The feed is global
+# with no server-side filter, so it is scoped to the same target countries as
+# Workday in code, after the download.
+_GOOGLE_FEED_URL = "https://www.google.com/about/careers/applications/jobs/feed.xml"
+
+
+def _google_location(location: ET.Element) -> str:
+    parts = (location.findtext(tag) for tag in ("city", "state", "country"))
+    return ", ".join(part.strip() for part in parts if part and part.strip())
+
+
+def _fetch_google(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+    # The slug pipe-separates the feed's <employer> values to keep:
+    # "Google|YouTube|DeepMind" are the three it lists, so a watchlist can take
+    # DeepMind alone without the rest of Google.
+    employers = {name.strip().lower() for name in slug.split("|") if name.strip()}
+    if not employers:
+        raise ValueError(f"Google slug must be 'Employer[|Employer...]', got {slug!r}")
+    resp = client.get(_GOOGLE_FEED_URL)
+    resp.raise_for_status()
+
+    postings: list[RawPosting] = []
+    try:
+        # Each <job> is cleared once read, so the parsed tree never grows to
+        # a second copy of the feed.
+        for _, job in ET.iterparse(io.BytesIO(resp.content)):
+            if job.tag != "job":
+                continue
+            locations = job.findall("locations/location")
+            in_scope = (job.findtext("employer") or "").strip().lower() in employers and any(
+                (loc.findtext("country") or "").strip().lower() in _WORKDAY_TARGET_COUNTRIES
+                for loc in locations
+            )
+            if in_scope:
+                # Every location a multi-site role is open in, as for Workday.
+                where = dict.fromkeys(filter(None, map(_google_location, locations)))
+                postings.append(
+                    RawPosting(
+                        source="google",
+                        url=(job.findtext("url") or "").strip(),
+                        title=(job.findtext("title") or "").strip(),
+                        company=company_name,
+                        description=strip_html(job.findtext("description") or ""),
+                        location="; ".join(where) or None,
+                        remote=parse_workplace_type(job.findtext("remote")),
+                        raw={
+                            "jobid": job.findtext("jobid"),
+                            "published": job.findtext("published"),
+                            "employer": job.findtext("employer"),
+                            "jobtype": job.findtext("jobtype"),
+                        },
+                    )
+                )
+            job.clear()
+    except ET.ParseError as exc:
+        # A truncated download or an HTML error page served with a 200: skip
+        # the company like any other bad board rather than end the source.
+        raise ValueError(f"Google job feed is not readable XML: {exc}") from exc
+    return postings
+
+
 _FETCHERS = {
     "greenhouse": _fetch_greenhouse,
     "lever": _fetch_lever,
@@ -1417,6 +1499,7 @@ _FETCHERS = {
     "icims": _fetch_icims,
     "brassring": _fetch_brassring,
     "prospective": _fetch_prospective,
+    "google": _fetch_google,
 }
 
 

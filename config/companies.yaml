@@ -22,7 +22,7 @@
 #   name: how the company appears in reports
 #   ats:  greenhouse | lever | ashby | smartrecruiters | personio | recruitee |
 #         workable | teamtailor | workday | join | bamboohr | avature |
-#         successfactors | icims | brassring | prospective
+#         successfactors | icims | brassring | prospective | google
 #   slug: the board token used in that ATS's public job-board URL, e.g.
 #     greenhouse: https://boards-api.greenhouse.io/v1/boards/<slug>/jobs
 #     lever:      https://api.lever.co/v0/postings/<slug>
@@ -80,6 +80,10 @@
 #                   ohws.prospective.ch/public/v1/careercenter/<id>/ itself for
 #                   its per-country job counts. Job pages live on the
 #                   employer's own jobs.* domain and carry JSON-LD.
+#   google:         reads the job feed Google publishes for aggregators (one
+#                   ~20 MB download, descriptions included, kept to Swiss
+#                   roles in code). The slug names the feed's employers to
+#                   keep: "Google|YouTube|DeepMind" for all three.
 #
 # join is the one to be careful with: join.com serves a company PROFILE page
 # for firms that were never its customers (Swisscom has one, with no ads,
@@ -94,6 +98,17 @@ companies:
   # - name: Databricks
   #   ats: greenhouse
   #   slug: databricks
+  # Google, YouTube and DeepMind: Google's largest engineering office outside
+  # the US is in Zurich. Meta is left out on purpose: its careers site forbids
+  # automated collection (see docs/ROADMAP.md).
+  # - name: Google
+  #   ats: google
+  #   slug: "Google|YouTube|DeepMind"
+  # A global board (2000+ postings) scoped to its ~40 Swiss ones server-side,
+  # many of them remote within Switzerland.
+  # - name: NVIDIA
+  #   ats: workday
+  #   slug: nvidia:wd5:NVIDIAExternalCareerSite
   # Swiss marketplace operator (Homegate, AutoScout24, ricardo, etc.).
   # SmartRecruiters identifier is case-insensitive.
   # - name: SMG Swiss Marketplace Group
