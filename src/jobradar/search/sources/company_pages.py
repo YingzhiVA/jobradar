@@ -18,6 +18,7 @@ import io
 import json
 import logging
 import re
+import time
 import xml.etree.ElementTree as ET
 from urllib.parse import urljoin
 
@@ -1417,6 +1418,120 @@ def _fetch_prospective(company_name: str, slug: str, client: httpx.Client) -> li
     return postings
 
 
+# --- onlyfy (formerly prescreen, by New Work SE: Hexagon Robotics, Leica) ---
+
+# Each employer has a career page at <slug>.onlyfy.jobs. It exposes no public
+# JSON API, but both pages involved are server-rendered HTML: the job list
+# (title, link and a "Zürich | Full-time employee | 16.09.2026" line per card,
+# 15 cards a page) and, per posting, the page the career site frames at
+# /job/show/<id>/full. The list takes a server-side country filter, so a
+# multinational board (Leica: 37 postings, 7 countries) is fetched only for
+# its Swiss ones. robots.txt allows both paths and asks for a Crawl-delay of
+# 1 second, which _ONLYFY_DELAY honours between every request. Verified on
+# hexagon-robotics and leica-geosystems-ag, 2026-09-18.
+_ONLYFY_COUNTRY = "ch"
+_ONLYFY_DELAY = 1.0
+_ONLYFY_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
+_ONLYFY_CARD_RE = re.compile(
+    r'data-testid="job-card"[^>]*?href="/[a-z]{2}/job/([a-z0-9]+)[^"]*".*?'
+    r'data-testid="job-title">(.*?)</h3>.*?data-testid="job-more-info">(.*?)</div>',
+    re.S,
+)
+# "<b>1-15</b> out of <b>25 jobs</b>": the board's count of the filtered
+# list, so paging stops at it instead of trusting an out-of-range page.
+_ONLYFY_TOTAL_RE = re.compile(r'data-testid="pagination-items-count">.*?out of\s*<b>\s*(\d+)', re.S)
+# Employers design their own job-ad template, so the posting has no fixed
+# container to cut out. What the templates share is that anything duplicated
+# (a StepStone-format copy of the ad, a XING intro) is a display:none block.
+_ONLYFY_HIDDEN_RE = re.compile(r'<div\b[^>]*style="[^"]*display:\s*none[^"]*"[^>]*>', re.S)
+
+
+def _onlyfy_visible_text(page_html: str) -> str:
+    """The page's text without scripts, styles and display:none blocks."""
+    body_start = page_html.find("<body")
+    page = page_html[body_start:] if body_start != -1 else page_html
+    page = re.sub(r"<script\b.*?</script>|<style\b.*?</style>", "", page, flags=re.S)
+    while True:
+        hidden = _ONLYFY_HIDDEN_RE.search(page)
+        if not hidden:
+            break
+        # Close the hidden div by tag balance: it nests arbitrary divs.
+        depth, end = 0, len(page)
+        for tag in re.finditer(r"<div\b|</div>", page[hidden.start():]):
+            depth += 1 if tag.group(0) != "</div>" else -1
+            if depth == 0:
+                end = hidden.start() + tag.end()
+                break
+        page = page[: hidden.start()] + page[end:]
+    return strip_html(page)
+
+
+def _onlyfy_cards(page_html: str) -> list[tuple[str, str, str]]:
+    """(job id, title, "City | Employment type | Date") per job card."""
+    return [
+        (job_id, strip_html(title), strip_html(info))
+        for job_id, title, info in _ONLYFY_CARD_RE.findall(page_html)
+    ]
+
+
+def _fetch_onlyfy(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+    # The slug is the career page's subdomain: "hexagon-robotics" for
+    # hexagon-robotics.onlyfy.jobs.
+    if not _ONLYFY_SLUG_RE.fullmatch(slug or ""):
+        raise ValueError(f"onlyfy slug must be the career page's subdomain, got {slug!r}")
+    base = f"https://{slug}.onlyfy.jobs"
+    requested = False
+
+    def get(url: str, params: dict | None = None) -> httpx.Response:
+        nonlocal requested
+        if requested:
+            time.sleep(_ONLYFY_DELAY)
+        requested = True
+        return client.get(url, params=params, headers=_HTML_HEADERS, follow_redirects=True)
+
+    cards: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    total: int | None = None
+    page = 1
+    while total is None or len(cards) < total:
+        resp = get(f"{base}/en", {"country": _ONLYFY_COUNTRY, "page": page})
+        resp.raise_for_status()
+        if total is None:
+            total_match = _ONLYFY_TOTAL_RE.search(resp.text)
+            total = int(total_match.group(1)) if total_match else 0
+        new = [card for card in _onlyfy_cards(resp.text) if card[0] not in seen]
+        if not new:
+            break
+        seen.update(job_id for job_id, _, _ in new)
+        cards.extend(new)
+        page += 1
+
+    postings: list[RawPosting] = []
+    for job_id, title, info in cards:
+        # Same per-posting skip as the other HTML boards: a posting that
+        # closed since the list call is gone here.
+        try:
+            detail = get(f"{base}/job/show/{job_id}/full", {"lang": "en", "mode": "candidate"})
+            detail.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.info("Skipping unavailable %s posting %s: %s", company_name, job_id, exc)
+            continue
+        city, _, rest = info.partition("|")
+        employment_type, _, posted = rest.partition("|")
+        postings.append(
+            RawPosting(
+                source="onlyfy",
+                url=f"{base}/en/job/{job_id}",
+                title=title,
+                company=company_name,
+                description=_onlyfy_visible_text(detail.text),
+                location=city.strip() or None,
+                raw={"employment_type": employment_type.strip(), "posted": posted.strip()},
+            )
+        )
+    return postings
+
+
 # Google publishes every open role at Google, YouTube and DeepMind as one XML
 # feed for job aggregators (~3500 postings, ~20 MB), descriptions included, so
 # one request covers the company with no detail calls. The careers site's own
@@ -1500,6 +1615,7 @@ _FETCHERS = {
     "brassring": _fetch_brassring,
     "prospective": _fetch_prospective,
     "google": _fetch_google,
+    "onlyfy": _fetch_onlyfy,
 }
 
 

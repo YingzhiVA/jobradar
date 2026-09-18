@@ -1,6 +1,6 @@
 [project]
 name = "jobradar"
-version = "1.2.0"
+version = "1.3.0"
 description = "Job search for Switzerland: scores postings against your CV and career identity instead of relying on noisy keyword alerts, then drafts the application."
 readme = "README.md"
 license = { text = "MIT" }

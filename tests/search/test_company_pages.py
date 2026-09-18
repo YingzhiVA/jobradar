@@ -15,6 +15,7 @@ from jobradar.search.sources.company_pages import (
     _fetch_icims,
     _fetch_join,
     _fetch_lever,
+    _fetch_onlyfy,
     _fetch_personio,
     _fetch_prospective,
     _fetch_recruitee,
@@ -1921,3 +1922,124 @@ def test_google_unreadable_feed_skips_the_company_not_the_source():
     # would escape it and end every other board's fetch too.
     with pytest.raises(ValueError, match="not readable XML"):
         _fetch_google("Google", "Google", _PersonioClient(b"<html>Service unavailable"))
+
+
+# --- onlyfy ------------------------------------------------------------------
+
+_ONLYFY_BASE = "https://hexagon-robotics.onlyfy.jobs"
+
+
+def _onlyfy_list(cards, first, last, total):
+    body = "".join(
+        f'<li><a class="group flex" data-testid="job-card" aria-label="{title}" '
+        f'href="/en/job/{job_id}?career_page_search=country_code%3Dch">'
+        f'<div><h3 class="x" data-testid="job-title">{title}</h3></div>'
+        f'<div class="y" data-testid="job-more-info">{info}</div></a></li>'
+        for job_id, title, info in cards
+    )
+    count = (
+        f'<span data-testid="pagination-items-count"><b>{first}-{last}</b> out of <b>{total} jobs</b></span>'
+    )
+    return f"<html><body><ul data-testid=\"jobs-list\">{body}</ul>{count}</body></html>"
+
+
+def _onlyfy_detail(text):
+    # Both halves of a real page that must not reach the description: the
+    # scripts, and the hidden StepStone copy of the ad (a nested div block).
+    return (
+        "<html><head><title>t</title></head><body>"
+        "<script>window.__ignored = 1</script>"
+        f'<div class="job-ad-component"><h1>Title</h1><p>{text}</p></div>'
+        '<div class="step-stone-job-ad" style="display:none;"><div><p>DUPLICATE COPY</p></div>'
+        "<div>still hidden</div></div>"
+        "<p>Visible after</p></body></html>"
+    )
+
+
+def _onlyfy_key(page):
+    return (f"{_ONLYFY_BASE}/en", (("country", "ch"), ("page", page)))
+
+
+def _onlyfy_detail_key(job_id):
+    return (f"{_ONLYFY_BASE}/job/show/{job_id}/full", (("lang", "en"), ("mode", "candidate")))
+
+
+@pytest.fixture
+def _no_crawl_delay(monkeypatch):
+    import jobradar.search.sources.company_pages as cp
+
+    sleeps = []
+    monkeypatch.setattr(cp.time, "sleep", sleeps.append)
+    return sleeps
+
+
+def test_onlyfy_pages_to_the_boards_count_and_reads_each_posting(_no_crawl_delay):
+    client = _AvatureClient(
+        {
+            _onlyfy_key(1): _onlyfy_list(
+                [("aaa1", "Robotics Engineer", "Zürich | Full-time employee | 16.09.2026"),
+                 ("bbb2", "Test Engineer", "Zürich | Full-time employee | 10.09.2026")],
+                1, 2, 3,
+            ),
+            _onlyfy_key(2): _onlyfy_list([("ccc3", "Intern", "Zürich | Intern | 01.09.2026")], 3, 3, 3),
+            _onlyfy_detail_key("aaa1"): _onlyfy_detail("Build humanoids &amp; more."),
+            _onlyfy_detail_key("bbb2"): _onlyfy_detail("Own the test strategy."),
+            _onlyfy_detail_key("ccc3"): _onlyfy_detail("Learn things."),
+        }
+    )
+
+    postings = _fetch_onlyfy("Hexagon Robotics", "hexagon-robotics", client)
+
+    assert [p.title for p in postings] == ["Robotics Engineer", "Test Engineer", "Intern"]
+    first = postings[0]
+    assert first.source == "onlyfy"
+    assert first.url == f"{_ONLYFY_BASE}/en/job/aaa1"
+    assert first.location == "Zürich"
+    assert first.raw == {"employment_type": "Full-time employee", "posted": "16.09.2026"}
+    assert "Build humanoids & more." in first.description
+    assert "Visible after" in first.description
+    assert "DUPLICATE COPY" not in first.description and "still hidden" not in first.description
+    assert "__ignored" not in first.description
+    # the count (3) is reached after page 2: no third list request
+    assert _onlyfy_key(3) not in client.calls
+    # robots.txt Crawl-delay: one pause before every request but the first
+    assert len(_no_crawl_delay) == len(client.calls) - 1
+    assert set(_no_crawl_delay) == {1.0}
+
+
+def test_onlyfy_stops_when_a_page_brings_nothing_new(_no_crawl_delay):
+    # No count on the page (markup changed): stop on a page of known jobs
+    # rather than paging forever.
+    page = _onlyfy_list([("aaa1", "A", "Zürich | Full-time employee | 16.09.2026")], 1, 1, 1)
+    page = page.replace('data-testid="pagination-items-count"', 'data-testid="gone"')
+    client = _AvatureClient(
+        {_onlyfy_key(1): page, _onlyfy_key(2): page, _onlyfy_detail_key("aaa1"): _onlyfy_detail("x")}
+    )
+    assert [p.title for p in _fetch_onlyfy("H", "hexagon-robotics", client)] == ["A"]
+
+
+def test_onlyfy_skips_a_closed_posting(_no_crawl_delay):
+    client = _AvatureClient(
+        {
+            _onlyfy_key(1): _onlyfy_list(
+                [("aaa1", "Open", "Zürich | Full-time employee | 16.09.2026"),
+                 ("bbb2", "Closed", "Zürich | Full-time employee | 16.09.2026")],
+                1, 2, 2,
+            ),
+            _onlyfy_detail_key("aaa1"): _onlyfy_detail("x"),
+            # no entry for bbb2 -> fake answers 404
+        }
+    )
+    assert [p.title for p in _fetch_onlyfy("H", "hexagon-robotics", client)] == ["Open"]
+
+
+def test_onlyfy_empty_board(_no_crawl_delay):
+    client = _AvatureClient({_onlyfy_key(1): "<html><body>No jobs</body></html>"})
+    assert _fetch_onlyfy("H", "hexagon-robotics", client) == []
+    assert len(client.calls) == 1
+
+
+@pytest.mark.parametrize("slug", ["https://hexagon-robotics.onlyfy.jobs", "hexagon-robotics.onlyfy.jobs", "", "Hexagon Robotics"])
+def test_onlyfy_slug_must_be_the_subdomain(slug):
+    with pytest.raises(ValueError, match="subdomain"):
+        _fetch_onlyfy("H", slug, _AvatureClient({}))

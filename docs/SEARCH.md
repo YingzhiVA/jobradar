@@ -6,7 +6,7 @@ rank, write up, report. This page covers how to steer it and what it does.
 ## Configure
 
 1. **`config/companies.yaml`** — the career pages to scan. **Nothing is
-   scanned until you switch boards on**: the file ships as a catalogue of 67
+   scanned until you switch boards on**: the file ships as a catalogue of 69
    Swiss boards grouped by industry (big tech, AI, software, consulting,
    finance, pharma, medtech, robotics, industry, property and climate,
    consumer), every one commented out, with each board's connector quirks
