@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from .apply.pdf import find_browser
 from .archive import load_retention
 from .config import ConfigError, load_search_settings
+from .cv import sync_word_cvs
 from .models import Constraints
 
 logger = logging.getLogger(__name__)
@@ -82,16 +83,23 @@ def check_credentials(root: Path, connect: Callable[[], None]) -> Check:
 def check_profile(root: Path) -> list[Check]:
     checks: list[Check] = []
     cvs_dir = root / "profile" / "cvs"
+    # Setup is where a Word CV is first dropped in, so the doctor makes its
+    # Markdown version here, exactly as every run would.
+    outcomes = sync_word_cvs(cvs_dir)
+    issues = [o.message for o in outcomes if o.status in ("failed", "kept_edits")]
+    news = "; ".join([o.message for o in outcomes if o.status in ("made", "remade")] + issues)
     cvs = [p for p in sorted(cvs_dir.glob("*.md")) if p.name != "README.md"] if cvs_dir.is_dir() else []
     if not cvs:
-        checks.append(Check("CVs", FAIL, f"no CV found in {cvs_dir.relative_to(root)}/ — add at least one .md file"))
+        checks.append(Check("CVs", FAIL, news or f"no CV found in {cvs_dir.relative_to(root)}/ — add your CV there, as .md or Word (.docx)"))
     else:
         templates = [p.name for p in cvs if _has_marker(p)]
         real = [p.name for p in cvs if not _has_marker(p)]
         if real:
-            checks.append(Check("CVs", OK, ", ".join(real) + (f" (delete the template {', '.join(templates)})" if templates else "")))
+            level = WARN if issues else OK
+            detail = "; ".join(filter(None, [news, f"delete the template {', '.join(templates)}" if templates else ""]))
+            checks.append(Check("CVs", level, ", ".join(real) + (f" ({detail})" if detail else "")))
         else:
-            checks.append(Check("CVs", WARN, f"only the shipped template ({', '.join(templates)}) — scoring will be meaningless until you add your own CV"))
+            checks.append(Check("CVs", WARN, f"only the shipped template ({', '.join(templates)}) — scoring will be meaningless until you add your own CV" + (f"; {news}" if news else "")))
     identity = root / "profile" / "identity.md"
     if not identity.exists():
         checks.append(Check("Identity", WARN, "profile/identity.md is missing; interest-fit scoring will have nothing to go on"))

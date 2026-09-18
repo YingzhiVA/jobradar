@@ -73,7 +73,8 @@ what you chose.
 
 3. **Tell it who you are.** Two files, both Markdown:
    - `profile/cvs/` — add your CV as a `.md` file (one per role type if you
-     have several), then delete `example.md`.
+     have several), then delete `example.md`. A Word CV (`.docx`) works too:
+     drop it in and the setup check in step 6 makes the Markdown for you.
    - `profile/identity.md` — replace the template with a real page about what
      you are moving toward and away from. This drives interest fit; vague
      text gets vague scores.

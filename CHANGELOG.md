@@ -4,6 +4,18 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## Unreleased
+
+- **CVs can come from Word.** Put your `.docx` in `profile/cvs/` as it is.
+  The setup check and every run make a Markdown CV of the same name from
+  it, with your text word for word and the headings, bullets, bold and
+  links kept, and make it again whenever you change the Word file. There is
+  nothing to run and no model call, so it costs nothing. Once you edit the
+  Markdown yourself it is never overwritten. Read the result through once:
+  a two-column layout comes out one column after the other. An old-format
+  `.doc` is not read, but the setup check names it and asks you to save it
+  as `.docx`.
+
 ## 1.1.1 — company catalogue grouped by industry (2026-09-18)
 
 - **The company catalogue is grouped by industry.** `config/companies.yaml`
