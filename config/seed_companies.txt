@@ -1,0 +1,17 @@
+# Seed company names for discovery (one per line; blank lines and # comments ignored).
+#
+# Paste candidate Swiss-operating company names here from structured directories
+# the LLM web search won't fully recall, e.g.:
+#   - https://www.top100startups.swiss/
+#   - https://www.startup.ch/
+#   - ETH / EPFL spin-off lists, Crunchbase, Sifted, EU-Startups
+#
+# On the next `python -m jobradar.discover` run, each name is probed against the
+# supported ATSs (Greenhouse / Lever / Ashby / Personio / SmartRecruiters);
+# confirmed boards are written to data/discovered_companies.yaml for you to
+# review and copy into companies.yaml. Unconfirmed names just fail the probe (no
+# LLM cost), and the discovery ledger remembers them so they aren't re-probed
+# until the TTL lapses. Names already configured or in the ledger are skipped.
+#
+# Example (uncomment / replace with names from a directory):
+

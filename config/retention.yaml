@@ -1,0 +1,7 @@
+# Days before items move to their archive/ subdirectory (see
+# src/jobradar/archive.py and src/jobradar/apply/archive.py).
+# Delete a key (or this whole file) to fall back to the built-in default.
+reports_days: 7        # reports/YYYY-MM-DD.md -> reports/archive/
+seen_days: 365          # data/seen_postings.json entries -> data/archive/seen_postings.json
+ghosted_days: 60        # submitted, no outcome recorded (and, if rav.enabled, its month filed) -> applications/archive/
+stale_draft_days: 30    # drafted/needs_jd never submitted -> applications/archive/

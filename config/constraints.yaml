@@ -1,0 +1,79 @@
+# Hard, non-negotiable requirements. These are applied as deterministic
+# filters (filters.py) BEFORE any LLM scoring — no judgment call, no LLM
+# call, just pass/fail. A posting that fails any of these is dropped
+# regardless of how good the skill/interest fit looks.
+#
+# Replace the example values below with your actual requirements.
+
+locations:
+  # A posting passes if it's remote (and remote_ok is true), OR its
+  # resolved canton is in allowed_cantons, OR allowed_cities/allowed_countries
+  # match as a case-insensitive substring of its location/description text.
+  #
+  # allowed_cantons is the recommended one for Switzerland: postings usually
+  # name a town rather than the canton, so normalize.py resolves each
+  # posting's canton (instant for major cities, one small LLM call
+  # otherwise) and matches that — which catches e.g. a posting in "Cham" or
+  # "Baar" against allowed_cantons: ["Zug"], which a plain city list would
+  # miss unless you enumerated every town in the canton yourself.
+  #
+  # An example to replace: the three cantons around Zürich. A practical way to
+  # build your own list is by commute: every canton whose main towns you would
+  # reach within your acceptable travel time from home. All 26 cantons are
+  # recognised, in their English, German, French or Italian spelling.
+  allowed_cantons:
+    - "Zurich"
+    - "Zug"
+    - "Aargau"
+  # allowed_cities/allowed_countries still work as a simpler substring match
+  # — useful for non-Swiss locations, or a specific city outside your listed
+  # cantons.
+  #
+  # GOTCHA: all of these are OR'd together, same as remote_ok. If you put
+  # "Switzerland" here while also restricting by allowed_cantons, ANY Swiss
+  # posting passes on the country check alone, regardless of canton — which
+  # makes the canton restriction a no-op. Leave a country out of
+  # allowed_countries if you're restricting it by canton instead.
+  allowed_countries: []
+  allowed_cities: []
+  remote_ok: false
+
+  # Remote roles scoped to a country, for boards that give a remote posting a
+  # country-level location ("Switzerland") and no town at all. Those can never
+  # resolve a canton, so allowed_cantons can't pass them however Swiss they are
+  # — and a commute radius is meaningless for a role with no office to commute
+  # to. A posting passes here only if it is actually remote AND its own
+  # location line names one of these countries.
+  #
+  # This is the narrow version of remote_ok: that one accepts a remote role
+  # wherever on earth it's scoped (a remote US role included), which is why
+  # it's off. Unlike allowed_countries, this does NOT weaken the canton
+  # restriction for office-based roles — a Lausanne posting still has to
+  # clear allowed_cantons, because it isn't remote.
+  #
+  # The country is read off the location line only, never the description, so
+  # a remote US role whose blurb mentions a Swiss head office won't sneak in.
+  # "Schweiz"/"Suisse"/"Svizzera" count as Switzerland.
+  remote_countries:
+    - "Switzerland"
+
+employment:
+  # Percentage range you'd accept, e.g. 80-100 for "80% or full-time only".
+  min_percentage: 80
+  max_percentage: 100
+
+office_days:
+  # Maximum in-office days per week. Omit or set to null for "no constraint".
+  max_per_week: 4
+
+work_authorization:
+  # If true, postings will be checked for sponsorship language where
+  # detectable — but this is informational rather than a hard auto-drop,
+  # since most postings don't say either way and we'd rather show you an
+  # ambiguous one than silently lose a good match.
+  requires_sponsorship: false
+
+other_dealbreakers:
+  # Free-text deal-breakers checked by the normalize/scoring step rather
+  # than filters.py (too unstructured to pattern-match reliably). Example:
+  # - "Pure individual-contributor IC role with no path to people management"

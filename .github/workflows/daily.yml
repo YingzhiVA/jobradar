@@ -1,0 +1,334 @@
+name: Daily jobradar
+
+# Cloud-hosted daily run: GitHub Actions executes the pipeline, emails the
+# headline, and commits the dedup state back so the next run doesn't re-notify.
+#
+# The Anthropic call authenticates one of two ways, chosen by the "Select
+# Anthropic credentials" step below:
+#   1. The repo secret ANTHROPIC_API_KEY (Settings -> Secrets and variables ->
+#      Actions -> Secrets). The simple path; this is what most people want.
+#   2. Workload identity federation: the job mints a GitHub OIDC token and the
+#      SDK exchanges it for a short-lived Anthropic access token, so nothing
+#      long-lived is stored. The IDs that name the federation rule are repo
+#      *variables*: ANTHROPIC_FEDERATION_RULE_ID, ANTHROPIC_ORGANIZATION_ID,
+#      ANTHROPIC_SERVICE_ACCOUNT_ID. See docs/CLOUD.md.
+# With neither configured the job prints a setup hint and exits green, so a
+# fresh copy of the template never fails red before it has been set up.
+#
+# Required repo secrets for the email (Settings -> Secrets and variables -> Actions):
+#   SMTP_USER          - SMTP username (e.g. your Gmail address)
+#   SMTP_PASS          - SMTP password (Gmail: an App Password, not your login)
+# These two stay secrets: Gmail SMTP authenticates with an App Password and has
+# no federation path, so there is nothing to exchange a GitHub token for.
+# Optional secrets: EMAIL_TO (default SMTP_USER, i.e. email yourself),
+#   SMTP_HOST (default smtp.gmail.com), SMTP_PORT (default 587),
+#   EMAIL_FROM (default SMTP_USER).
+
+on:
+  schedule:
+    # 06:23 UTC EVERY day (~08:23 Europe/Zurich in summer, 07:23 in winter;
+    # GitHub cron has no DST). Deliberately off the top of the hour: GitHub
+    # delays/drops scheduled runs under load, and :00 is the most congested slot.
+    #
+    # Every day rather than weekdays because a cron line can't read a config
+    # file, and how often to search is now the user's dial, in
+    # config/search.yaml (schedule.frequency + schedule.days_of_week). So this
+    # fires daily and the `cadence` step below decides whether today is a run
+    # day -- which is what makes "weekly on a Sunday" or "every other day"
+    # expressible at all without editing this file. With the shipped default
+    # (daily, mon-fri) the effective behaviour is exactly what "23 6 * * 1-5"
+    # used to give.
+    - cron: "23 6 * * *"
+    # Backstops. GitHub does not merely delay this schedule, it sometimes drops
+    # it outright (2026-08-27 never fired at all), and every run in August
+    # started 45-225 min late, so the primary slot alone is not dependable.
+    # These re-attempt the day; the `guard` step below turns each into a ~1-min
+    # no-op once a run for the date is already on master. Ordering does not
+    # matter: whichever fires first does the work, and the guard makes the
+    # others skip -- including a primary run that GitHub delayed past a
+    # backstop that already completed.
+    - cron: "23 9 * * *"
+    - cron: "23 12 * * *"
+  workflow_dispatch: # allow manual runs from the Actions tab
+    inputs:
+      force_email:
+        description: "Email even on a no-match day (to test delivery)"
+        type: boolean
+        default: false
+
+# Don't overlap runs, and don't cancel an in-progress one mid-commit. Shares a
+# group with the monthly discovery workflow: both commit+push to master, and
+# on the 1st of the month both are scheduled for 06:23 UTC, so without this
+# they can race and one push gets rejected (non-fast-forward).
+concurrency:
+  group: jobradar-git-write
+  cancel-in-progress: false
+
+permissions:
+  contents: write # to commit the updated seen-store back
+  id-token: write # to mint the GitHub OIDC token the Anthropic SDK federates
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    # Federation IDs (harmless when the ANTHROPIC_API_KEY secret is used
+    # instead: the SDK never consults them then). These three name the
+    # federation rule; they identify rather than authorize (the authorization is
+    # the OIDC token minted below, which only this repo's master branch can
+    # obtain), so they are repo *variables*, not secrets. ANTHROPIC_WORKSPACE_ID
+    # is deliberately absent: it is required only for a rule enabled in more
+    # than one workspace, and this one is bound to a single workspace.
+    env:
+      ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+      ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+      ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+      ANTHROPIC_IDENTITY_TOKEN_FILE: /tmp/anthropic-jwt
+    steps:
+      # Always run the pipeline from master, whatever branch a manual dispatch
+      # was launched from. The run's output (dedup state, reports, run log) is
+      # durable state that belongs on master and nowhere else, so pinning the
+      # checkout keeps the code that runs and the branch it commits to in sync.
+      - uses: actions/checkout@v6
+        with:
+          ref: master
+      # Has today's run already landed on master? The backstop schedules above
+      # exist so a dropped primary run still happens, which means that on a
+      # normal day they fire against a day that is already done -- and letting
+      # the pipeline run twice would be destructive, not just wasteful. The
+      # dedup store has already marked today's postings seen, so a second run
+      # finds nothing new and overwrites today's real reports/<date>.md with an
+      # empty "no matches" one, destroying the day's deliverable. That report is
+      # the durable trail that exists precisely for when email delivery fails,
+      # so losing it is the failure this guard is here to prevent.
+      #
+      # runs.jsonl is the sentinel rather than the dated report: it is the
+      # explicit "a run happened" ledger (one record per run, carrying a `date`),
+      # and unlike reports/<date>.md it can never be relocated out from under
+      # this check by the retention sweep -- archive.py moves dated *.md into
+      # reports/archive/ and runs.jsonl never matches that glob. The dated report
+      # is accepted as a second witness anyway: the pipeline writes both, and the
+      # commit step is all-or-nothing (a failed pipeline step skips it, so master
+      # gets both files or neither), so on master the two always agree.
+      #
+      # Only `schedule` is guarded. A manual dispatch is a deliberate act, so it
+      # always runs -- which keeps force_email usable as a delivery test even on
+      # a day the pipeline has already run. Runs before setup-python/install so
+      # a skipped day costs seconds rather than a full pipeline's minutes.
+      # Which Anthropic credential this run uses. The key is exported through
+      # $GITHUB_ENV only when the secret is actually set: the SDK treats a
+      # *present* ANTHROPIC_API_KEY, even an empty one, as the credential and
+      # stops looking for the federation variables, so a plain `env:` mapping
+      # of the secret would silently break federation on repos without a key.
+      # Runs before everything else so an unconfigured copy costs seconds.
+      - name: Select Anthropic credentials
+        id: auth
+        env:
+          API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+        run: |
+          if [ -n "$API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY=$API_KEY" >> "$GITHUB_ENV"
+            echo "mode=api_key" >> "$GITHUB_OUTPUT"
+            echo "Using the ANTHROPIC_API_KEY repo secret."
+          elif [ -n "$RULE_ID" ]; then
+            echo "mode=federation" >> "$GITHUB_OUTPUT"
+            echo "No ANTHROPIC_API_KEY secret; using workload identity federation."
+          else
+            echo "mode=unconfigured" >> "$GITHUB_OUTPUT"
+            echo "::notice::jobradar is not configured yet: add the ANTHROPIC_API_KEY repo secret (Settings -> Secrets and variables -> Actions), or set up federation. See docs/CLOUD.md. Nothing was run."
+          fi
+      - name: Skip if today's run already landed
+        id: guard
+        if: steps.auth.outputs.mode != 'unconfigured'
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Manual dispatch - running unconditionally."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          today=$(date -u +%F)
+          skip=$(python3 - "$today" <<'PY'
+          import json, os, sys
+
+          today = sys.argv[1]
+          if os.path.exists(f"reports/{today}.md"):
+              print("true")
+              raise SystemExit
+          try:
+              with open("reports/runs.jsonl") as fh:
+                  for line in fh:
+                      line = line.strip()
+                      if not line:
+                          continue
+                      try:
+                          record = json.loads(line)
+                      except ValueError:
+                          # A corrupt ledger line must not block the daily run.
+                          continue
+                      if record.get("date") == today:
+                          print("true")
+                          raise SystemExit
+          except FileNotFoundError:
+              pass
+          print("false")
+          PY
+          )
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          if [ "$skip" = "true" ]; then
+            echo "A run for $today is already on master - skipping the rest of this job."
+          else
+            echo "No run for $today on master yet - proceeding."
+          fi
+      - uses: actions/setup-python@v6
+        if: steps.auth.outputs.mode != 'unconfigured' && steps.guard.outputs.skip != 'true'
+        with:
+          python-version: "3.12"
+      - name: Install
+        if: steps.auth.outputs.mode != 'unconfigured' && steps.guard.outputs.skip != 'true'
+        run: pip install -e .
+      # Is today a run day per config/search.yaml (schedule.frequency +
+      # schedule.days_of_week)? The crons above fire every day; this is what
+      # turns that into the user's chosen cadence. It gates every step below,
+      # not just the pipeline -- a run that doesn't happen must not email
+      # yesterday's latest.json or commit an archive sweep as if it had.
+      #
+      # Runs after Install (unlike the guard above, which is stdlib-only)
+      # because the decision reads the YAML, so it needs the package and
+      # PyYAML. That costs a skipped day ~40s of setup rather than seconds,
+      # which buys having one implementation of the cadence rule instead of a
+      # shell copy that can drift from jobradar.schedule.
+      #
+      # Only `schedule` events are gated: a manual dispatch is a deliberate act
+      # and always runs (this step is then skipped, and a skipped step's output
+      # is empty, so the `!= 'true'` conditions below all pass).
+      - name: Skip if today is not a scheduled run day
+        id: cadence
+        if: github.event_name == 'schedule' && steps.auth.outputs.mode != 'unconfigured' && steps.guard.outputs.skip != 'true'
+        run: python -m jobradar.schedule --check
+      # Mint the GitHub OIDC token, then keep it fresh for as long as the
+      # pipeline runs. The SDK exchanges this JWT for a short-lived Anthropic
+      # access token on its first API call and refreshes before that token
+      # expires, re-reading this file each time -- so the file has to still
+      # hold a *usable* JWT at refresh time, which a single up-front fetch
+      # can't guarantee here. Two clocks force that: GitHub's JWT expires
+      # ~5 min after issuance, and each one carries a single-use `jti`, while
+      # a web_search run can take 13-15 min (JOBRADAR_WEB_SEARCH_TIMEOUT
+      # allows 900s). The loop rewrites the file every 4 minutes through an
+      # atomic mv, so the SDK never reads a half-written token.
+      #
+      # Only this step needs the identity: search.main is the one process in
+      # this job that builds an Anthropic client (notify sends SMTP, and
+      # `apply --archive` takes the bookkeeping path). That also keeps the
+      # single-use `jti` safe -- one exchange per minted token.
+      - name: Mint and refresh the Anthropic identity token
+        if: steps.auth.outputs.mode == 'federation' && steps.guard.outputs.skip != 'true' && steps.cadence.outputs.skip != 'true'
+        run: |
+          # Only publish a token we actually got. curl and jq are both piped
+          # here, so a transient GitHub OIDC failure (or a JSON body with no
+          # .value) yields an EMPTY .tmp -- and an unconditional mv would
+          # publish that over the last good token. The SDK then finds an empty
+          # file at refresh time, which is exactly what the 2026-09-08 run hit:
+          #   "Advisory token refresh failed (114s remaining); serving cached
+          #    token: Identity token file at /tmp/anthropic-jwt is empty"
+          # That run survived on its still-valid cached access token, but the
+          # next refresh after a real expiry would have failed the whole
+          # scoring stage. Keeping the previous token in place instead is
+          # strictly better: it stays valid for ~5 min and the loop retries
+          # every 4, so a single blip is now invisible rather than fatal.
+          fetch_jwt() {
+            curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" \
+              | jq -r '.value // empty' > "$ANTHROPIC_IDENTITY_TOKEN_FILE.tmp"
+            if [ ! -s "$ANTHROPIC_IDENTITY_TOKEN_FILE.tmp" ]; then
+              rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE.tmp"
+              echo "::warning::OIDC token fetch returned empty; keeping previous token"
+              return 1
+            fi
+            mv "$ANTHROPIC_IDENTITY_TOKEN_FILE.tmp" "$ANTHROPIC_IDENTITY_TOKEN_FILE"
+          }
+          # The first mint is different: there is no previous token to fall
+          # back on, so a failure here must stop the job rather than let the
+          # pipeline start and die minutes later on its first API call.
+          fetch_jwt || { echo "::error::Could not mint the initial OIDC token"; exit 1; }
+          # Fully redirected: a background process still holding the step's
+          # stdout keeps the runner waiting on this step until the job times out.
+          ( while true; do sleep 240; fetch_jwt || true; done ) >/dev/null 2>&1 &
+      - name: Run pipeline
+        if: steps.auth.outputs.mode != 'unconfigured' && steps.guard.outputs.skip != 'true' && steps.cadence.outputs.skip != 'true'
+        run: python -m jobradar.search.main
+      - name: Email the headline
+        if: steps.auth.outputs.mode != 'unconfigured' && steps.guard.outputs.skip != 'true' && steps.cadence.outputs.skip != 'true'
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          # EMAIL_TO / SMTP_HOST / SMTP_PORT / EMAIL_FROM are optional and
+          # already default in code (notify.py: EMAIL_TO/EMAIL_FROM -> SMTP_USER,
+          # host -> smtp.gmail.com, port -> 587). They're intentionally NOT wired
+          # here: referencing undefined optional secrets trips the Actions linter
+          # ("Context access might be invalid") for no runtime benefit. To
+          # override a default, define the matching repo secret and add its line
+          # back, e.g. `SMTP_HOST: ${{ secrets.SMTP_HOST }}`.
+          # On a manual run with force_email=true, email even on a quiet day.
+          JOBRADAR_NOTIFY_ALWAYS: ${{ inputs.force_email && '1' || '' }}
+        run: python -m jobradar.search.notify
+      - name: Archive old reports and seen-store entries
+        if: steps.auth.outputs.mode != 'unconfigured' && steps.guard.outputs.skip != 'true' && steps.cadence.outputs.skip != 'true'
+        # Moves dated reports and seen-store entries past their retention
+        # window (config/retention.yaml) into reports/archive/ and
+        # data/archive/. Pure file moves, no secrets; the commit step below
+        # persists them (the runner is a fresh checkout, so anything moved
+        # but not committed would be lost).
+        run: python -m jobradar.archive
+      - name: Archive closed and ghosted applications
+        if: steps.auth.outputs.mode != 'unconfigured' && steps.guard.outputs.skip != 'true' && steps.cadence.outputs.skip != 'true'
+        # The policy sweep from jobradar.apply.archive. Deterministic on the
+        # committed state alone — tracker rows, config/retention.yaml, and
+        # (only when rav.enabled in config/search.yaml) applications/
+        # rav_filed.json — so it needs no API key (--archive takes the
+        # bookkeeping path and never builds an Anthropic client) and no input
+        # the runner doesn't already have. Outcomes and RAV filings are still
+        # recorded by hand locally; this only applies the retention policy to
+        # them on a clock, so the ghosted_days/stale_draft_days windows fire
+        # on time instead of whenever --archive is next run.
+        run: python -m jobradar.apply --archive
+      - name: Commit dedup state back
+        if: steps.auth.outputs.mode != 'unconfigured' && steps.guard.outputs.skip != 'true' && steps.cadence.outputs.skip != 'true'
+        run: |
+          git config user.name "jobradar-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Dedup state (durable) + the dated report markdown (a durable trail,
+          # so matches are never lost even if email delivery fails). Reports are
+          # gitignored for local runs, so force-add today's here. The run log
+          # (runs.jsonl) is the operator-facing observability trail — committed
+          # so query/funnel/outcome history survives the fresh-checkout runner.
+          # `git add -A` also stages the archive steps' moves: deletions of the
+          # old tracked files plus their re-add under */archive/ (which the
+          # gitignore patterns don't reach — data/*.json and reports/*.md
+          # don't cross '/'). Untracked-and-ignored files (latest.json) stay
+          # untracked. applications/ isn't gitignored at all, so the
+          # application sweep's folder moves and its applications.json /
+          # queue.txt rewrites stage plainly.
+          git add -A data reports applications
+          git add -f reports/*.md
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "jobradar: daily run $(date -u +%Y-%m-%d)"
+            # Push with an explicit refspec rather than a bare `git push`.
+            # master is hardcoded, not github.ref_name: a manual dispatch runs
+            # on whatever branch was picked in the Actions tab, and pushing to
+            # that branch would strand the run's state on a side branch (and,
+            # if it was an already-merged one, resurrect it). Retry with a
+            # rebase in case another workflow or a manual push landed first.
+            pushed=false
+            for attempt in 1 2 3; do
+              if git push origin HEAD:master; then
+                pushed=true
+                break
+              fi
+              echo "Push rejected (attempt $attempt), rebasing onto latest master and retrying..."
+              git fetch origin master
+              git rebase origin/master
+            done
+            $pushed
+          fi

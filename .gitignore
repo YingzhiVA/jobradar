@@ -1,0 +1,28 @@
+.env
+*:Zone.Identifier
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+data/*.sqlite3
+data/*.json
+# ...except state the scheduled CI runs commit back as durable state (the cloud
+# runner starts from a fresh checkout each time): the daily-run dedup store and
+# the monthly-discovery ledger.
+!data/seen_postings.json
+!data/discovery_ledger.json
+# NOTE: these single-star patterns deliberately do not cross '/', so the
+# archive layer's subdirectories (data/archive/, reports/archive/,
+# reports/rav/) stay tracked. Don't "fix" them to '**' patterns.
+reports/*.md
+reports/*.json
+!reports/.gitkeep
+!data/.gitkeep
+# data/discovered_companies.yaml is generated too, and also tracked so the
+# monthly discovery workflow can commit fresh suggestions back for review. It
+# needs no negation: the ignore patterns above name data/*.json and
+# data/*.sqlite3, not .yaml.
+data/discovered_companies.yaml.bak
+PLAN.md
+.claude/settings.local.json

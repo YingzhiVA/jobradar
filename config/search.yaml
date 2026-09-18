@@ -1,0 +1,96 @@
+# How the daily search is steered: how much it surfaces, how good a match has
+# to be, and how often it runs. These are preferences, not requirements —
+# hard pass/fail rules (location, workload, office days) live in
+# constraints.yaml, *where* to look lives in companies.yaml, and how long
+# output is kept lives in retention.yaml.
+#
+# Everything here is optional: delete a key, a section, or this whole file and
+# the built-in default (shown in brackets below) applies. A key that IS set but
+# unusable — a threshold above 100, an unknown frequency — fails the run with a
+# message naming it, rather than silently reverting to the default.
+#
+# Check what the program actually reads after an edit:
+#   ./.venv/bin/python -m jobradar.config
+
+thresholds:
+  # Both scores are 0-100, assigned per posting by the scorer (matching.py).
+  #
+  # The skill floor. A posting below it is dropped and marked seen — it will
+  # not come back on a later run, so this is the setting that decides what the
+  # pipeline permanently walks away from. Lower it in a thin market to see
+  # more, raise it if what you see isn't worth opening. [60]
+  min_skill: 60
+
+  # The interest ("motivation") floor. 0 means OFF, which is the default and is
+  # deliberate: eligibility gates on skill alone so that a role you're plainly
+  # qualified for but lukewarm about still surfaces. Recall matters in a thin
+  # market, and if you must meet a monthly application quota (Swiss RAV
+  # registrants do) such a role is still a legitimate application. Interest is
+  # never ignored though: it feeds the combined score, so it decides ordering
+  # and whether the top pick is good enough to be the headline "best".
+  #
+  # Set this above 0 if you'd rather see fewer, more motivating roles. Like
+  # min_skill, anything below it is gone for good. [0]
+  min_interest: 0
+
+  # The bar for the headline "best" tier, applied to the *combined* score (the
+  # mean of skill and interest). A posting that clears min_skill but not this
+  # still surfaces, as "okay". Because it's the mean, a role needs genuine
+  # interest (~70+) as well as skill to be promoted. [80]
+  best_threshold: 80
+
+output:
+  # The daily volume cap: at most max_best + max_okay postings per run.
+  #
+  # Eligible postings that lose the cap are NOT marked seen — they're left to
+  # resurface on the next run rather than being silently dropped, so raising
+  # these later doesn't mean the backlog is gone. A run log entry labels them
+  # "deferred-capped" (reports/runs.jsonl).
+  max_best: 1   # headline matches, i.e. those clearing best_threshold [1]
+  max_okay: 3   # secondary matches [3]
+
+schedule:
+  # How often to actually search. The GitHub Actions workflow fires every day
+  # and asks jobradar.schedule whether today is a run day — a cron line can't
+  # read this file, so the cadence is enforced here instead. (A run also costs
+  # LLM calls, so a slower cadence is a real saving, not just less email.)
+  #
+  # frequency: daily | every_other_day | twice_weekly | weekly | custom
+  #   -> minimum days between runs: 1 | 2 | 3 | 7 | min_interval_days
+  # Measured from the last recorded run (reports/runs.jsonl), not from a fixed
+  # calendar anchor, so a run GitHub drops doesn't shift the whole cadence —
+  # the next day is simply already due. [daily]
+  frequency: daily
+
+  # Only used when frequency is "custom". [1]
+  min_interval_days: 1
+
+  # Days the search may run at all, whatever the frequency says. An empty list
+  # ([]) means any day. With the default weekday list, a "weekly" cadence lands
+  # on whichever weekday the previous run did.
+  # [mon, tue, wed, thu, fri]
+  days_of_week: [mon, tue, wed, thu, fri]
+
+rav:
+  # Only for job seekers registered with a Swiss RAV (regional unemployment
+  # office), who must hand in a monthly proof-of-applications table. When true:
+  #   python -m jobradar.apply --rav 2026-09        renders that month's table
+  #   python -m jobradar.apply --rav-filed 2026-09  records it as handed in
+  # and a submitted application stays out of applications/archive/ until the
+  # month it was submitted in has been recorded as filed, so the proof is never
+  # archived away early. When false, those two commands refuse to run and
+  # archiving follows retention.yaml's windows alone. [false]
+  enabled: false
+
+sources:
+  # Sources that need no per-company setup. The ATS boards in companies.yaml
+  # and the profile-driven web search are always on.
+  eth_jobs:
+    # jobs.ethz.ch, ETH Zurich's own board, scraped one job-type category at a
+    # time. Which categories fit is a property of your role, so this is off
+    # until you pick some. Known ids: 4 = management, 5 = administration (the
+    # names work too). For another category, open jobs.ethz.ch, view the
+    # source of the search form's "Stellentyp" dropdown, and copy the option's
+    # value. [false] [management, administration]
+    enabled: false
+    job_types: [management, administration]

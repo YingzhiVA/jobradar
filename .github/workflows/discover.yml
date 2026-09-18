@@ -1,0 +1,135 @@
+name: Monthly discovery
+
+# Refreshes the company watch list: runs jobradar.discovery.discover (web search + seed
+# list, verified against the ATS probes), emails a summary of new companies, and
+# commits the suggestions + ledger back. Suggestions are NOT auto-merged into
+# companies.yaml — review data/discovered_companies.yaml and copy the good ones.
+#
+# Reuses the daily workflow's auth: the ANTHROPIC_API_KEY repo secret if set,
+# otherwise workload identity federation (repo variables
+# ANTHROPIC_FEDERATION_RULE_ID / ANTHROPIC_ORGANIZATION_ID /
+# ANTHROPIC_SERVICE_ACCOUNT_ID, no stored key); with neither it exits green
+# with a setup hint. Email still uses the SMTP_USER / SMTP_PASS secrets
+# (+ optional EMAIL_TO/SMTP_HOST/SMTP_PORT/EMAIL_FROM).
+
+on:
+  schedule:
+    # 06:23 UTC on the 1st of each month (off the top of the hour — GitHub
+    # delays/drops on-the-hour scheduled runs).
+    - cron: "23 6 1 * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+# Shares a group with the daily workflow: both commit+push to master, and on
+# the 1st of the month both are scheduled for 06:23 UTC, so without this they
+# can race and one push gets rejected (non-fast-forward).
+concurrency:
+  group: jobradar-git-write
+  cancel-in-progress: false
+
+permissions:
+  contents: write # to commit the suggestions + ledger back
+  id-token: write # to mint the GitHub OIDC token the Anthropic SDK federates
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    # See daily.yml for why these are variables rather than secrets, and why
+    # ANTHROPIC_WORKSPACE_ID is absent.
+    env:
+      ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+      ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+      ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+      ANTHROPIC_IDENTITY_TOKEN_FILE: /tmp/anthropic-jwt
+    steps:
+      # Pinned to master for the same reason as daily.yml: a manual dispatch
+      # runs on whatever branch the Actions tab offered, and this job's output
+      # is durable state that belongs on master.
+      - uses: actions/checkout@v6
+        with:
+          ref: master
+      # See daily.yml for why the key goes through $GITHUB_ENV rather than a
+      # plain env: mapping (an empty-but-present key would break federation).
+      - name: Select Anthropic credentials
+        id: auth
+        env:
+          API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+        run: |
+          if [ -n "$API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY=$API_KEY" >> "$GITHUB_ENV"
+            echo "mode=api_key" >> "$GITHUB_OUTPUT"
+            echo "Using the ANTHROPIC_API_KEY repo secret."
+          elif [ -n "$RULE_ID" ]; then
+            echo "mode=federation" >> "$GITHUB_OUTPUT"
+            echo "No ANTHROPIC_API_KEY secret; using workload identity federation."
+          else
+            echo "mode=unconfigured" >> "$GITHUB_OUTPUT"
+            echo "::notice::jobradar is not configured yet: add the ANTHROPIC_API_KEY repo secret (Settings -> Secrets and variables -> Actions), or set up federation. See docs/CLOUD.md. Nothing was run."
+          fi
+      - uses: actions/setup-python@v6
+        if: steps.auth.outputs.mode != 'unconfigured'
+        with:
+          python-version: "3.12"
+      - name: Install
+        if: steps.auth.outputs.mode != 'unconfigured'
+        run: pip install -e .
+      # Same mint-and-refresh loop as daily.yml, for the same reason: discovery
+      # is a web_search run, so it can outlive both GitHub's ~5-min JWT and the
+      # single-use `jti` on it. See daily.yml for the full rationale, including
+      # why an empty fetch keeps the previous token instead of publishing it.
+      - name: Mint and refresh the Anthropic identity token
+        if: steps.auth.outputs.mode == 'federation'
+        run: |
+          fetch_jwt() {
+            curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" \
+              | jq -r '.value // empty' > "$ANTHROPIC_IDENTITY_TOKEN_FILE.tmp"
+            if [ ! -s "$ANTHROPIC_IDENTITY_TOKEN_FILE.tmp" ]; then
+              rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE.tmp"
+              echo "::warning::OIDC token fetch returned empty; keeping previous token"
+              return 1
+            fi
+            mv "$ANTHROPIC_IDENTITY_TOKEN_FILE.tmp" "$ANTHROPIC_IDENTITY_TOKEN_FILE"
+          }
+          fetch_jwt || { echo "::error::Could not mint the initial OIDC token"; exit 1; }
+          ( while true; do sleep 240; fetch_jwt || true; done ) >/dev/null 2>&1 &
+      - name: Discover companies
+        if: steps.auth.outputs.mode != 'unconfigured'
+        run: python -m jobradar.discovery.discover
+      - name: Email the discovery summary
+        if: steps.auth.outputs.mode != 'unconfigured'
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: python -m jobradar.discovery.notify_discovery
+      - name: Commit suggestions + ledger back
+        if: steps.auth.outputs.mode != 'unconfigured'
+        run: |
+          git config user.name "jobradar-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/discovered_companies.yaml data/discovery_ledger.json
+          git add -f reports/company_health.md
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "jobradar: monthly discovery $(date -u +%Y-%m)"
+            # Push with an explicit refspec. master is hardcoded rather than
+            # github.ref_name so a manual dispatch can't strand the ledger on
+            # a side branch. Retry with a rebase in case another workflow (or
+            # a manual push) landed first.
+            pushed=false
+            for attempt in 1 2 3; do
+              if git push origin HEAD:master; then
+                pushed=true
+                break
+              fi
+              echo "Push rejected (attempt $attempt), rebasing onto latest master and retrying..."
+              git fetch origin master
+              git rebase origin/master
+            done
+            $pushed
+          fi

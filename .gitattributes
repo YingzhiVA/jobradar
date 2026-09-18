@@ -1,0 +1,11 @@
+# Your own files never lose to an upstream merge. With `merge=ours` git keeps
+# this copy's version of these paths whenever both sides changed them, so
+# pulling updates from the public jobradar repo can't overwrite your profile,
+# your config values, or the state the daily run commits back. One-time setup
+# (python -m jobradar.doctor reminds you): git config merge.ours.driver true
+profile/**        merge=ours
+config/*.yaml     merge=ours
+config/*.txt      merge=ours
+applications/**   merge=ours
+data/**           merge=ours
+reports/**        merge=ours

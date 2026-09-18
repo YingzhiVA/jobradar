@@ -1,0 +1,8 @@
+# One job-posting URL per line. Append "full" for full-effort applications.
+# Lines starting with # and blank lines are ignored. Processed URLs are
+# skipped automatically (see applications.json), so this file never needs
+# cleanup to stay correct.
+#
+# Examples:
+# https://jobs.example.com/senior-product-manager-12345
+# https://careers.example.org/ai-pm-67890 full
