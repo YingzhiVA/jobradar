@@ -4,7 +4,7 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
-## Unreleased
+## 1.1.1 — company catalogue grouped by industry (2026-09-18)
 
 - **The company catalogue is grouped by industry.** `config/companies.yaml`
   now sorts its 67 boards into twelve sections, from big tech and AI to
