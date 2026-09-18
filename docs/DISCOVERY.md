@@ -32,8 +32,8 @@ with a handful of common slug guesses:
    ones).
 2. **`config/seed_companies.txt`** — your pasted directory names.
 
-Workday, Avature, SuccessFactors, iCIMS, BrassRing and Prospective boards are
-not probed: their slugs aren't guessable. The header of
+Workday, Avature, SuccessFactors, iCIMS, BrassRing, Prospective and Google
+boards are not probed: their slugs aren't guessable. The header of
 `config/companies.yaml` explains how to read each one off a careers URL.
 
 ## Review the output

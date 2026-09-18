@@ -11,6 +11,7 @@ from jobradar.search.sources.company_pages import (
     _fetch_avature,
     _fetch_bamboohr,
     _fetch_brassring,
+    _fetch_google,
     _fetch_icims,
     _fetch_join,
     _fetch_lever,
@@ -592,6 +593,60 @@ def test_workday_reads_underscore_spelled_country_facet():
 
     assert client.applied == [{"Location_Country": ["che1"]}]
     assert [p.title for p in postings] == ["Data Analyst"]
+
+
+# NVIDIA's shape: no country facet of either spelling, countries on the first
+# level of the location hierarchy, and `locations` descriptors that lead with
+# the country ("Switzerland, Zurich") so the suffix check can't read them.
+def _wd_facets_hierarchy(*level1):
+    return [
+        {
+            "facetParameter": "locationMainGroup",
+            "descriptor": None,
+            "values": [
+                {
+                    "facetParameter": "locationHierarchy1",
+                    "descriptor": "Locations",
+                    "values": [
+                        {"descriptor": name, "id": f"h{i}", "count": 40}
+                        for i, name in enumerate(level1)
+                    ],
+                },
+                {
+                    "facetParameter": "locations",
+                    "descriptor": "Sites",
+                    "values": [
+                        {"descriptor": "Switzerland, Zurich", "id": "zrh1", "count": 18},
+                        {"descriptor": "Switzerland, Remote", "id": "rem1", "count": 28},
+                    ],
+                },
+            ],
+        }
+    ]
+
+
+def test_workday_scopes_by_hierarchy_level_naming_countries():
+    pages = {0: {"total": 1, "jobPostings": [{"externalPath": "/job/Switzerland-Zurich/Eng_JR1", "title": "Eng"}]}}
+    details = {"/job/Switzerland-Zurich/Eng_JR1": _wd_detail(
+        title="Performance Engineer", desc="Tune", location="Switzerland, Zurich",
+        url="https://nvidia.wd5.myworkdayjobs.com/S/job/Switzerland-Zurich/Eng_JR1")}
+    client = _WorkdayClient(_wd_facets_hierarchy("Germany", "Switzerland"), pages, details, board_total=2000)
+
+    postings = _fetch_workday("NVIDIA", "nvidia:wd5:S", client)
+
+    assert client.applied == [{"locationHierarchy1": ["h1"]}]
+    assert [p.title for p in postings] == ["Performance Engineer"]
+
+
+def test_workday_hierarchy_level_without_a_target_country_is_not_trusted():
+    # The level might hold regions on another tenant, so naming no target
+    # country is no evidence the board has no Swiss roles: a large board must
+    # fail loudly as unscopable, not be skipped as "no Swiss postings".
+    client = _WorkdayClient(_wd_facets_hierarchy("EMEA", "Americas"), {}, {}, board_total=2000)
+
+    with pytest.raises(ValueError, match="unscopable"):
+        _fetch_workday("Acme", "acme:wd5:S", client)
+    assert client.list_calls == 0
 
 
 # Roche's shape: multinational, but the flat `locations` list mixes cities,
@@ -1798,3 +1853,71 @@ def test_lever_reads_remote_from_workplace_type():
     # The remote one's location says nothing but the country — which is exactly
     # why the board's own flag has to be carried through.
     assert postings[0].location == "Switzerland"
+
+
+# --- Google job feed ---
+
+
+def _google_job(*, jobid, title, employer="Google", locations, remote="onsite"):
+    where = "".join(
+        f"<location><city>{city}</city><state /><country>{country}</country></location>"
+        for city, country in locations
+    )
+    return (
+        f"<job><jobid>{jobid}</jobid><title>{title}</title>"
+        f"<description>&lt;h3&gt;About&lt;/h3&gt;&lt;p&gt;Build {title}.&lt;/p&gt;</description>"
+        f"<url>https://careers.google.com/jobs/results/{jobid}-role/</url>"
+        f"<jobtype>FULL_TIME</jobtype><employer>{employer}</employer>"
+        f"<remote>{remote}</remote><locations>{where}</locations></job>"
+    )
+
+
+def _google_feed(*jobs):
+    return f'<?xml version="1.0" encoding="UTF-8"?><jobs>{"".join(jobs)}</jobs>'.encode()
+
+
+def test_google_keeps_swiss_roles_of_the_configured_employers():
+    feed = _google_feed(
+        _google_job(jobid="1", title="Product Manager", locations=[("Zürich", "Switzerland")]),
+        _google_job(jobid="2", title="Research Engineer", employer="DeepMind",
+                    locations=[("London", "UK"), ("Zürich", "Switzerland")]),
+        _google_job(jobid="3", title="Sales Lead", locations=[("Munich", "Germany")]),
+        _google_job(jobid="4", title="Creator Partner", employer="YouTube",
+                    locations=[("Zürich", "Switzerland")]),
+        _google_job(jobid="5", title="Solutions Engineer", locations=[("Zürich", "Switzerland")],
+                    remote="remote"),
+    )
+    client = _PersonioClient(feed)
+
+    postings = _fetch_google("Google", "Google|DeepMind", client)
+
+    assert client.url == "https://www.google.com/about/careers/applications/jobs/feed.xml"
+    # Germany-only and the unconfigured YouTube role are left out.
+    assert [p.title for p in postings] == ["Product Manager", "Research Engineer", "Solutions Engineer"]
+    pm, multi, remote = postings
+    assert pm.source == "google" and pm.company == "Google"
+    assert pm.url == "https://careers.google.com/jobs/results/1-role/"
+    assert "Build Product Manager." in pm.description and "<p>" not in pm.description
+    assert pm.location == "Zürich, Switzerland"
+    assert pm.remote is False and remote.remote is True
+    assert pm.raw["jobid"] == "1" and multi.raw["employer"] == "DeepMind"
+    # Every site of a multi-location role stays visible to the location filter.
+    assert multi.location == "London, UK; Zürich, Switzerland"
+
+
+def test_google_employer_match_ignores_case_and_spaces():
+    feed = _google_feed(_google_job(jobid="1", title="PM", employer="DeepMind",
+                                    locations=[("Zürich", "Switzerland")]))
+    assert len(_fetch_google("DeepMind", " deepmind ", _PersonioClient(feed))) == 1
+
+
+def test_google_bad_slug_raises():
+    with pytest.raises(ValueError):
+        _fetch_google("Google", " | ", _PersonioClient(_google_feed()))
+
+
+def test_google_unreadable_feed_skips_the_company_not_the_source():
+    # ValueError is what CompanyPagesSource catches per company; a ParseError
+    # would escape it and end every other board's fetch too.
+    with pytest.raises(ValueError, match="not readable XML"):
+        _fetch_google("Google", "Google", _PersonioClient(b"<html>Service unavailable"))
