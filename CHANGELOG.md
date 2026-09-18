@@ -4,6 +4,15 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## Unreleased
+
+- **The company catalogue is grouped by industry.** `config/companies.yaml`
+  now sorts its 67 boards into twelve sections, from big tech and AI to
+  pharma, medtech, finance and consulting, listed with their board counts at
+  the top of the file. No board was added or removed, and each keeps its
+  notes. Your own copy is left alone on pull; to see the new layout, run
+  `git show upstream/master:config/companies.yaml`.
+
 ## 1.1.0 — Google and NVIDIA boards (2026-09-18)
 
 - **Google, YouTube and DeepMind can be scanned.** A new `google` board type
