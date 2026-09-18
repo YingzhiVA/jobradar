@@ -41,13 +41,13 @@ switch on. Rough figures with the default models, from September 2026:
 | Activity | About |
 | --- | --- |
 | A daily run with no boards switched on (web search only) | $0.25–0.30 |
-| A daily run on the author's setup of about 65 boards | $0.50–0.80 |
+| A daily run on the author's setup of about 65 boards (measured) | $0.66 |
 | One drafted application (CV + cover letter) | $0.25–0.45 |
 
 **Your first run is the exception.** It treats every posting currently open
 on the boards you chose as new, and scores all of those that pass your
 constraints in one go. With every board in the catalogue switched on that is
-roughly $4–7, seven to thirteen times a normal day; with five or ten boards,
+roughly $4–7, six to eleven times a normal day; with five or ten boards,
 usually around a dollar. That is why
 no board ships switched on: start with five or ten, and add more a few at a
 time. [docs/COSTS.md](docs/COSTS.md) has the details and how to check your
