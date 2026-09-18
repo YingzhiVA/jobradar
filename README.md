@@ -46,7 +46,9 @@ switch on. Rough figures with the default models, from September 2026:
 
 **Your first run is the exception.** It treats every posting currently open
 on the boards you chose as new, and scores all of those that pass your
-constraints in one go, so it can cost many times a normal day. That is why
+constraints in one go. With every board in the catalogue switched on that is
+roughly $3.50–6.50, five to twelve times a normal day; with five or ten
+boards, usually around a dollar. That is why
 no board ships switched on: start with five or ten, and add more a few at a
 time. [docs/COSTS.md](docs/COSTS.md) has the details and how to check your
 own spend.
