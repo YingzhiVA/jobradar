@@ -61,7 +61,7 @@ international-board example above.
 | Pass every filter without a model call | 716 |
 
 Adding Jobgether's 80, the whole catalogue comes to roughly **$4–7** in model
-calls at the per-call rates above, against about $0.55 for a normal day —
+calls at the per-call rates above, against about $0.66 for a normal day —
 once, and then back to normal. The
 Swiss boards dominate: AXA alone put 167 postings through, EY 99, Deloitte
 86. With five or ten boards a first run is usually around a dollar, though it
@@ -75,19 +75,23 @@ when more than fifteen are switched on before your first run.
 
 ### A daily run
 
-These figures are from the author's setup of about 65 boards, on a weekday
-when one large board happened to be unreachable: about 110 new postings
-fetched, 58 reaching the scorer, 3 surfaced, 5 web searches. With that board
-reachable, a normal day scores closer to 80. With fewer boards switched on,
-both numbers shrink; with none, only the web search line below remains.
+Measured: the author's setup of about 65 boards averaged **$0.66 a day** over
+the week of 14 September 2026, as the Claude Console reports it. A typical
+weekday there fetches about a thousand new postings, most of them from one
+large international board and dropped for free by the location filter, with
+about 80 reaching the scorer, 3 surfaced and 5 web searches. The per-call
+rates on this page reproduce the Console's figure for such a day:
 
 | Stage | Model | About |
 | --- | --- | --- |
 | Filling in missing fields (workload, canton) | Haiku, ~40 short calls | $0.07 |
-| Scoring 58 postings | Haiku, profile cached | $0.20 |
+| Scoring about 80 postings | Haiku, profile cached | $0.28 |
 | Write-ups for 3 finalists | Sonnet | $0.09 |
 | Web search: 5 searches plus the pages read | Haiku | $0.22 |
-| **Total** | | **about $0.55** |
+| **Total** | | **about $0.66** |
+
+With fewer boards switched on the scoring line shrinks; with none, only web
+search remains.
 
 Each additional posting scored adds about a third of a cent. A first run
 over a large backlog scales with that; `--no-web-search` removes the largest
