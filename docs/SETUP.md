@@ -40,7 +40,11 @@ with the templates that ship in the repo.
    text goes straight to the model). The filename without extension is the
    CV's label in reports, so name it after the role, e.g. `product-manager.md`.
    Delete `example.md` once you have your own. One CV is fine; every posting
-   is then scored against it. See `profile/cvs/README.md`.
+   is then scored against it. Have it in Word? Put the `.docx` in the folder
+   as it is: `python -m jobradar.doctor`, and every run after it, writes a
+   `.md` of the same name beside it and keeps it up to date when you change
+   the Word file. Read it through once, since a two-column layout comes out
+   one column after the other. See `profile/cvs/README.md`.
 2. **`profile/identity.md`** — your career identity: who you are
    professionally, what you are moving toward and away from, the
    non-negotiables a filter can't express. Read on every scoring call; it is

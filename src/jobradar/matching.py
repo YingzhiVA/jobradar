@@ -28,6 +28,7 @@ import anthropic
 from pydantic import BaseModel, Field
 
 from . import usage
+from .cv import sync_word_cvs
 from .llm import MODEL_DEFAULTS, model_for
 from .models import Posting, ScoredPosting
 # The cap is defined in terms of the eligibility floor (see _CAP_FEW_UNMET), so
@@ -72,9 +73,16 @@ def load_profile(
     """Returns (cv_label -> content, identity statement text,
     story_label -> content). stories are optional and may be empty.
     """
+    outcomes = sync_word_cvs(profile_dir / "cvs")
+    for outcome in outcomes:
+        log = logger.warning if outcome.status in ("failed", "kept_edits") else logger.info
+        log("CV: %s", outcome.message)
     cvs = load_md_dir(profile_dir / "cvs")
     if not cvs:
-        raise ValueError(f"No CVs found in {profile_dir / 'cvs'} (besides README.md)")
+        failed = "; ".join(o.message for o in outcomes if o.status == "failed")
+        raise ValueError(
+            f"No CVs found in {profile_dir / 'cvs'} (besides README.md)" + (f": {failed}" if failed else "")
+        )
 
     identity_path = profile_dir / "identity.md"
     identity = identity_path.read_text(encoding="utf-8") if identity_path.exists() else ""

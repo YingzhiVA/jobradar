@@ -72,6 +72,68 @@ def test_missing_cv_fails_and_template_profile_warns(tmp_path, monkeypatch):
     assert "template" in checks["CVs"].message
 
 
+def _word_cv(path, text="Jane Example"):
+    import io
+    import zipfile
+
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{w}"><w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:body></w:document>',
+        )
+    path.write_bytes(buf.getvalue())
+
+
+def test_word_cv_is_converted_by_the_setup_check(tmp_path, monkeypatch):
+    # The doctor is the first thing a new user runs; a Word CV dropped into
+    # profile/cvs/ comes out of it as a Markdown CV, with nothing else to run.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    root = _setup(tmp_path, cv=None)
+    cvs = root / "profile" / "cvs"
+    (cvs / "example.md").write_text(f"<!-- {TEMPLATE_MARKER} -->\n# CV", encoding="utf-8")
+    _word_cv(cvs / "pm.docx")
+    (cvs / "~$pm.docx").write_bytes(b"")  # Word's lock file is not a CV
+
+    check = _by_name(run_checks(root, connect=lambda: None))["CVs"]
+    assert check.level == OK
+    assert "made pm.md from pm.docx" in check.message
+    assert "delete the template example.md" in check.message
+    assert (cvs / "pm.md").exists()
+
+    check = _by_name(run_checks(root, connect=lambda: None))["CVs"]
+    assert check.message == "pm.md (delete the template example.md)"  # second run: nothing new
+
+
+def test_word_cv_that_cannot_be_read_fails_with_its_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    root = _setup(tmp_path, cv=None)
+    (root / "profile" / "cvs" / "pm.docx").write_bytes(b"not a zip")
+    check = _by_name(run_checks(root, connect=lambda: None))["CVs"]
+    assert check.level == FAIL
+    assert "pm.docx could not be read" in check.message
+
+    (root / "profile" / "cvs" / "other.md").write_text("# Jane", encoding="utf-8")
+    check = _by_name(run_checks(root, connect=lambda: None))["CVs"]
+    assert check.level == WARN
+    assert check.message.startswith("other.md (pm.docx could not be read")
+
+
+def test_edited_cv_kept_over_a_changed_word_file_warns(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    root = _setup(tmp_path, cv=None)
+    cvs = root / "profile" / "cvs"
+    _word_cv(cvs / "pm.docx")
+    run_checks(root, connect=lambda: None)
+    (cvs / "pm.md").write_text((cvs / "pm.md").read_text(encoding="utf-8") + "My edit\n", encoding="utf-8")
+    _word_cv(cvs / "pm.docx", text="Jane Example, updated")
+    check = _by_name(run_checks(root, connect=lambda: None))["CVs"]
+    assert check.level == WARN
+    assert "has your own edits" in check.message
+    assert "My edit" in (cvs / "pm.md").read_text(encoding="utf-8")
+
+
 def test_real_cv_next_to_template_says_to_delete_it(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     root = _setup(tmp_path)
