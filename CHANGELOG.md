@@ -6,34 +6,103 @@ version numbers exist to give changes a name.
 
 ## 1.0.0 — first public release (2026-09-18)
 
-jobradar had run privately every weekday for three months before this. The
-1.0.0 work was about making it somebody else's tool as well:
+Two things are in this release: five weeks of development after 0.5.0, during
+which the tool kept running every weekday, and the work of making it somebody
+else's tool as well as its author's.
+
+### Search and matching
+
+- **The search is steered from a config file.** Score floors, the bar for a
+  headline match, how many matches a run may surface and how often to run at
+  all now live in `config/search.yaml` instead of being constants in
+  `ranking.py` and a cron line. Every key is optional and ships at its
+  default; a value that is present but unusable fails the run with a message
+  naming it, rather than reverting silently and searching wrong for days.
+  `python -m jobradar.config` prints what the program will actually read.
+- **A link that could not be confirmed is no longer reported as if it had
+  been.** A run surfaced two closed roles as live matches: the postings
+  returned 410 from a normal network, but the employer's site answered the CI
+  runner's address with a 403, so nothing detected the closure. Matches now
+  carry a liveness state, and a lead from web search is dropped only when two
+  independent weak signals agree — the link could not be confirmed *and* the
+  employer's own listing has no such role. Either signal alone only annotates,
+  because bot protection is routine and an ATS listing can be paginated short.
+- **Remote roles scoped to a country** are accepted through
+  `remote_countries`, for boards that give a remote posting a country-level
+  location and no town at all. Those can never resolve a canton, so a commute
+  radius could never pass them however Swiss they were.
+- **Scoring runs in parallel.** It is one independent call per posting and was
+  the largest term in a run's wall clock; the calls now fan out across a small
+  thread pool, bounded by the account's rate limit rather than the machine.
+  The first posting is scored alone so it warms the prompt cache instead of
+  every worker paying to write its own copy.
+
+### Company coverage
+
+Six more Swiss employers, reached by three applicant-tracking systems the
+connector did not previously speak, taking it to sixteen dialects across 67
+boards: AXA Switzerland (iCIMS behind a Jibe front-end), Zurich Insurance and
+Sonova (SuccessFactors), Takeda (a Workday board underneath a Radancy site),
+UBS (a BrassRing Talent Gateway, scoped by facet because each posting costs a
+0.4 MB page) and Sensirion (Prospective). Roche was widened from one Swiss
+site to all three. Most of these are large employers whose public careers page
+is a front-end over an open board, so the work was finding the board rather
+than writing a parser.
+
+### Applying
+
+- **Archiving.** Reports, seen-store entries and applications move out of the
+  active views on windows set in `config/retention.yaml`, while staying
+  committed. The sweep runs daily in CI rather than whenever it was next run
+  by hand, so the age-based rules fire on their due date.
+- **Short ids.** Every application has a number that prefixes its folder name
+  and appears in its notes, so a command takes `42` rather than a folder name
+  or a URL.
+- **The pipeline narrates itself.** Drafting one posting is a page fetch and
+  three to five model calls, the writing ones slow enough that a queue of five
+  runs for many minutes. Every step now names itself and the model calls
+  stream, so a terminal shows the text arriving and a log shows a heartbeat.
+- **Published write-ups feed cover letters and interview prep.** Technical
+  articles from your own site are ingested into `profile/evidence/` and used
+  where a "walk me through something you built" question wants depth. They are
+  deliberately kept out of daily scoring: several thousand words are worth
+  buying once per application, not once per posting per day.
+- **The applied-jobs folder is gone.** It seeded interest scoring and company
+  discovery when the tool was new; the identity statement and the company list
+  carry both signals now.
+
+### Reliability
+
+The identity token the cloud run mints is single-use and expires in about five
+minutes, while a run with web search can take fifteen. The refresh loop now
+keeps the previous token when a fetch comes back empty, instead of publishing
+the empty result over a still-valid one — a real run survived on its cached
+token and would have failed the next scoring stage.
+
+### Becoming a public tool
 
 - **Nothing is assumed about your situation.** The monthly Swiss RAV
-  proof-of-applications table is now `rav.enabled` in `config/search.yaml`,
-  off by default, and with it off the application archive follows the
-  retention windows alone. ETH Zurich's job board is likewise a switch with
-  configurable categories, rather than two categories hardcoded for one
-  person's field.
+  proof-of-applications table is `rav.enabled` in `config/search.yaml`, off by
+  default, and with it off the application archive follows the retention
+  windows alone. ETH Zurich's job board is likewise a switch with configurable
+  categories, rather than two categories hardcoded for one person's field.
 - **`python -m jobradar.doctor`** checks a setup before the first run and
-  names what is missing: credentials that don't work, a profile still holding
-  the shipped template, a config file that won't parse, no browser for PDF
+  names what is missing: credentials that do not work, a profile still holding
+  the shipped template, a config file that will not parse, no browser for PDF
   export.
 - **The cloud run takes an API key.** Add `ANTHROPIC_API_KEY` as a repository
   secret and the daily GitHub Actions run works; workload identity federation
-  remains for those who prefer to store no key at all. With neither
-  configured the workflow prints a setup hint and exits green instead of
-  failing.
-- **The daily email has an HTML version**, with clickable links, alongside
-  the plain text.
-- **Model overrides work.** `JOBRADAR_SCORING_MODEL` and
-  `JOBRADAR_WRITEUP_MODEL` were documented but never read; every stage's
-  model variable is now resolved when the stage runs, so a value in `.env` is
-  honoured.
+  remains for those who prefer to store no key at all. With neither configured
+  the workflow prints a setup hint and exits green instead of failing.
+- **The daily email has an HTML version**, with clickable links, alongside the
+  plain text.
+- **Model overrides work.** Two of them were documented but never read, and
+  the rest were read before `.env` was loaded. Every stage's model variable is
+  now resolved when the stage runs.
 - **Documentation rebuilt** around a ten-minute quick start, with the
-  reference material in `docs/` and honest cost figures in `docs/COSTS.md`.
-- **The company list ships as a starting point**: 67 Swiss employers across
-  sixteen applicant-tracking systems, with each board's quirks documented.
+  reference material in `docs/` and measured cost figures in `docs/COSTS.md`.
+- **The company list ships as a starting point**, with each board's quirks
+  documented and one person's notes about which employers they liked removed.
 
 ### Before 1.0.0
 
