@@ -94,13 +94,6 @@ companies:
   # - name: Databricks
   #   ats: greenhouse
   #   slug: databricks
-  # DeepMind = Google's AI lab (Google proper runs a custom careers portal with
-  # no Greenhouse/Lever/Ashby board).
-  # NOT WORKING: this greenhouse board returned 404 on 2026-09-18. Find the
-  # company's current board before switching it on.
-  # - name: DeepMind
-  #   ats: greenhouse
-  #   slug: deepmind
   # Swiss marketplace operator (Homegate, AutoScout24, ricardo, etc.).
   # SmartRecruiters identifier is case-insensitive.
   # - name: SMG Swiss Marketplace Group
@@ -134,11 +127,6 @@ companies:
   # - name: Auterion
   #   ats: greenhouse
   #   slug: auterion
-  # NOT WORKING: this ashby board returned 404 on 2026-09-18. Find the
-  # company's current board before switching it on.
-  # - name: Parashift
-  #   ats: ashby
-  #   slug: parashift
   # - name: BLP Digital
   #   ats: ashby
   #   slug: blp-digital

@@ -23,8 +23,8 @@ version numbers exist to give changes a name.
   jobradar.doctor` fails on an entry uncommented only in part, on an unknown
   applicant-tracking system, and on lines that YAML would silently hand to the
   entry above. It warns before a first run over many boards.
-- **Two dead boards are marked.** The boards recorded for DeepMind and
-  Parashift return 404; their entries now say so.
+- **Two dead boards are removed.** The boards recorded for DeepMind and
+  Parashift return 404, so the catalogue no longer offers them.
 
 ## 1.0.0 — first public release (2026-09-18)
 

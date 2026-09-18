@@ -8,7 +8,7 @@ are filtered out before any of that. What reaches you is at most one "best"
 match a day plus a few "okay" ones, and a day with nothing is a normal day.
 
 It finds postings itself: from the company career pages you choose (a
-catalogue of 67 Swiss boards across sixteen applicant-tracking systems ships
+catalogue of 65 Swiss boards across sixteen applicant-tracking systems ships
 with it, all switched off), and from Claude's web search. It never scrapes or automates LinkedIn. When you decide
 to apply, it drafts a tailored CV and cover letter in the posting's language,
 keeps a submission log, and can prepare an interview sheet from your own
@@ -47,8 +47,8 @@ switch on. Rough figures with the default models, from September 2026:
 **Your first run is the exception.** It treats every posting currently open
 on the boards you chose as new, and scores all of those that pass your
 constraints in one go. With every board in the catalogue switched on that is
-roughly $3.50–6.50, five to twelve times a normal day; with five or ten
-boards, usually around a dollar. That is why
+roughly $4–7, seven to thirteen times a normal day; with five or ten boards,
+usually around a dollar. That is why
 no board ships switched on: start with five or ten, and add more a few at a
 time. [docs/COSTS.md](docs/COSTS.md) has the details and how to check your
 own spend.

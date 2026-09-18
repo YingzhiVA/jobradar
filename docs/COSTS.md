@@ -49,18 +49,20 @@ out-of-area postings in code, for free:
   in Switzerland, so a board with a few hundred open roles puts most of them
   through the model on its first run.
 
-Measured on 2026-09-18: all 66 working boards in the catalogue fetched,
-then run through the free filters with the template's three cantons, stopping
-before any model call:
+Measured on 2026-09-18: every board in the catalogue except Jobgether, 64 in
+all, fetched and run through the free filters with the template's three
+cantons, stopping before any model call. Jobgether's own first run is the
+international-board example above.
 
-| First run, every board switched on | Postings |
+| First run, those 64 boards switched on | Postings |
 | --- | --- |
 | Open on those boards, all of them new to you | 3,726 |
 | Reach the paid stages | 1,245 |
 | Pass every filter without a model call | 716 |
 
-At the per-call rates above that is roughly **$3.50–6.50** in model calls,
-against about $0.55 for a normal day — once, and then back to normal. The
+Adding Jobgether's 80, the whole catalogue comes to roughly **$4–7** in model
+calls at the per-call rates above, against about $0.55 for a normal day —
+once, and then back to normal. The
 Swiss boards dominate: AXA alone put 167 postings through, EY 99, Deloitte
 86. With five or ten boards a first run is usually around a dollar, though it
 depends on which: a large Swiss-only board costs more on its own than most.
