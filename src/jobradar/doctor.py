@@ -153,6 +153,18 @@ def validate_companies(entries: list) -> list[str]:
     return problems
 
 
+def _has_run_before(root: Path) -> bool:
+    """Whether a search has already run here. The first-run warning is only
+    true of a first run: once the seen store holds postings, the next run
+    sees only what is new since the last one."""
+    import json
+
+    try:
+        return bool(json.loads((root / "data" / "seen_postings.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return False
+
+
 def check_companies(root: Path) -> Check:
     path = root / "config" / "companies.yaml"
     try:
@@ -170,7 +182,7 @@ def check_companies(root: Path) -> Check:
     problems = validate_companies(entries)
     if problems:
         return Check("companies.yaml", FAIL, "; ".join(problems))
-    if len(entries) > MANY_BOARDS:
+    if len(entries) > MANY_BOARDS and not _has_run_before(root):
         return Check(
             "companies.yaml", WARN,
             f"{len(entries)} boards selected — the first run scans every open posting "

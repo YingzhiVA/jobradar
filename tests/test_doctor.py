@@ -188,3 +188,16 @@ def test_the_shipped_company_list_is_well_formed():
     text = (_ROOT / "config" / "companies.yaml").read_text(encoding="utf-8")
     data = yaml.load(text, Loader=doctor._NoDuplicateKeysLoader) or {}
     assert doctor.validate_companies(data.get("companies") or []) == []
+
+
+def test_many_boards_is_fine_once_a_run_has_happened(tmp_path):
+    # An established instance with many boards is not facing a first run.
+    root = _setup(tmp_path)
+    (root / "data").mkdir()
+    (root / "data" / "seen_postings.json").write_text('{"abc": {"url": "u"}}', encoding="utf-8")
+    many = "".join(
+        f"  - name: Co {i}\n    ats: greenhouse\n    slug: co{i}\n" for i in range(doctor.MANY_BOARDS + 1)
+    )
+    check = _companies(root, "companies:\n" + many)
+    assert check.level == OK
+    assert check.message == f"{doctor.MANY_BOARDS + 1} boards"
