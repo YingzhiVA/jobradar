@@ -8,7 +8,7 @@ are filtered out before any of that. What reaches you is at most one "best"
 match a day plus a few "okay" ones, and a day with nothing is a normal day.
 
 It finds postings itself: from the company career pages you choose (a
-catalogue of 67 Swiss boards across sixteen applicant-tracking systems ships
+catalogue of 69 Swiss boards across seventeen applicant-tracking systems ships
 with it, grouped by industry and all switched off), and from Claude's web search. It never scrapes or automates LinkedIn. When you decide
 to apply, it drafts a tailored CV and cover letter in the posting's language,
 keeps a submission log, and can prepare an interview sheet from your own

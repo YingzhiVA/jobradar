@@ -28,8 +28,8 @@
 #   Banking, insurance & finance data (6)
 #   Pharma & biotech (5)
 #   Medtech & digital health (7)
-#   Robotics, drones & aerospace (6)
-#   Industry, hardware & quantum (5)
+#   Robotics, drones & aerospace (7)
+#   Industry, hardware & quantum (6)
 #   Property & climate (6)
 #   Consumer, marketplaces & travel (3)
 #   Job intermediaries (1) — not employers; read the note before switching on
@@ -38,7 +38,7 @@
 #   name: how the company appears in reports
 #   ats:  greenhouse | lever | ashby | smartrecruiters | personio | recruitee |
 #         workable | teamtailor | workday | join | bamboohr | avature |
-#         successfactors | icims | brassring | prospective | google
+#         successfactors | icims | brassring | prospective | google | onlyfy
 #   slug: the board token used in that ATS's public job-board URL, e.g.
 #     greenhouse: https://boards-api.greenhouse.io/v1/boards/<slug>/jobs
 #     lever:      https://api.lever.co/v0/postings/<slug>
@@ -100,6 +100,13 @@
 #                   ~20 MB download, descriptions included, kept to Swiss
 #                   roles in code). The slug names the feed's employers to
 #                   keep: "Google|YouTube|DeepMind" for all three.
+#   onlyfy:         slug is the career page's subdomain: "hexagon-robotics"
+#                   for hexagon-robotics.onlyfy.jobs (onlyfy was called
+#                   prescreen; a careers page embedding its job widget loads
+#                   <slug>.onlyfy.jobs/widget/iframe.js). The connector bakes in
+#                   the country=ch filter and pauses a second between requests,
+#                   as the site's robots.txt asks, so a board of 25 postings
+#                   takes about 30 seconds.
 #
 # join is the one to be careful with: join.com serves a company PROFILE page
 # for firms that were never its customers (Swisscom has one, with no ads,
@@ -370,6 +377,10 @@ companies:
   #   ats: workable
   #   slug: destinusgroup
     # API reports company_name: 'Destinus'
+  # Hexagon's robotics division, Zürich: the AEON industrial humanoid.
+  # - name: Hexagon Robotics
+  #   ats: onlyfy
+  #   slug: hexagon-robotics
 
   # ── Industry, hardware & quantum ───────────────────────────────────────────
   # All of Siemens Schweiz (every division incl. Smart Infrastructure — the
@@ -380,6 +391,12 @@ companies:
   # - name: Siemens
   #   ats: avature
   #   slug: "jobs.siemens.com:en_US/externaljobs:Switzerland||"
+  # Leica Geosystems, Hexagon's Geosystems division (surveying and reality
+  # capture), Heerbrugg SG. A global board (37 postings in 7 countries) cut to
+  # its Swiss ones by the connector's country filter; most ads are in German.
+  # - name: Leica Geosystems
+  #   ats: onlyfy
+  #   slug: leica-geosystems-ag
   # Sensirion (Stäfa ZH; environmental and flow sensors). jobs.sensirion.com
   # is Prospective's hosted "directlink" site: its list pages are behind an
   # S3 bucket that refuses direct fetches, but the same list is served by

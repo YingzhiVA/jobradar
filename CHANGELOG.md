@@ -4,6 +4,16 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.3.0 — Hexagon boards (2026-09-18)
+
+- **Hexagon Robotics and Leica Geosystems can be scanned.** A new `onlyfy`
+  board type reads career pages on onlyfy (formerly prescreen), keeping
+  the Swiss postings. Hexagon Robotics (Zürich, the AEON humanoid) had 25
+  open when this was written, Leica Geosystems (Heerbrugg SG) 25 of its
+  37. The board asks for a second between requests, so each takes about
+  half a minute a day. Both ship commented out: copy the two entries from
+  `git show upstream/master:config/companies.yaml`.
+
 ## 1.2.0 — CVs from Word (2026-09-18)
 
 - **CVs can come from Word.** Put your `.docx` in `profile/cvs/` as it is.
