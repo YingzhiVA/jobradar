@@ -8,8 +8,8 @@ are filtered out before any of that. What reaches you is at most one "best"
 match a day plus a few "okay" ones, and a day with nothing is a normal day.
 
 It finds postings itself: from the company career pages you choose (a
-catalogue of 65 Swiss boards across sixteen applicant-tracking systems ships
-with it, all switched off), and from Claude's web search. It never scrapes or automates LinkedIn. When you decide
+catalogue of 67 Swiss boards across sixteen applicant-tracking systems ships
+with it, grouped by industry and all switched off), and from Claude's web search. It never scrapes or automates LinkedIn. When you decide
 to apply, it drafts a tailored CV and cover letter in the posting's language,
 keeps a submission log, and can prepare an interview sheet from your own
 stories.
@@ -80,8 +80,9 @@ what you chose.
 4. **Tell it what is non-negotiable** in `config/constraints.yaml`: cantons,
    workload range, office days. The shipped example is three cantons around
    Zürich.
-5. **Pick the company boards to scan.** None are switched on. In
-   `config/companies.yaml`, remove the `# ` from all three lines of each board
+5. **Pick the company boards to scan.** None are switched on.
+   `config/companies.yaml` groups them by industry, with the list of sections
+   at the top of the file. Remove the `# ` from all three lines of each board
    you want. **Start with five or ten**: your first run scores every open
    posting on the boards you chose, so it costs far more than a normal day
    (see [What it costs](#what-it-costs)). You can add more later, a few at a
