@@ -18,6 +18,13 @@ title says.
 Degrees, the field, and anything from it you still use. One paragraph is
 plenty.
 
+## My work eligibility
+
+Whether you can already work in Switzerland, e.g. "I am authorised to work in
+Switzerland and do not need visa sponsorship", or that you would need
+sponsorship. The scorer checks a posting's right-to-work requirements against
+this line; leave it out and it cannot tell that you meet them.
+
 ## What I'm moving toward
 
 The kind of work, team and company you want next. Concrete beats aspirational:
