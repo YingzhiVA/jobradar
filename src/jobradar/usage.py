@@ -1,4 +1,4 @@
-"""Aggregate and log prompt-cache usage across a run's LLM calls.
+"""Aggregate and log token usage, prompt cache included, across a run's LLM calls.
 
 Lets a stage confirm the cached profile block is actually being reused
 (cache_read > 0 after the first call) rather than silently re-sent at full price
@@ -33,17 +33,26 @@ def accumulate(acc: dict, response, lock: threading.Lock | None = None) -> None:
             getattr(usage, "cache_read_input_tokens", 0) or 0
         )
         acc["input"] = acc.get("input", 0) + (getattr(usage, "input_tokens", 0) or 0)
+        acc["output"] = acc.get("output", 0) + (getattr(usage, "output_tokens", 0) or 0)
 
 
 def log_summary(logger: logging.Logger, stage: str, acc: dict) -> None:
-    """Log a one-line cache summary for a stage (no-op if no calls were made)."""
+    """Log a one-line token summary for a stage (no-op if no calls were made).
+
+    Output is included because it is no longer a rounding error: since scoring
+    returns a requirement checklist rather than one number, output is about half
+    of the scoring bill (~840 tokens a call at five times the input price), and
+    a summary of input alone understated a run's cost by that half.
+    """
     if not acc.get("calls"):
         return
     logger.info(
-        "%s cache: %d calls | %d tokens cache-created, %d cache-read, %d uncached input",
+        "%s cache: %d calls | %d tokens cache-created, %d cache-read, %d uncached input"
+        " | %d output",
         stage,
         acc["calls"],
         acc.get("cache_creation", 0),
         acc.get("cache_read", 0),
         acc.get("input", 0),
+        acc.get("output", 0),
     )

@@ -1,4 +1,4 @@
-from jobradar.search.filters import company_is_named, could_pass_location, filter_postings
+from jobradar.search.filters import company_is_named, could_pass_location, filter_postings, names_a_place
 from jobradar.models import Constraints, Posting
 
 CONSTRAINTS = Constraints(
@@ -291,3 +291,57 @@ def test_remote_country_is_off_when_unconfigured():
     posting = make_posting(location_text="Switzerland", canton=None, remote=True)
     kept, _ = filter_postings([posting], constraints)
     assert kept == []
+
+
+# --- a remote posting that names a place still clears the canton list -----
+#
+# The gap that let two LastMinute.com roles in Chiasso TI through on 2026-09-22:
+# flagged remote ("work partially or fully remote according to local laws"),
+# location line containing "Switzerland", so remote_countries passed them and
+# the canton was never consulted. constraints.yaml promises a remote-country
+# posting does NOT weaken the canton restriction for an office-based role.
+
+
+def test_a_remote_posting_in_an_excluded_canton_is_filtered_out():
+    posting = make_posting(location_text="Chiasso, TI, Switzerland", canton="Ticino", remote=True)
+    kept, results = filter_postings([posting], _REMOTE_CH_CONSTRAINTS)
+    assert kept == []
+    assert "location" in results[0].failed_checks
+
+
+def test_a_remote_posting_in_an_allowed_canton_still_passes():
+    posting = make_posting(location_text="Zürich, Switzerland", canton="Zurich", remote=True)
+    kept, _ = filter_postings([posting], _REMOTE_CH_CONSTRAINTS)
+    assert kept == [posting]
+
+
+def test_an_unresolvable_place_keeps_the_old_remote_path():
+    """If a place is named but no canton could be resolved, the remote-country
+    branch still applies — an odd phrasing must not cost a real remote role.
+    """
+    posting = make_posting(location_text="Somewhere odd, Switzerland", canton=None, remote=True)
+    kept, _ = filter_postings([posting], _REMOTE_CH_CONSTRAINTS)
+    assert kept == [posting]
+
+
+def test_country_level_lines_name_no_place():
+    for line in [
+        "Switzerland",
+        "Schweiz",
+        "Switzerland, Remote",
+        "Remote - Switzerland",
+        "Switzerland (Fully Remote)",
+        "Switzerland, Remote; UK, Remote",
+        "France, Remote; Spain, Remote; Poland, Remote; Switzerland, Remote; Italy, Remote",
+    ]:
+        assert not names_a_place(line, _REMOTE_CH_CONSTRAINTS), line
+
+
+def test_lines_with_a_town_name_a_place():
+    for line in [
+        "Chiasso, TI, Switzerland",
+        "Zürich, Switzerland",
+        "Lausanne, Switzerland",
+        "WINTERTHUR, Switzerland",
+    ]:
+        assert names_a_place(line, _REMOTE_CH_CONSTRAINTS), line

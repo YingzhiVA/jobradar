@@ -49,6 +49,23 @@ Scoring notes from the initial pass: {brief_reason}
 """
 
 
+# One retry, for the same two reasons scoring has one. A transient API error
+# should not cost a finalist its write-up. And a response that runs past the
+# ceiling is usually an outlier, not the norm: the three write-ups on
+# 2026-09-23 ran about 650 tokens each, while the Julius Baer one on 2026-09-22
+# ran past 2048 and was cut mid-sentence. Raising the ceiling was already tried
+# once (it was 1024) and only moved the cut; a second draw usually lands.
+_WRITEUP_ATTEMPTS = 2
+
+# Appended when every attempt ran out of room. The report is the only place the
+# reader looks — the run log already warned about truncation and it went
+# unnoticed until a sentence visibly failed to end — so it has to be said there.
+_TRUNCATION_NOTE = (
+    "\n\n*[Cut off: this write-up ran past its length limit on every attempt, "
+    "so the text above ends early and any later section is missing.]*"
+)
+
+
 def write_rationale(
     ranked: RankedPosting,
     profile_block: str,
@@ -58,46 +75,64 @@ def write_rationale(
 ) -> FinalPosting:
     model = model or model_for("JOBRADAR_WRITEUP_MODEL")
     posting = ranked.scored.posting
-    writeup = ranked.scored.brief_reason  # fallback if the call below fails
-    try:
-        response = client.messages.parse(
-            model=model,
-            # The rationale is a 3-section write-up (fit / highlights / concerns)
-            # plus JSON-structure overhead; 1024 truncated the longer ones
-            # mid-sentence, so give it real headroom.
-            max_tokens=2048,
-            system=[
-                {
-                    "type": "text",
-                    "text": profile_block,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=[
-                {
-                    "role": "user",
-                    "content": _WRITEUP_PROMPT.format(
-                        tier=ranked.tier,
-                        best_cv=ranked.scored.best_cv,
-                        title=posting.title,
-                        company=posting.company,
-                        location=posting.location_text or "(not given)",
-                        description=posting.description[:8000],
-                        brief_reason=ranked.scored.brief_reason,
-                    ),
-                }
-            ],
-            output_format=_WriteupOutput,
-        )
+    writeup = ranked.scored.brief_reason  # fallback if every call fails
+    truncated = False
+    for attempt in range(1, _WRITEUP_ATTEMPTS + 1):
+        try:
+            response = client.messages.parse(
+                model=model,
+                # The rationale is a 3-section write-up (fit / highlights / concerns)
+                # plus JSON-structure overhead. 1024 truncated the longer ones
+                # mid-sentence; 2048 still does occasionally, which the retry and
+                # the visible note below handle.
+                max_tokens=2048,
+                system=[
+                    {
+                        "type": "text",
+                        "text": profile_block,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _WRITEUP_PROMPT.format(
+                            tier=ranked.tier,
+                            best_cv=ranked.scored.best_cv,
+                            title=posting.title,
+                            company=posting.company,
+                            location=posting.location_text or "(not given)",
+                            description=posting.description[:8000],
+                            brief_reason=ranked.scored.brief_reason,
+                        ),
+                    }
+                ],
+                output_format=_WriteupOutput,
+            )
+        except Exception as exc:  # noqa: BLE001 - fall back to the brief reason rather than failing the run
+            logger.warning(
+                "Write-up attempt %d/%d failed for %s: %s",
+                attempt, _WRITEUP_ATTEMPTS, posting.url, exc,
+            )
+            continue
         if usage_acc is not None:
             usage.accumulate(usage_acc, response)
-        if response.stop_reason == "max_tokens":
-            # Surface truncation instead of silently shipping a cut-off rationale.
-            logger.warning("Write-up for %s hit max_tokens and may be truncated", posting.url)
-        if response.parsed_output is not None:
-            writeup = response.parsed_output.writeup
-    except Exception as exc:  # noqa: BLE001 - fall back to the brief reason rather than failing the run
-        logger.warning("Write-up failed for %s: %s", posting.url, exc)
+        if response.parsed_output is None:
+            logger.warning(
+                "Write-up attempt %d/%d returned nothing usable for %s",
+                attempt, _WRITEUP_ATTEMPTS, posting.url,
+            )
+            continue
+        writeup = response.parsed_output.writeup
+        truncated = response.stop_reason == "max_tokens"
+        if not truncated:
+            break
+        logger.warning(
+            "Write-up attempt %d/%d for %s hit max_tokens",
+            attempt, _WRITEUP_ATTEMPTS, posting.url,
+        )
+    if truncated:
+        writeup = writeup.rstrip() + _TRUNCATION_NOTE
 
     return FinalPosting(scored=ranked.scored, tier=ranked.tier, writeup=writeup)
 

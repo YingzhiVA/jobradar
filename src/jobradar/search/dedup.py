@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..models import Posting
+from .ranking import NEAR_FLOOR_ATTEMPTS
 
 logger = logging.getLogger(__name__)
 
@@ -33,21 +34,63 @@ class SeenStore:
                 logger.warning("Could not read seen-store %s (%s); starting fresh", path, exc)
 
     def filter_unseen(self, postings: list[Posting]) -> list[Posting]:
-        return [p for p in postings if p.id not in self._seen]
+        """Postings this run should consider: never seen, or seen but still
+        holding a retry budget (see mark_seen's `retryable_ids`).
+        """
+        return [
+            p for p in postings
+            if p.id not in self._seen or self._seen[p.id].get("retries_left", 0) > 0
+        ]
 
-    def mark_seen(self, postings: list[Posting], outcome_by_id: dict[str, str] | None = None) -> None:
+    def mark_seen(
+        self,
+        postings: list[Posting],
+        outcome_by_id: dict[str, str] | None = None,
+        retryable_ids: set[str] | None = None,
+    ) -> None:
+        """Record postings as considered.
+
+        `retryable_ids` are the ones that scored just under the skill floor
+        (ranking.near_floor_ids). They are recorded like any other, but carry a
+        budget of further attempts: filter_unseen keeps returning them until it
+        runs out, so a posting is only written off after the scorer has given a
+        below-floor answer several times rather than once.
+
+        Whether a posting gets a budget is decided the first time it is
+        recorded; after that every run that marks it again simply spends one,
+        wherever it scored. A later run scoring it FURTHER below the floor
+        settles nothing in the direction that matters — the question is whether
+        it ever clears, and a posting that does clear is eligible, so it is not
+        passed here at all and keeps what it has left.
+        """
         outcome_by_id = outcome_by_id or {}
+        retryable_ids = retryable_ids or set()
         now = datetime.now(timezone.utc).isoformat()
         for p in postings:
-            if p.id in self._seen:
-                continue  # preserve the original first-seen record
-            self._seen[p.id] = {
-                "url": p.url,
-                "title": p.title,
-                "company": p.company,
-                "first_seen_at": now,
-                "outcome": outcome_by_id.get(p.id, "considered"),
-            }
+            existing = self._seen.get(p.id)
+            if existing is None:
+                record = {
+                    "url": p.url,
+                    "title": p.title,
+                    "company": p.company,
+                    "first_seen_at": now,
+                    "outcome": outcome_by_id.get(p.id, "considered"),
+                }
+                if p.id in retryable_ids:
+                    record["retries_left"] = NEAR_FLOOR_ATTEMPTS - 1
+                self._seen[p.id] = record
+                continue
+            # A record already exists. Its first-seen fields are preserved, as
+            # they always were; the retry budget is the one thing a later run
+            # may change.
+            if not existing.get("retries_left"):
+                continue
+            existing["retries_left"] -= 1
+            if not existing["retries_left"]:
+                logger.info(
+                    "Near-floor posting settled after %d attempts: %s",
+                    NEAR_FLOOR_ATTEMPTS, p.url,
+                )
         self._save()
 
     def _save(self) -> None:

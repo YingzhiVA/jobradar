@@ -26,3 +26,7 @@ reports/*.json
 data/discovered_companies.yaml.bak
 PLAN.md
 .claude/settings.local.json
+
+# Local analysis scratch: scoring evaluation, one-off scripts, replicate data.
+# Not part of the tool; never shipped.
+dev/

@@ -88,8 +88,13 @@ Each run writes `reports/YYYY-MM-DD.md` (the full report) and
 `data/seen_postings.json`. Postings that were fully processed but didn't make
 the daily selection are left unmarked if they cleared both scoring floors —
 they'll resurface on a future run rather than being permanently dismissed.
-Everything else (ineligible postings, filter failures) is marked seen
-immediately so model costs aren't re-paid for the same dead-end result.
+So is a posting the scorer never returned a verdict on (a timeout, an API
+error): that is not a low score, so it is simply scored again. A posting that
+scores just under the skill floor — within 10 points — is scored again on up
+to two later runs before being written off, since one draw is not a reliable
+enough verdict to discard it on. Everything else (clearly ineligible
+postings, filter failures) is marked seen immediately so model costs aren't
+re-paid for the same dead-end result.
 Delete that JSON file to reset history (e.g. after changing your CVs enough
 that old scores would look different now).
 
@@ -119,9 +124,15 @@ record shape and `jq` examples.
 5. **Hard filters** (`search/filters.py`) — pure code, no model: drop
    anything failing `config/constraints.yaml`.
 6. **Score** (`matching.py`) — one Haiku call per surviving posting, with your
-   CV(s) and identity statement sent as a cached system-prompt prefix,
-   returning a skill score, an interest score, which CV fits best, and a
-   one-line reason.
+   CV(s) and identity statement sent as a cached system-prompt prefix. The
+   model returns a checklist — each requirement the posting states, quoted
+   word for word, with its category, whether it is required or preferred, and
+   whether you meet it — plus an interest score, which CV fits best, and a
+   one-line reason. The skill score is computed from the checklist in code, so
+   it can be traced back to the lines that set it; `reports/runs.jsonl`
+   records the checklist for every scored posting. An unmet requirement for a
+   work permit, a licence, a working language, or line management caps the
+   score at the floor rather than just lowering it.
 7. **Rank & select** (`search/ranking.py`) — the best match (if any clears the
    high bar) plus a few "okay" ones (lower bar); zero is a valid result. All
    four dials come from `config/search.yaml`.

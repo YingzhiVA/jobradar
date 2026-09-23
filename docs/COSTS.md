@@ -12,10 +12,10 @@ All prices in USD.
    spend on its own line.
 2. Set a **monthly spend limit** on the key or the workspace. It is a hard
    cap: a runaway day cannot cost more than you chose.
-3. Every run logs a per-stage token summary (`scoring cache: 58 calls |
-   … cache-read …`) so you can see the prompt cache doing its work; if
-   `cache-read` stays at 0 across a run, the profile block is being re-sent
-   at full price and something is off.
+3. Every run logs a per-stage token summary (`scoring cache: 61 calls |
+   … cache-read … | 51400 output`) so you can see the prompt cache doing its
+   work and where the tokens go; if `cache-read` stays at 0 across a run, the
+   profile block is being re-sent at full price and something is off.
 
 ## Where the money goes
 
@@ -60,12 +60,12 @@ international-board example above.
 | Reach the paid stages | 1,245 |
 | Pass every filter without a model call | 716 |
 
-Adding Jobgether's 80, the whole catalogue comes to roughly **$4–7** in model
-calls at the per-call rates above, against about $0.66 for a normal day —
+Adding Jobgether's 80, the whole catalogue comes to roughly **$8–15** in model
+calls at the per-call rates above, against about $1.03 for a normal day —
 once, and then back to normal. The
 Swiss boards dominate: AXA alone put 167 postings through, EY 99, Deloitte
-86. With five or ten boards a first run is usually around a dollar, though it
-depends on which: a large Swiss-only board costs more on its own than most.
+86. With five or ten boards a first run is usually one to two dollars, though
+it depends on which: a large Swiss-only board costs more on its own than most.
 A wider location setting than the template's three cantons raises every one
 of these numbers.
 
@@ -75,25 +75,37 @@ when more than fifteen are switched on before your first run.
 
 ### A daily run
 
-Measured: the author's setup of about 65 boards averaged **$0.66 a day** over
-the week of 14 September 2026, as the Claude Console reports it. A typical
+About **$1.03 a day** for the author's setup of about 65 boards. A typical
 weekday there fetches about a thousand new postings, most of them from one
 large international board and dropped for free by the location filter, with
-about 80 reaching the scorer, 3 surfaced and 5 web searches. The per-call
-rates on this page reproduce the Console's figure for such a day:
+about 80 reaching the scorer, 3 surfaced and 5 web searches:
 
 | Stage | Model | About |
 | --- | --- | --- |
 | Filling in missing fields (workload, canton) | Haiku, ~40 short calls | $0.07 |
-| Scoring about 80 postings | Haiku, profile cached | $0.28 |
+| Scoring about 80 postings | Haiku, profile cached | $0.65 |
 | Write-ups for 3 finalists | Sonnet | $0.09 |
 | Web search: 5 searches plus the pages read | Haiku | $0.22 |
-| **Total** | | **about $0.66** |
+| **Total** | | **about $1.03** |
+
+Scoring is the largest line because it returns a checklist, not a number: one
+entry per requirement the posting states, each with a verdict, which the skill
+score is then computed from. That is about 840 output tokens a posting, and
+output is priced at five times input, so it is roughly half the scoring cost.
+The figures come from the token counts of a real 61-posting run on 23
+September 2026 at the prices below. The earlier single-number scorer cost
+about $0.28 for the same 80 postings, and the whole day about $0.66 as the
+Console reported it; the difference is almost entirely this line.
+
+About one scored posting in five lands just under the skill floor and is
+scored again on up to two later runs before being written off, since a single
+draw is not a reliable enough verdict to discard a posting on. A day's run
+includes those re-scorings, so the table already accounts for them.
 
 With fewer boards switched on the scoring line shrinks; with none, only web
 search remains.
 
-Each additional posting scored adds about a third of a cent. A first run
+Each additional posting scored adds a little under a cent. A first run
 over a large backlog scales with that; `--no-web-search` removes the largest
 single line.
 
@@ -116,7 +128,7 @@ One Haiku call with three searches, then plain HTTP probes: about $0.15.
 
 ### A typical month
 
-22 weekday runs, 15 applications, one discovery: **$17–25**. Note that a
+22 weekday runs, 15 applications, one discovery: **$25–33**. Note that a
 fresh Anthropic account needs a payment method before it will serve
 requests beyond the trial credit.
 
@@ -131,6 +143,7 @@ requests beyond the trial credit.
 | Score fewer postings | prune `config/companies.yaml`; tighten `config/constraints.yaml` |
 | Change a stage's model | `JOBRADAR_SCORING_MODEL`, `JOBRADAR_WRITEUP_MODEL`, `JOBRADAR_APPLY_WRITER_MODEL` … in `.env` |
 
-Prices change; the figures above were measured on 2026-09-17 with
+Prices change; the figures above were taken on 2026-09-17 (applications,
+discovery, web search, write-ups) and 2026-09-23 (scoring), with
 `claude-haiku-4-5` and `claude-sonnet-4-6`. The Console is the source of
 truth for what you actually spent.
