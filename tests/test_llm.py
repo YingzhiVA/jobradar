@@ -56,4 +56,9 @@ def test_scoring_reads_the_override_at_call_time(monkeypatch):
     matching.score_posting(posting, "profile", client)
     monkeypatch.delenv("JOBRADAR_SCORING_MODEL")
     matching.score_posting(posting, "profile", client)
-    assert [c["model"] for c in client.messages.calls] == ["claude-sonnet-4-6", "claude-haiku-4-5"]
+    # The fake raises, so each score_posting spends all its retry attempts on
+    # the same model. Collapse the repeats: what this pins is which model each
+    # CALL resolved to, not how many attempts a call is allowed.
+    models = [c["model"] for c in client.messages.calls]
+    distinct = [m for i, m in enumerate(models) if i == 0 or m != models[i - 1]]
+    assert distinct == ["claude-sonnet-4-6", "claude-haiku-4-5"]

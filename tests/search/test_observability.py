@@ -6,7 +6,9 @@ from jobradar.search.observability import (
     SCHEMA_VERSION,
     append_run_record,
     build_run_record,
+    dump_scoring_corpus,
 )
+from pathlib import Path
 from jobradar.search.sources.base import FetchResult
 
 RUN_DATE = date(2026, 6, 17)
@@ -98,3 +100,39 @@ def test_outcomes_are_labelled_with_the_configured_floors():
     )
     assert default["outcomes"][0]["outcome"] == "deferred-capped"
     assert raised["outcomes"][0]["outcome"] == "below-floor"
+
+
+# --- the opt-in scoring corpus -------------------------------------------
+
+
+def test_corpus_dump_writes_one_row_per_scored_posting(tmp_path):
+    scored = [_scored("a", skill=72, interest=50), _scored("b", skill=41, interest=20)]
+    path = dump_scoring_corpus(scored, tmp_path, date(2026, 9, 22))
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert path.name == "2026-09-22.jsonl"
+    assert [r["id"] for r in rows] == ["a", "b"]
+    assert [r["skill"] for r in rows] == [72, 41]
+
+
+def test_corpus_dump_keeps_the_description_the_model_was_given():
+    """Without it the corpus cannot be used to re-run the scorer after a prompt
+    change, which is the only thing it is for that runs.jsonl cannot already do.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = dump_scoring_corpus([_scored("a", skill=70, interest=50)], Path(tmp), date(2026, 9, 22))
+        row = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+        assert row["description"] == "desc"
+
+
+def test_corpus_dump_appends_rather_than_truncating(tmp_path):
+    """Two runs on one day must not lose the first run's rows."""
+    dump_scoring_corpus([_scored("a", skill=70, interest=50)], tmp_path, date(2026, 9, 22))
+    path = dump_scoring_corpus([_scored("b", skill=70, interest=50)], tmp_path, date(2026, 9, 22))
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_corpus_dump_creates_the_directory(tmp_path):
+    path = dump_scoring_corpus([_scored("a", skill=70, interest=50)], tmp_path / "nested" / "dir", date(2026, 9, 22))
+    assert path.exists()

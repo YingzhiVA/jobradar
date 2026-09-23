@@ -90,6 +90,34 @@ class Constraints:
 
 
 @dataclass
+class RequirementAssessment:
+    """One requirement the scorer read out of a posting, with its verdict.
+
+    The skill score is computed from a list of these (matching.compute_skill_score),
+    so carrying them alongside the number is what makes a score auditable: the
+    report and the run log can show which requirement cost a posting its rank,
+    quoted from the posting itself rather than paraphrased.
+
+    `strength` and `category` are the EFFECTIVE values — after
+    matching.effective_strength has applied the softener check and
+    matching.effective_category the line-management check — so what is recorded
+    here is what the score was actually computed from.
+    """
+
+    quote: str
+    category: str
+    strength: str  # "must_have" | "preferred"
+    verdict: str  # "met" | "partial" | "unmet"
+    evidence: str = ""
+    # What the model itself said, before either code-side check. Kept because
+    # the corrections are only auditable against it: a real management demand
+    # that the line-management check wrongly dismissed would otherwise show up
+    # simply as `other`, and the check's misses could never be counted.
+    model_category: str = ""
+    model_strength: str = ""
+
+
+@dataclass
 class ScoredPosting:
     posting: Posting
     skill_score: int
@@ -103,6 +131,10 @@ class ScoredPosting:
     # Empty when nothing was flagged.
     # Kept structured so the report's "dropped" section can show a crisp reason.
     unmet_hard_requirements: list[str] = field(default_factory=list)
+    # The full checklist the score was computed from, gates and all. Empty when
+    # a scorer returned nothing usable (which scores at the floor rather than
+    # dropping the posting — see matching.compute_skill_score).
+    requirements: list[RequirementAssessment] = field(default_factory=list)
 
     @property
     def combined_score(self) -> float:

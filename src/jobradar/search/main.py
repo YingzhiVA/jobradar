@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from datetime import date
 from pathlib import Path
 
@@ -32,8 +33,13 @@ from .filters import company_is_named, could_pass_location, filter_postings
 from ..matching import build_profile_block, load_profile, score_postings
 from ..models import Constraints
 from .normalize import fill_gaps, heuristic_normalize
-from .observability import append_run_record, build_run_record
-from .ranking import is_eligible, select_with_settings
+from .observability import (
+    CORPUS_DIR_VAR,
+    append_run_record,
+    build_run_record,
+    dump_scoring_corpus,
+)
+from .ranking import ids_to_leave_unmarked, near_floor_ids, select_with_settings
 from ..schedule import decide as decide_run_day, last_run_date
 from .report import write_report
 from .sources.base import (
@@ -379,19 +385,33 @@ def run(
             failed_sources=failed_sources,
         )
 
-        # Leave eligible-but-capped postings unmarked so they resurface on future
-        # runs; everything else (below-floor scores, filtered out, already
-        # surfaced) is marked seen. is_eligible() is the shared predicate the
-        # observability outcome taxonomy also keys off, so "left to resurface"
-        # and the "deferred-capped" label can't drift apart.
-        eligible_not_surfaced = {
-            s.posting.id
-            for s in scored
-            if is_eligible(s, thresholds.min_skill, thresholds.min_interest)
-            and s.posting.id not in surfaced_ids
-        }
-        to_mark_seen = [p for p in unseen if p.id not in eligible_not_surfaced]
-        seen_store.mark_seen(to_mark_seen, tier_by_id)
+        # Postings to score again on a later run rather than write off: the
+        # ones that cleared the floor but lost the daily quota, and the ones the
+        # scorer never returned a verdict on. See ranking.ids_to_leave_unmarked.
+        leave_unmarked = ids_to_leave_unmarked(
+            {p.id for p in kept},
+            scored,
+            surfaced_ids,
+            thresholds.min_skill,
+            thresholds.min_interest,
+        )
+        # Postings that missed the floor narrowly get a second and third draw on
+        # later runs before being written off; see ranking.near_floor_ids.
+        near_floor = near_floor_ids(scored, thresholds.min_skill, thresholds.min_interest)
+        to_mark_seen = [p for p in unseen if p.id not in leave_unmarked]
+        seen_store.mark_seen(to_mark_seen, tier_by_id, retryable_ids=near_floor)
+        if near_floor:
+            logger.info(
+                "%d posting(s) scored just under the floor and will be scored again",
+                len(near_floor),
+            )
+
+        # Opt-in, for offline work on the scorer only; see
+        # observability.dump_scoring_corpus.
+        corpus_dir = os.environ.get(CORPUS_DIR_VAR)
+        if corpus_dir and scored:
+            corpus_path = dump_scoring_corpus(scored, Path(corpus_dir), run_date)
+            logger.info("Wrote %d scored postings to %s", len(scored), corpus_path)
 
         # Per-run observability artifact (operator-facing, not the deliverable):
         # web_search queries, source health/funnels, stage counts, and the true

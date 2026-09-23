@@ -53,6 +53,47 @@ _COUNTRY_ALIASES = {
 }
 
 
+# Words a location line uses to describe HOW the work is done rather than WHERE.
+# Anything left over once these and the country names are stripped is a place.
+_WORK_MODE_WORDS = re.compile(
+    r"\b(?:fully|full|partially|partly|remote|hybrid|anywhere|flexible|"
+    r"home|office|homeoffice|work|from|wfh|telework|teletravail|télétravail|"
+    r"based|in|within|or|and|only|country|countrywide|nationwide)\b",
+    re.IGNORECASE,
+)
+
+
+def names_a_place(location_text: str | None, constraints: Constraints) -> bool:
+    """Whether a location line names something finer than a remote country.
+
+    "Switzerland", "Schweiz, Remote" and "Remote - Switzerland" name no place:
+    there is no office, so a commute radius means nothing and remote_countries
+    is the right test. "Chiasso, TI, Switzerland" names a place, so the canton
+    is resolvable and the canton list has to decide, remote or not.
+
+    A line lists several locations as ";"-separated segments; it counts as
+    country-level if ANY segment is, since the posting then genuinely offers the
+    role remotely in that country ("Switzerland, Remote; UK, Remote").
+    """
+    if not location_text or not constraints.remote_countries:
+        return bool(location_text)
+    variants = [
+        variant
+        for country in constraints.remote_countries
+        for variant in _COUNTRY_ALIASES.get(country.strip().lower(), (country.strip().lower(),))
+    ]
+    for segment in location_text.lower().split(";"):
+        if not any(variant in segment for variant in variants):
+            continue
+        rest = segment
+        for variant in variants:
+            rest = rest.replace(variant, " ")
+        rest = _WORK_MODE_WORDS.sub(" ", rest)
+        if not re.sub(r"[\W\d_]+", "", rest):
+            return False
+    return True
+
+
 def remote_country_ok(posting: Posting, constraints: Constraints) -> bool:
     """Whether this is a remote posting scoped to one of constraints.
     remote_countries.
@@ -70,6 +111,14 @@ def remote_country_ok(posting: Posting, constraints: Constraints) -> bool:
     mentions a Swiss parent must not pass on that alone.
     """
     if not constraints.remote_countries or posting.remote is not True:
+        return False
+    # A resolved canton means the location named a real place, so the commute
+    # scoping in allowed_cantons applies, remote or not. Without this a posting
+    # flagged remote — "work partially or fully remote according to local laws"
+    # is enough — passed from any canton at all, because the country name
+    # appears in "Chiasso, TI, Switzerland" too. constraints.yaml has always
+    # promised the opposite; this is what makes the promise true.
+    if posting.canton:
         return False
     location = (posting.location_text or "").lower()
     if not location.strip():

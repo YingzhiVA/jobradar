@@ -1,20 +1,31 @@
+import collections
 import logging
 import threading
 import time
 
 from jobradar.matching import (
-    _cap_skill_score,
-    _filter_gaps,
-    _Gap,
+    _CAP_MANY_UNMET,
+    _looks_optional,
+    _Requirement,
     build_profile_block,
+    compute_skill_score,
+    effective_category,
+    effective_strength,
     score_postings,
+    unmet_gates,
 )
 from jobradar.models import Posting, ScoredPosting
 from jobradar.search.ranking import DEFAULT_MIN_SKILL, is_eligible
 
 
-def gap(requirement, category):
-    return _Gap(requirement=requirement, category=category)
+def req(quote, category, strength="must_have", verdict="unmet"):
+    return _Requirement(
+        quote=quote, category=category, strength=strength, verdict=verdict
+    )
+
+
+def met(quote, category, strength="must_have"):
+    return req(quote, category, strength, "met")
 
 
 def _scored(skill):
@@ -64,107 +75,376 @@ def test_profile_block_without_stories_omits_section():
     assert "Interview stories" not in block
 
 
-def test_filter_gaps_keeps_the_three_knockout_categories():
-    gaps = _filter_gaps(
-        [
-            gap("Must hold an EU work permit", "work_eligibility"),
-            gap("Active CFA charterholder", "licence_or_certification"),
-            gap("Role manages a team of 8 engineers", "seniority_mismatch"),
-        ]
-    )
-    assert gaps == [
+# --- requirement strength ------------------------------------------------
+
+
+def test_stated_requirement_defaults_to_must_have():
+    """The corpus rule: explicit hard markers barely exist (2 of 32 postings
+    said "must have"), so an unsoftened bullet has to count as required or
+    almost nothing would.
+    """
+    assert effective_strength(req("5 years of product management", "years_of_experience")) == "must_have"
+
+
+def test_softened_wording_downgrades_to_preferred():
+    for quote in [
+        "Experience with R is a plus",
+        "Clinical trials experience is a strong plus",
+        "Databricks knowledge preferred",
+        "Ideally you have worked in insurance",
+        "Nice to have: Palantir Foundry",
+        "Erfahrung mit Azure von Vorteil",
+        "Weiterbildung in Analytics wünschenswert",
+        "La connaissance du francais est un atout",
+    ]:
+        assert _looks_optional(quote), quote
+        assert effective_strength(req(quote, "technology")) == "preferred"
+
+
+def test_plain_requirement_is_not_softened():
+    for quote in [
+        "Minimum 2 years of relevant experience in banking",
+        "Fluent German",
+        "MSc in computer science",
+    ]:
+        assert not _looks_optional(quote), quote
+
+
+def test_effective_strength_never_promotes():
+    """The model can see section headings and blanket "you don't need to tick
+    every box" language that a per-line regex cannot, so its downgrade stands.
+    """
+    plain = req("5 years in banking", "years_of_experience", strength="preferred")
+    assert effective_strength(plain) == "preferred"
+
+
+# --- gates ---------------------------------------------------------------
+
+
+def test_unmet_gate_categories_are_the_gates():
+    gates = unmet_gates([
+        req("Must hold an EU work permit", "work_eligibility"),
+        req("Active CFA charterholder", "licence_or_certification"),
+        req("Manage a team of 8 engineers", "seniority_mismatch"),
+        req("Fluent German required", "language_requirement"),
+    ])
+    assert gates == [
         "Must hold an EU work permit",
         "Active CFA charterholder",
-        "Role manages a team of 8 engineers",
+        "Manage a team of 8 engineers",
+        "Fluent German required",
     ]
 
 
-def test_filter_gaps_drops_the_non_knockout_categories():
-    gaps = _filter_gaps(
-        [
-            gap("MSc or PhD in engineering", "degree"),
-            gap("Minimum 2 years in banking", "years_of_experience"),
-            gap("Experience in asset management", "domain_or_industry"),
-            gap("Hands-on Databricks experience", "technology"),
-            gap("Willingness to travel abroad", "other"),
-        ]
-    )
-    assert gaps == []
+def test_non_gate_categories_do_not_gate():
+    gates = unmet_gates([
+        req("MSc or PhD in engineering", "degree"),
+        req("Minimum 2 years in banking", "years_of_experience"),
+        req("Experience in asset management", "domain_or_industry"),
+        req("Hands-on Databricks experience", "technology"),
+        req("Willingness to travel abroad", "other"),
+    ])
+    assert gates == []
 
 
-def test_filter_gaps_keeps_only_the_knockout_entries_in_a_mixed_list():
-    gaps = _filter_gaps(
-        [
-            gap("Hands-on Microsoft Fabric experience", "technology"),
-            gap("Must hold a US security clearance", "work_eligibility"),
-            gap("MSc in computer science", "degree"),
-        ]
-    )
-    assert gaps == ["Must hold a US security clearance"]
+def test_a_met_gate_requirement_does_not_gate():
+    assert unmet_gates([met("Eligible to work in Switzerland", "work_eligibility")]) == []
 
 
-def test_filter_gaps_categorises_by_kind_not_by_severity():
-    """A technology or experience requirement stays non-knockout even when the
-    posting calls it essential — that judgement is the model's to report and
-    ours to weigh.
+def test_a_preferred_gate_requirement_does_not_gate():
+    """A language a posting calls optional is not a gate, however it is tagged."""
+    assert unmet_gates([
+        req("German is a plus", "language_requirement", strength="preferred")
+    ]) == []
+
+
+def test_softened_gate_wording_does_not_gate():
+    """The code-side check applies to gates too: "German is a plus" cannot
+    knock a posting down however the model tagged its strength.
     """
-    gaps = _filter_gaps(
-        [
-            gap("5 years as a SOC analyst (must-have)", "years_of_experience"),
-            gap("MITRE ATT&CK expertise (must-have)", "technology"),
-        ]
-    )
-    assert gaps == []
+    assert unmet_gates([req("German is a plus", "language_requirement")]) == []
 
 
-def test_cap_skill_score_uncapped_when_no_gaps_survive():
-    assert _cap_skill_score(78, []) == 78
-
-
-def test_cap_skill_score_one_gap_stays_eligible():
-    """One knockout costs the posting its ranking, not its place in the run."""
-    capped = _cap_skill_score(78, ["Must hold an EU work permit"])
-    assert capped == DEFAULT_MIN_SKILL
-    assert is_eligible(_scored(capped))
-
-
-def test_cap_skill_score_two_gaps_stays_eligible():
-    capped = _cap_skill_score(78, ["EU work permit", "Active CFA charter"])
-    assert capped == DEFAULT_MIN_SKILL
-    assert is_eligible(_scored(capped))
-
-
-def test_cap_skill_score_three_gaps_drops_below_floor():
-    capped = _cap_skill_score(
-        78, ["EU work permit", "Active CFA charter", "Manages a team of 8"]
-    )
-    assert capped < DEFAULT_MIN_SKILL
-    assert not is_eligible(_scored(capped))
-
-
-def test_cap_skill_score_never_raises_a_low_score():
-    assert _cap_skill_score(22, ["Must hold an EU work permit"]) == 22
-    assert _cap_skill_score(41, ["a", "b", "c", "d"]) == 41
-
-
-def test_degree_gap_leaves_score_uncapped_end_to_end():
-    """The original bug: a degree requirement the candidate plainly meets was
-    capping the score to 50 before any code could intervene.
+def test_encouragement_language_does_not_excuse_a_gate():
+    """Blanket "don't worry if you don't meet all the criteria" downgrades
+    qualifications, never a work-eligibility gate — the model is told so, and a
+    gate that arrives unsoftened still fires here.
     """
-    surviving = _filter_gaps([gap("MSc or PhD in engineering", "degree")])
-    assert surviving == []
-    assert _cap_skill_score(72, surviving) == 72
+    score, gates = compute_skill_score([
+        met("Product management experience", "years_of_experience"),
+        req("You must hold a Swiss or EU work permit", "work_eligibility"),
+    ])
+    assert gates == ["You must hold a Swiss or EU work permit"]
+    assert score == DEFAULT_MIN_SKILL
+
+
+# --- seniority: only line management gates -------------------------------
+#
+# Measured over the first two checklist runs, 13 of 25 decided seniority tags
+# were wrong, 8 of them cases the prompt already excludes by name. The model
+# keys on "lead"; these pin the code-side check that enforces the definition.
+# Each quote below is verbatim from a real run.
+
+
+def test_line_management_demands_still_gate():
+    for quote in [
+        "5 years of experience in people management, with technical leadership",
+        "hire, mentor, and manage the team",
+        "experience leading and managing teams",
+        "Lead a dedicated PPMO team",
+        "Demonstrated people management skills and experience in staff performance management",
+        "1+ years of leadership experience managing, scaling, and developing multidisciplinary technical teams",
+        "Experience leading and developing substantial global teams through periods of change",
+        "operative und personelle Führung des P&C-Privatkunden-Teams",
+        "Du führst, entwickelst und coachst ein engagiertes Team",
+    ]:
+        assert effective_category(req(quote, "seniority_mismatch")) == "seniority_mismatch", quote
+        assert unmet_gates([req(quote, "seniority_mismatch")]) == [quote], quote
+
+
+def test_leading_work_is_not_managing_people():
+    for quote in [
+        "leading large-scale learning transformations",
+        "substantial leadership of large, complex, cross-functional programs",
+        "leading cross-team product alignment and strategic coherence",
+    ]:
+        assert unmet_gates([req(quote, "seniority_mismatch")]) == [], quote
+
+
+def test_leading_without_authority_is_not_managing_people():
+    for quote in [
+        "Capabilities to lead a cross-functional team",
+        "lead matrixed, global teams",
+        "Experience working and leading in a matrix environment",
+        "Lead cross-functional CtQ reviews, aligning R&D, Manufacturing and Service",
+    ]:
+        assert unmet_gates([req(quote, "seniority_mismatch")]) == [], quote
+
+
+def test_the_reporting_line_upward_is_not_managing_people():
+    """Who the candidate would report to, not who would report to them."""
+    for quote in [
+        "Reporting to the Portfolio Lead Gastroenterology",
+        "Reporting to the Director, Clinical Data Transparency",
+    ]:
+        assert unmet_gates([req(quote, "seniority_mismatch")]) == [], quote
+
+
+def test_a_level_mismatch_is_not_a_management_demand():
+    """The category's name invites this reading; the interest score, not this
+    gate, is what keeps a trainee role away from a senior candidate.
+    """
+    for quote in ["Trainee", "in your penultimate year of study"]:
+        assert unmet_gates([req(quote, "seniority_mismatch")]) == [], quote
+
+
+def test_a_veto_wins_over_a_marker():
+    """Names a team lead, but is satisfiable by leading a project — so it is not
+    a demand for line management.
+    """
+    quote = ("Demonstrated leadership experience, for example by leading projects, "
+             "technical workstreams or serving as a (deputy) team lead")
+    assert unmet_gates([req(quote, "seniority_mismatch")]) == []
+
+
+def test_a_rejected_seniority_tag_neither_gates_nor_weighs():
+    """Treated as `other`: a mis-tag must not cap the posting, and must not pull
+    its fit down either.
+    """
+    alone, _ = compute_skill_score([met("5 years of product management", "years_of_experience")])
+    with_mistag, gates = compute_skill_score([
+        met("5 years of product management", "years_of_experience"),
+        req("Capabilities to lead a cross-functional team", "seniority_mismatch"),
+    ])
+    assert gates == []
+    assert with_mistag == alone == 100
+
+
+def test_the_check_touches_only_seniority():
+    quote = "lead matrixed, global teams"
+    assert effective_category(req(quote, "technology")) == "technology"
+    assert effective_category(req(quote, "work_eligibility")) == "work_eligibility"
+
+
+# --- the computed score --------------------------------------------------
+
+
+def test_full_checklist_met_scores_high():
+    score, gates = compute_skill_score([
+        met("5 years of product management", "years_of_experience"),
+        met("Python and SQL", "technology"),
+        met("MSc in a technical field", "degree"),
+        met("Fintech experience", "domain_or_industry", strength="preferred"),
+    ])
+    assert gates == []
+    assert score == 100
+
+
+def test_nothing_met_scores_at_the_bottom():
+    score, _ = compute_skill_score([
+        req("10 years in pharmaceutical manufacturing", "domain_or_industry"),
+        req("SAP S/4HANA implementation", "technology"),
+    ])
+    assert score == 0
+
+
+def test_partial_credit_lands_between():
+    score, _ = compute_skill_score([
+        _Requirement(
+            quote="PySpark at enterprise scale", category="technology",
+            strength="must_have", verdict="partial",
+        ),
+    ])
+    assert score == 50
+
+
+def test_unmet_preferred_costs_less_than_unmet_must_have():
+    """The whole point of the strength split: a missing nice-to-have should
+    shade a score, a missing requirement should move it.
+    """
+    as_preferred, _ = compute_skill_score([
+        met("Product management experience", "years_of_experience"),
+        req("Insurance domain experience", "domain_or_industry", strength="preferred"),
+    ])
+    as_must_have, _ = compute_skill_score([
+        met("Product management experience", "years_of_experience"),
+        req("Insurance domain experience", "domain_or_industry"),
+    ])
+    assert as_preferred == 80
+    assert as_must_have == 50
+    assert as_preferred > as_must_have
+
+
+def test_degree_gap_barely_moves_the_score():
+    """The original bug, in its new form: a degree requirement the candidate
+    plainly meets was capping the score to 50 before any code could intervene.
+    Degree now carries a quarter weight, so even a genuine degree gap tilts the
+    score rather than deciding it.
+    """
+    score, gates = compute_skill_score([
+        met("5 years of product management", "years_of_experience"),
+        req("MSc in Computer Science, Mathematics, or similar", "degree"),
+    ])
+    assert gates == []
+    assert score == 80
+
+
+def test_other_category_is_ignored_entirely():
+    """Travel, commute and on-call are the candidate's call, not the scorer's."""
+    score, _ = compute_skill_score([
+        met("5 years of product management", "years_of_experience"),
+        req("Willingness to travel 30% of the time", "other"),
+    ])
+    assert score == 100
 
 
 def test_seniority_gap_still_caps_end_to_end():
     """The signal that must survive: a people-leadership role the candidate has
     no management experience for.
     """
-    surviving = _filter_gaps(
-        [gap("Manages 1-3 direct reports", "seniority_mismatch")]
-    )
-    assert surviving == ["Manages 1-3 direct reports"]
-    assert _cap_skill_score(72, surviving) == DEFAULT_MIN_SKILL
+    score, gates = compute_skill_score([
+        met("Data product ownership", "domain_or_industry"),
+        met("Stakeholder management", "technology"),
+        req("Manage and coach 1-3 direct reports", "seniority_mismatch"),
+    ])
+    assert gates == ["Manage and coach 1-3 direct reports"]
+    assert score == DEFAULT_MIN_SKILL
+    assert is_eligible(_scored(score))
+
+
+def test_two_gates_stay_eligible():
+    """A strong fit with two gates lands exactly ON the floor: it still
+    surfaces, ranked last, and the user judges the gate themselves.
+    """
+    score, gates = compute_skill_score([
+        met("Python", "technology"),
+        met("5 years of product management", "years_of_experience"),
+        req("EU work permit", "work_eligibility"),
+        req("Active CFA charter", "licence_or_certification"),
+    ])
+    assert len(gates) == 2
+    assert score == DEFAULT_MIN_SKILL
+    assert is_eligible(_scored(score))
+
+
+def test_three_gates_drop_below_the_floor():
+    score, gates = compute_skill_score([
+        met("Python", "technology"),
+        met("5 years of product management", "years_of_experience"),
+        req("EU work permit", "work_eligibility"),
+        req("Active CFA charter", "licence_or_certification"),
+        req("Manages a team of 8", "seniority_mismatch"),
+    ])
+    assert len(gates) == 3
+    assert score == _CAP_MANY_UNMET
+    assert not is_eligible(_scored(score))
+
+
+def test_a_met_gate_does_not_inflate_the_score():
+    """Gates are eligibility facts, not fit. Being allowed to work here says
+    nothing about how well the candidate would do the job, so it must not pull
+    a weak fit upwards any more than it drags a strong one down.
+    """
+    without_gate, _ = compute_skill_score([
+        req("10 years in pharmaceutical manufacturing", "domain_or_industry"),
+    ])
+    with_gate, gates = compute_skill_score([
+        req("10 years in pharmaceutical manufacturing", "domain_or_industry"),
+        met("Eligible to work in Switzerland", "work_eligibility"),
+    ])
+    assert gates == []
+    assert with_gate == without_gate == 0
+
+
+def test_a_gate_never_raises_a_low_score():
+    """The cap is a ceiling, not a floor: a poor fit that also fails a gate
+    must not be lifted to the eligibility floor by it.
+    """
+    score, gates = compute_skill_score([
+        req("10 years in pharma", "domain_or_industry"),
+        req("SAP S/4HANA", "technology"),
+        req("EU work permit", "work_eligibility"),
+    ])
+    assert gates == ["EU work permit"]
+    assert score == 0
+
+
+def test_empty_checklist_scores_at_the_floor_rather_than_dropping():
+    """search/main.py marks an unscored posting seen, so it never comes back.
+    An unscoreable posting surfaces last for the user to judge instead.
+    """
+    score, gates = compute_skill_score([])
+    assert score == DEFAULT_MIN_SKILL
+    assert gates == []
+
+
+def test_checklist_of_only_ignored_categories_scores_at_the_floor():
+    score, _ = compute_skill_score([req("Willingness to travel", "other")])
+    assert score == DEFAULT_MIN_SKILL
+
+
+def test_checklist_of_only_gates_scores_at_the_floor():
+    """Nothing gradable was stated, so there is no fit to measure — but a met
+    gate is not a reason to hide the posting either.
+    """
+    score, gates = compute_skill_score([met("Eligible to work in Switzerland", "work_eligibility")])
+    assert gates == []
+    assert score == DEFAULT_MIN_SKILL
+
+
+def test_no_preferred_requirements_is_not_a_penalty():
+    """A posting that lists no nice-to-haves must not lose the 20 points the
+    preferred half carries.
+    """
+    score, _ = compute_skill_score([met("5 years of product management", "years_of_experience")])
+    assert score == 100
+
+
+def test_only_preferred_requirements_are_judged_on_their_own():
+    score, _ = compute_skill_score([
+        met("Fintech experience", "domain_or_industry", strength="preferred"),
+    ])
+    assert score == 100
 
 
 def test_profile_block_without_evidence():
@@ -214,11 +494,20 @@ class _FakeUsage:
 
 class _FakeParsed:
     def __init__(self, title):
-        self.skill_score = 60
         self.interest_score = 50
         self.best_cv = "pm"
         self.brief_reason = title
-        self.unmet_hard_requirements = []
+        # One met requirement, so compute_skill_score has something to grade
+        # and these tests exercise the real scoring path rather than the
+        # empty-checklist fallback.
+        self.requirements = [
+            _Requirement(
+                quote="5 years of product management",
+                category="years_of_experience",
+                strength="must_have",
+                verdict="met",
+            )
+        ]
 
 
 class _FakeResponse:
@@ -228,11 +517,19 @@ class _FakeResponse:
 
 
 class _FakeMessages:
-    """Records concurrency and can fail/stall specific postings by title."""
+    """Records concurrency and can fail/stall specific postings by title.
 
-    def __init__(self, delays=None, fail_titles=()):
+    `fail_once_titles` fails only a posting's FIRST attempt, which is how the
+    retry in score_posting is exercised: the real failures it exists for (an API
+    500, a response that runs away and never closes its JSON) are stochastic,
+    so the second draw lands.
+    """
+
+    def __init__(self, delays=None, fail_titles=(), fail_once_titles=()):
         self.delays = delays or {}
         self.fail_titles = set(fail_titles)
+        self.fail_once_titles = set(fail_once_titles)
+        self.attempts = collections.Counter()
         self.lock = threading.Lock()
         self.in_flight = 0
         self.max_in_flight = 0
@@ -250,8 +547,13 @@ class _FakeMessages:
             self.spans.append([title, started, None])
         try:
             time.sleep(self.delays.get(title, 0.01))
+            with self.lock:
+                self.attempts[title] += 1
+                first_try = self.attempts[title] == 1
             if title in self.fail_titles:
                 raise RuntimeError("boom")
+            if title in self.fail_once_titles and first_try:
+                raise RuntimeError("transient")
             return _FakeResponse(title)
         finally:
             with self.lock:
@@ -360,3 +662,59 @@ def test_score_postings_silent_when_nothing_dropped(caplog):
     with caplog.at_level(logging.WARNING, logger="jobradar.matching"):
         score_postings(_postings(4), "profile", _FakeClient(messages), workers=2)
     assert "Scoring dropped" not in caplog.text
+
+
+def test_a_transient_failure_is_retried_and_the_posting_survives():
+    """An API error or a runaway response must not cost a posting its place in
+    the run — search/main.py leaves an unscored posting to come back, but a
+    retry means it usually does not have to.
+    """
+    messages = _FakeMessages(fail_once_titles={"job-1"})
+    scored = score_postings(_postings(3), "profile", _FakeClient(messages), workers=1)
+    assert [s.posting.title for s in scored] == ["job-0", "job-1", "job-2"]
+    assert messages.attempts["job-1"] == 2
+
+
+def test_a_posting_failing_every_attempt_is_still_dropped():
+    messages = _FakeMessages(fail_titles={"job-1"})
+    scored = score_postings(_postings(3), "profile", _FakeClient(messages), workers=1)
+    assert [s.posting.title for s in scored] == ["job-0", "job-2"]
+    assert messages.attempts["job-1"] == 2  # tried twice, then given up on
+
+
+def test_a_successful_posting_is_scored_once():
+    messages = _FakeMessages()
+    score_postings(_postings(3), "profile", _FakeClient(messages), workers=1)
+    assert set(messages.attempts.values()) == {1}
+
+
+def test_score_posting_records_the_models_own_call_alongside_the_correction():
+    """runs.jsonl must carry what the model said, not only what the checks made
+    of it — otherwise a wrongly dismissed management demand would read as
+    `other` and the line-management check's misses could never be counted.
+    """
+    class _Parsed:
+        interest_score = 50
+        best_cv = "pm"
+        brief_reason = "r"
+        requirements = [
+            _Requirement(quote="Capabilities to lead a cross-functional team",
+                         category="seniority_mismatch", strength="must_have", verdict="unmet"),
+            _Requirement(quote="Databricks is a plus",
+                         category="technology", strength="must_have", verdict="unmet"),
+        ]
+
+    class _Resp:
+        usage = _FakeUsage()
+        parsed_output = _Parsed()
+
+    class _Msgs:
+        def parse(self, **kwargs):
+            return _Resp()
+
+    posting = _postings(1)[0]
+    scored = score_postings([posting], "profile", _FakeClient(_Msgs()), workers=1)[0]
+    lead, plus = scored.requirements
+    assert (lead.category, lead.model_category) == ("other", "seniority_mismatch")
+    assert (plus.strength, plus.model_strength) == ("preferred", "must_have")
+    assert scored.unmet_hard_requirements == []

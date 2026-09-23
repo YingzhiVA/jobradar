@@ -5,8 +5,12 @@ from jobradar.search.ranking import (
     OUTCOME_DEFERRED,
     OUTCOME_OKAY,
     OUTCOME_UNMET_HARD,
+    DEFAULT_MIN_SKILL,
+    NEAR_FLOOR_BAND,
     classify_outcome,
+    ids_to_leave_unmarked,
     is_eligible,
+    near_floor_ids,
     select_matches,
 )
 
@@ -221,3 +225,89 @@ def test_select_with_settings_matches_explicit_arguments():
     assert select_with_settings(scored, thresholds, output) == select_matches(
         scored, best_threshold=85, min_skill=65, max_okay=1, max_best=2, min_interest=0
     )
+
+
+# --- what comes back on a later run --------------------------------------
+#
+# Two different reasons a posting is left unmarked, and the failure modes are
+# opposite: leaking one means the daily report repeats itself, losing one means
+# a real match is discarded permanently.
+
+
+def _scored_for(posting, skill=80, interest=70):
+    return ScoredPosting(
+        posting=posting, skill_score=skill, interest_score=interest,
+        best_cv="pm", brief_reason="r",
+    )
+
+
+def _posting(pid):
+    return Posting(
+        id=pid, source="test", url=f"https://example.invalid/{pid}",
+        title=f"job-{pid}", company="c", description="d",
+    )
+
+
+def test_surfaced_postings_are_marked_seen():
+    a = _posting("a")
+    assert ids_to_leave_unmarked({"a"}, [_scored_for(a)], {"a"}) == set()
+
+
+def test_eligible_but_unsurfaced_comes_back():
+    """Lost the daily quota, not the floor — OUTCOME_DEFERRED."""
+    a = _posting("a")
+    assert ids_to_leave_unmarked({"a"}, [_scored_for(a)], set()) == {"a"}
+
+
+def test_below_floor_is_marked_seen():
+    a = _posting("a")
+    scored = [_scored_for(a, skill=DEFAULT_MIN_SKILL - 1)]
+    assert ids_to_leave_unmarked({"a"}, scored, set()) == set()
+
+
+def test_a_posting_the_scorer_never_answered_on_comes_back():
+    """A timeout or a response cut off mid-JSON is not a bad score. Marking it
+    seen would discard the posting permanently on an infrastructure hiccup.
+    """
+    assert ids_to_leave_unmarked({"a", "b"}, [], set()) == {"a", "b"}
+
+
+def test_a_failed_posting_comes_back_even_when_others_scored_fine():
+    a = _posting("a")
+    scored = [_scored_for(a, skill=DEFAULT_MIN_SKILL - 1)]
+    assert ids_to_leave_unmarked({"a", "b"}, scored, {"a"}) == {"b"}
+
+
+def test_nothing_scored_and_nothing_offered_leaves_nothing():
+    assert ids_to_leave_unmarked(set(), [], set()) == set()
+
+
+# --- the near-floor band -------------------------------------------------
+
+
+def test_a_narrow_miss_is_offered_another_draw():
+    scored = [make_scored(DEFAULT_MIN_SKILL - 1, 70, "a")]
+    assert near_floor_ids(scored) == {"a"}
+
+
+def test_a_clear_miss_is_not():
+    scored = [make_scored(DEFAULT_MIN_SKILL - NEAR_FLOOR_BAND - 1, 70, "a")]
+    assert near_floor_ids(scored) == set()
+
+
+def test_the_band_is_inclusive_at_its_lower_edge():
+    scored = [make_scored(DEFAULT_MIN_SKILL - NEAR_FLOOR_BAND, 70, "a")]
+    assert near_floor_ids(scored) == {"a"}
+
+
+def test_an_eligible_posting_needs_no_second_draw():
+    scored = [make_scored(DEFAULT_MIN_SKILL, 70, "a")]
+    assert near_floor_ids(scored) == set()
+
+
+def test_a_posting_held_back_by_the_interest_floor_gets_no_second_draw():
+    """Only the skill score has the repeatability problem. A role the user
+    filtered out on interest was not a near miss on anything in doubt.
+    """
+    scored = [make_scored(80, 10, "a")]
+    assert near_floor_ids(scored, MIN_SKILL, min_interest=50) == set()

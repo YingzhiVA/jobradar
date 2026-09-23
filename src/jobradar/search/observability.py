@@ -42,7 +42,19 @@ from .sources.base import FetchResult, RawPosting
 # 3: added `settings` — the scoring floors the run selected with, now that they
 #    are user-configurable (config/search.yaml) and so no longer implied by the
 #    code at any given commit.
-SCHEMA_VERSION = 3
+# 4: added per-outcome `requirements` — the checklist the skill score is now
+#    computed from (matching.compute_skill_score). `skill` alone cannot be
+#    audited after the fact; the checklist says which requirement cost a posting
+#    its rank, quoted from the posting. This is the biggest single addition to
+#    the record's size (a few hundred bytes per scored posting, and this file is
+#    committed daily) — the justification is that retuning the category weights
+#    needs real checklists, and without them the only corpus is the handful of
+#    postings that became applications.
+# 5: added `model_category` / `model_strength` to each requirement — the model's
+#    own call, before the code-side checks rewrote it. `category` and `strength`
+#    remain the effective values the score was computed from; without the model's
+#    originals, a correction that was itself wrong would be invisible.
+SCHEMA_VERSION = 5
 RUNS_FILENAME = "runs.jsonl"
 
 
@@ -72,6 +84,22 @@ def _posting_outcome(
         "interest": scored.interest_score,
         "outcome": classify_outcome(scored, tier, min_skill, min_interest),
         "unmet_hard_requirements": list(scored.unmet_hard_requirements),
+        # The checklist behind `skill`. Verbose per posting, but it is the only
+        # record of WHY a score landed where it did — and the only way to retune
+        # the category weights against real postings without paying to re-score
+        # them.
+        "requirements": [
+            {
+                "quote": r.quote,
+                "category": r.category,
+                "strength": r.strength,
+                "verdict": r.verdict,
+                "evidence": r.evidence,
+                "model_category": r.model_category,
+                "model_strength": r.model_strength,
+            }
+            for r in scored.requirements
+        ],
         "reason": scored.brief_reason.strip(),
     }
 
@@ -141,6 +169,46 @@ def build_run_record(
             for s in scored
         ],
     }
+
+
+CORPUS_DIR_VAR = "JOBRADAR_CORPUS_DIR"
+
+
+def dump_scoring_corpus(scored: list[ScoredPosting], directory: Path, run_date: date) -> Path:
+    """Write the postings this run scored, descriptions included, for offline
+    evaluation of the scorer.
+
+    Off unless JOBRADAR_CORPUS_DIR is set, and deliberately env-driven rather
+    than a config key: this is for a handful of manual runs when the scorer is
+    being worked on, not a standing behaviour. Nothing in the pipeline reads it
+    back.
+
+    It is separate from runs.jsonl because the two have opposite lifetimes.
+    runs.jsonl is committed and kept; this holds several KB of scraped posting
+    text per row, which does not belong in a repository published as a
+    template. Point the variable somewhere gitignored (dev/corpus/ is).
+
+    What makes it worth having: runs.jsonl records each posting's requirement
+    checklist, which is enough to retune the category weights offline for free,
+    but not to re-run the model after a prompt change. That needs the
+    description the model was given.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{run_date.isoformat()}.jsonl"
+    with path.open("a", encoding="utf-8") as fh:
+        for s in scored:
+            fh.write(json.dumps({
+                "id": s.posting.id,
+                "url": s.posting.url,
+                "title": s.posting.title,
+                "company": s.posting.company,
+                "location": s.posting.location_text,
+                "description": s.posting.description,
+                "skill": s.skill_score,
+                "interest": s.interest_score,
+                "unmet_hard_requirements": list(s.unmet_hard_requirements),
+            }, ensure_ascii=False) + "\n")
+    return path
 
 
 def append_run_record(record: dict, reports_dir: Path) -> Path:

@@ -413,3 +413,34 @@ def test_remote_country_posting_skips_the_canton_llm_call():
     client = _StubClient(canton="Zug", canton_source="Zug")
     posting = normalize(raw, client, constraints=constraints)
     assert posting.canton is None  # the stub was never consulted
+
+
+def test_a_remote_posting_that_names_a_town_still_gets_its_canton():
+    """The other half of the Chiasso fix. Skipping resolution for every remote
+    posting inside remote_countries meant a remote role in Chiasso TI never got
+    a canton, so the canton list could never exclude it. Only a country-level
+    location skips the call now.
+    """
+    constraints = Constraints(
+        allowed_countries=[],
+        allowed_cities=[],
+        allowed_cantons=["Zug"],
+        remote_ok=False,
+        min_percentage=80,
+        max_percentage=100,
+        max_office_days_per_week=3,
+        requires_sponsorship=False,
+        remote_countries=["Switzerland"],
+    )
+    raw = RawPosting(
+        source="smartrecruiters",
+        url="https://example.com/job",
+        title="Test Role",
+        company="Test Co",
+        description=_FULLY_RESOLVED_DESCRIPTION,
+        location="Chiasso, TI, Switzerland",
+        remote=True,
+    )
+    client = _StubClient(canton="Ticino", canton_source="Chiasso")
+    posting = normalize(raw, client, constraints=constraints)
+    assert posting.canton == "Ticino"

@@ -56,7 +56,10 @@ __all__ = [
     "OUTCOME_UNMET_HARD",
     "RankedPosting",
     "classify_outcome",
+    "NEAR_FLOOR_BAND",
+    "ids_to_leave_unmarked",
     "is_eligible",
+    "near_floor_ids",
     "select_matches",
     "select_with_settings",
 ]
@@ -122,6 +125,81 @@ def classify_outcome(
     if scored.unmet_hard_requirements:
         return OUTCOME_UNMET_HARD
     return OUTCOME_BELOW_FLOOR
+
+
+# How far below the floor still counts as "might have cleared it on another
+# draw", and how many times such a posting is scored before the run takes its
+# answer as final (the first scoring plus two more).
+#
+# Scoring a posting is not deterministic, and since the score was restructured
+# around a requirement checklist it is markedly less repeatable than it was:
+# identical draws of the same posting move by about 16 points, and 7 of the 32
+# applications measured in dev/scoring-eval/ fell below the floor on at least
+# one draw while sitting above it on median. The two errors are not symmetric.
+# A posting wrongly kept costs one more scoring call; a posting wrongly dropped
+# is marked seen and never returns. So a near miss gets another draw on another
+# day rather than a verdict from one unlucky one.
+#
+# Bounded deliberately: left to resurface indefinitely, a posting parked just
+# under the floor would be re-fetched, re-gap-filled and re-scored every day
+# for the weeks it stays open, which is a standing cost for an answer the run
+# has already given three times.
+NEAR_FLOOR_BAND = 10
+NEAR_FLOOR_ATTEMPTS = 3
+
+
+def near_floor_ids(
+    scored: list[ScoredPosting],
+    min_skill: int = DEFAULT_MIN_SKILL,
+    min_interest: int = DEFAULT_MIN_INTEREST,
+) -> set[str]:
+    """Postings that missed the floor narrowly enough to deserve another draw.
+
+    Only the skill axis has the repeatability problem, so a posting held back by
+    an interest floor the user set is not given extra chances — its score is not
+    what is in doubt.
+    """
+    return {
+        s.posting.id
+        for s in scored
+        if not is_eligible(s, min_skill, min_interest)
+        and s.interest_score >= min_interest
+        and min_skill - NEAR_FLOOR_BAND <= s.skill_score < min_skill
+    }
+
+
+def ids_to_leave_unmarked(
+    candidate_ids: set[str],
+    scored: list[ScoredPosting],
+    surfaced_ids: set[str],
+    min_skill: int = DEFAULT_MIN_SKILL,
+    min_interest: int = DEFAULT_MIN_INTEREST,
+) -> set[str]:
+    """Postings that must NOT be marked seen, so a later run scores them again.
+
+    Two distinct reasons, kept together because both mean "come back tomorrow"
+    and separating them is how they drift:
+
+    - **Eligible but unsurfaced.** It cleared the floor and lost the daily
+      quota. This is OUTCOME_DEFERRED, and is_eligible() is the shared predicate
+      so the log label and the resurface decision cannot disagree.
+    - **Never scored.** It reached the scorer and no verdict came back — a
+      timeout, a rate limit, a response that overran its token budget mid-JSON.
+      That is not the same as scoring badly, and marking it seen would discard a
+      posting permanently on the strength of an infrastructure hiccup. Scoring
+      is best-effort per posting (matching.score_posting logs and returns None),
+      which only stays safe if the loss is temporary.
+
+    `candidate_ids` is everything handed to the scorer; anything in it with no
+    entry in `scored` is taken to have failed.
+    """
+    deferred = {
+        s.posting.id
+        for s in scored
+        if is_eligible(s, min_skill, min_interest) and s.posting.id not in surfaced_ids
+    }
+    never_scored = candidate_ids - {s.posting.id for s in scored}
+    return deferred | never_scored
 
 
 def select_matches(

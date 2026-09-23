@@ -4,6 +4,82 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.4.0 — Checklist scoring (2026-09-23)
+
+- **Skill scoring works from a checklist of the posting's requirements.** The
+  model used to return a single skill score, and nearly everything landed on
+  the same two numbers: measured against 32 real applications, three scores in
+  four were 72 or 78 and none fell below the floor. The model now lists each
+  requirement the posting states — quoted word for word, with its category,
+  whether it is required or preferred, and whether you meet it — and the skill
+  score is computed from that list in code. Scores spread across the whole
+  range again, and `reports/runs.jsonl` records the checklist behind every one,
+  so you can see which line cost a posting its place. Because scores now run
+  lower as well as higher, look at a week of runs before retuning `min_skill`
+  or `best_threshold` in `config/search.yaml`.
+
+- **A requirement the posting calls optional no longer counts against you.**
+  "…is a plus", "preferred", "von Vorteil", a "Nice to have" heading: about a
+  quarter of the gaps the old scorer found were on lines like these. It is now
+  about one in twenty-five.
+
+- **Four kinds of requirement cap a score.** An unmet requirement for a work
+  permit, a licence or certification, a working language, or line-management
+  experience caps the skill score at the floor, so the posting still appears,
+  ranked last, for you to judge. Working language is new: a posting demanding
+  fluent German used to carry no penalty at all. Line management only counts
+  when the posting asks for managing people; leading projects, workstreams or
+  cross-functional teams does not.
+
+- **What you need to do: say in `profile/identity.md` whether you can work in
+  Switzerland.** Work-permit requirements are judged against your profile, and
+  nothing in it said so, so a posting asking for the right to work here could be
+  capped as a requirement you do not meet. A pull leaves your `identity.md`
+  alone, so add a sentence yourself — that you are authorised to work here, or
+  that you need sponsorship. The template has a "My work eligibility" section
+  to copy: `git show upstream/master:profile/identity.md`.
+
+- **A posting scoring just under the floor gets two more tries.** Scores for the
+  same posting vary between runs, by around 16 points, so a posting within 10
+  points below `min_skill` is scored again on up to two later runs before it is
+  written off, rather than dropped after one unlucky draw.
+  `data/seen_postings.json` records the tries left as `retries_left`.
+
+- **A posting that fails to score is no longer lost.** A timeout, an API error
+  or an answer that could not be read used to mark the posting as seen, so it
+  never came back. It is now scored again on the next run, and each scoring
+  call gets one retry within the run.
+
+- **A remote posting in a canton you left out no longer gets through.** A
+  posting marked remote, with Switzerland in its location, passed
+  `remote_countries` whatever its town, so a role in Chiasso TI could reach a
+  search set to the cantons around Zürich. Whenever the location names a town,
+  your canton list now decides. `remote_countries` still admits roles listed
+  only as "Switzerland".
+
+- **A write-up that runs too long is retried, and marked if it stays cut off.**
+  The occasional long write-up used to stop mid-sentence in the report. It is
+  now retried once, and if it is still cut off the report says so under it.
+
+- **Scoring costs more: about $1.03 a day instead of $0.66** on the author's
+  setup of about 65 boards. A checklist is about 840 output tokens a posting,
+  against about 230 for a single score, and the scorer now reads a posting up
+  to 12,000 characters instead of 6,000, so requirements near the end of a long
+  posting are no longer cut off. A first run over the whole catalogue is about
+  $8–15. [docs/COSTS.md](docs/COSTS.md) has the breakdown; the token summary in
+  the run log now shows output tokens too.
+
+- **`reports/runs.jsonl` records are at schema version 5.** Each scored posting
+  carries its `requirements`: every entry has the requirement as quoted, its
+  category and strength as scored, the model's own `model_category` and
+  `model_strength` before the code-side checks, a verdict, and a short piece of
+  evidence. Existing lines keep the version they were written with.
+
+- **Optional: keep what a run scored, to work on the scorer.** With
+  `JOBRADAR_CORPUS_DIR` set, a run also writes every posting it scored,
+  description included, to a dated JSONL file in that directory. It is off
+  unless set; point it somewhere your `.gitignore` covers.
+
 ## 1.3.0 — Hexagon boards (2026-09-18)
 
 - **Hexagon Robotics and Leica Geosystems can be scanned.** A new `onlyfy`

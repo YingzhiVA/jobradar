@@ -6,10 +6,11 @@ from jobradar import usage
 
 
 class _Usage:
-    def __init__(self, creation, read, inp):
+    def __init__(self, creation, read, inp, out=0):
         self.cache_creation_input_tokens = creation
         self.cache_read_input_tokens = read
         self.input_tokens = inp
+        self.output_tokens = out
 
 
 class _Response:
@@ -111,7 +112,7 @@ def _accumulate_from_threads(lock, threads=8, delay=0.02):
 
 def test_accumulate_with_a_lock_loses_nothing_under_contention():
     acc = _accumulate_from_threads(threading.Lock())
-    assert acc == {"calls": 8, "cache_creation": 8, "cache_read": 80, "input": 40}
+    assert acc == {"calls": 8, "cache_creation": 8, "cache_read": 80, "input": 40, "output": 0}
 
 
 def test_accumulate_without_a_lock_does_lose_updates():
@@ -121,3 +122,22 @@ def test_accumulate_without_a_lock_does_lose_updates():
     """
     acc = _accumulate_from_threads(None)
     assert acc["cache_read"] < 80
+
+
+def test_accumulate_counts_output_tokens():
+    """Output is half the scoring bill since the checklist scorer; a summary
+    without it understated a run's cost by that half.
+    """
+    acc = {}
+    usage.accumulate(acc, _Response(_Usage(0, 100, 20, out=840)))
+    usage.accumulate(acc, _Response(_Usage(0, 100, 20, out=860)))
+    assert acc["output"] == 1700
+
+
+def test_summary_line_reports_output(caplog):
+    acc = {}
+    usage.accumulate(acc, _Response(_Usage(10, 100, 20, out=840)))
+    logger = logging.getLogger("test_usage_output")
+    with caplog.at_level(logging.INFO, logger="test_usage_output"):
+        usage.log_summary(logger, "scoring", acc)
+    assert "840 output" in caplog.text

@@ -18,7 +18,7 @@ import anthropic
 from pydantic import BaseModel
 
 from ..models import Constraints, Posting, posting_id
-from .filters import remote_country_ok
+from .filters import names_a_place, remote_country_ok
 from .sources.base import RawPosting
 
 logger = logging.getLogger(__name__)
@@ -308,9 +308,10 @@ def _needs_canton(posting: Posting, constraints: Constraints | None) -> bool:
       (constraints.remote_ok with posting.remote True, or a remote posting
       inside constraints.remote_countries) — mirrors filters._location_ok()'s
       own short-circuits, so a confirmed-remote posting never needs a canton
-      to pass. The remote_countries case is the one that actually saves money:
-      those postings carry a country-level location by definition, so the LLM
-      could never resolve a canton for them and every call would be wasted.
+      to pass. The remote_countries case is the one that actually saves money,
+      but only for a country-level location ("Switzerland"), where the LLM could
+      never resolve a canton and every call would be wasted. A remote posting
+      that names a town still gets resolved — see filters.names_a_place.
     """
     if constraints is None or not constraints.allowed_cantons:
         return False
@@ -318,7 +319,13 @@ def _needs_canton(posting: Posting, constraints: Constraints | None) -> bool:
         return False
     if constraints.remote_ok and posting.remote is True:
         return False
-    if remote_country_ok(posting, constraints):
+    # Skip resolution only for a genuinely country-level location, where the LLM
+    # could never find a canton anyway. A remote posting that names a town still
+    # needs its canton: filters.remote_country_ok stands aside once one is
+    # resolved, so that is what keeps a remote role in an excluded canton out.
+    if remote_country_ok(posting, constraints) and not names_a_place(
+        posting.location_text, constraints
+    ):
         return False
     return True
 
