@@ -363,14 +363,32 @@ _LINE_MANAGEMENT_RE = re.compile(
     r"|lead(?:ing)?\s+and\s+(?:manag|develop)\w*[^.;]{0,30}\bteams?\b"
     r"|\blead\s+a\s+(?:dedicated|small|global)?\s*\w*\s*team\b"
     r"|accountab\w*\s+for\s+[^.;]{0,40}organi[sz]ations?"
-    r"|personelle\s+Führung|Führungserfahrung|führst[^.;]{0,80}Team"
-    r"|Mitarbeitende\s+führen",
+    # German. The first version covered only the informal "du führst …Team" and
+    # a few set phrases, and missed every other form on its first held-out runs
+    # (2026-09-24/25): the formal "Sie führen direkt 4 regionale Sales Manager",
+    # "im Führen von Mitarbeitern", "Führung von Sales-Teams", "Leitung eines
+    # Vertriebsteams", "Führung über mehrere Ebenen". So: any form of führen or
+    # Führung with people as its object, Leitung of a team, leadership across
+    # hierarchy levels, and the standard Swiss terms for people responsibility.
+    r"|personelle\s+Führung|Führungserfahrung|Mitarbeitende\s+führen"
+    r"|\bführ(?:e|en|st|t)\b[^.;]{0,80}(?:Mitarbeit|Team|Manager|Spezialist|Führungskräfte)"
+    r"|\bf[üu]hr(?:en|ung)\s+von\s+[^.;]{0,40}?(?:Mitarbeit|team|Führungskräfte)"
+    r"|\bLeitung\s+(?:eines|einer|des|der|von)\b[^.;]{0,50}?team"
+    r"|Führung\s+über\s+[^.;]{0,20}?(?:Ebenen|Hierarchie|Stufen)"
+    r"|Personalverantwortung|Personalführung|disziplinarisch\w*\s+Führung|Führungsverantwortung",
     re.IGNORECASE,
 )
 _NOT_LINE_MANAGEMENT_RE = re.compile(
     r"reporting\s+to"
     r"|cross[\s-]functional|cross[\s-]team|matrix"
-    r"|\bprojects?\b|\bprogram(?:me)?s?\b|workstreams?|transformations?",
+    r"|\bprojects?\b|\bprogram(?:me)?s?\b|workstreams?|transformations?"
+    # German counterparts of the same exclusions. "fachliche Führung" is
+    # leadership without line authority — "…Führung von Mitarbeitenden oder in
+    # einer vergleichbaren fachlichen Führungsrolle" is satisfiable without ever
+    # having managed anyone. "Bereitschaft" (willingness) turns a requirement
+    # into an attitude: "Erfahrung in einer Führungsrolle oder die Bereitschaft,
+    # Führungsverantwortung zu übernehmen".
+    r"|fachlich\w*\s+Führung|Bereitschaft|\bProjekt\w*|\bProgramm\w*",
     re.IGNORECASE,
 )
 

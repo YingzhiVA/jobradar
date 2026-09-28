@@ -40,6 +40,17 @@ follow the pattern in `eth.py` and wire it into `_build_sources()` in
 categories) gets a switch in `config/search.yaml`, see `Sources` in
 `config.py`.
 
+If the board only gives a posting's description on its own page, so your
+connector makes one request per posting, it also has to skip postings already
+seen: accept a `known: KnownPostings` argument, add the ATS to `_SKIPS_KNOWN`,
+and before each detail request return `_listing_only(...)` when `known` holds
+the posting's URL. Use the stored URL `known` gives back rather than one you
+build, because a posting's identity is a hash of its URL. A connector that
+skips this still works and passes its tests; it just re-downloads every
+posting it has ever seen on every run, which is how a run once took an hour.
+The existing per-posting connectors in `company_pages.py` show the three
+lookups (`exact`, `by_segment`, `by_leading_id`).
+
 ## Reading the run log
 
 `reports/runs.jsonl` has one JSON line per run. `search/observability.py`

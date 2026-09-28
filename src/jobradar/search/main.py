@@ -48,12 +48,19 @@ from .sources.base import (
     FetchResult,
     RawPosting,
 )
-from .sources.company_pages import CompanyPagesSource
+from .sources.company_pages import CompanyPagesSource, KnownPostings
 from .sources.eth import EthJobsSource
 from .sources.web_search import WebSearchSource
 from .writeup import write_rationales
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+# Timestamped so a slow run can be read off its log: on 2026-09-24 a run took
+# nearly an hour and, without times, which board had stalled could only be
+# inferred from request counts.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[3]  # project root, three levels above src/jobradar/search/
@@ -140,13 +147,14 @@ def _build_sources(
     client: anthropic.Anthropic,
     use_web_search: bool,
     sources_settings: Sources | None = None,
+    known: KnownPostings | None = None,
 ) -> list:
     # Note: the Arbeitnow connector (sources/job_apis.py) is intentionally not
     # wired in — its feed is effectively German-only, so it contributes ~zero
     # postings to a Switzerland-focused search while still costing a normalize
     # pass each. Re-add it here if/when the search broadens to EU-remote roles.
     optional = sources_settings or Sources()
-    sources: list = [CompanyPagesSource(companies_config.get("companies") or [])]
+    sources: list = [CompanyPagesSource(companies_config.get("companies") or [], known=known)]
     # ETH's own job board, per job-type category — which categories are worth
     # scanning depends on the user's role, so it is a config switch.
     if optional.eth_jobs.enabled:
@@ -309,9 +317,14 @@ def run(
     if dry_run:
         fetch_results = [FetchResult("fixture", _fixture_postings())]
     else:
+        # Read before fetching, not after: the per-posting board connectors skip
+        # the detail request for a posting already settled here, which is most
+        # of what they list on any given day.
+        known = KnownPostings(SeenStore(ROOT / "data" / "seen_postings.json").settled_urls())
         sources = _build_sources(
             companies_config, constraints, identity, client, use_web_search,
             sources_settings=settings.sources,
+            known=known,
         )
         fetch_results = _fetch_all(sources)
 

@@ -202,6 +202,41 @@ def test_line_management_demands_still_gate():
         assert unmet_gates([req(quote, "seniority_mismatch")]) == [quote], quote
 
 
+def test_german_line_management_demands_gate():
+    """The forms the first version missed on its first held-out runs
+    (2026-09-24/25) — formal "Sie", nouns (Führung/Leitung), infinitive
+    "im Führen von" — all verbatim from real postings.
+    """
+    for quote in [
+        "Sie führen direkt 4 regionale Sales Manager sowie 2 Outbound Sales Spezialisten",
+        "Nachgewiesene Erfolge beim Aufbau und/oder der Leitung eines Vertriebsteams, "
+        "vorzugsweise mit Führung über mehrere Ebenen",
+        "Erste Erfahrungen im Führen von Mitarbeitern",
+        "mehrjähriger Erfahrung in der Führung von Sales-Teams über mehrere Hierarchiestufen",
+        "Du führst das Team «Leistungen Rückdeckungen»",
+    ]:
+        assert unmet_gates([req(quote, "seniority_mismatch")]) == [quote], quote
+
+
+def test_german_functional_leadership_is_not_managing_people():
+    """"fachliche Führung" is leadership without line authority — the German
+    counterpart of leading cross-functionally.
+    """
+    quote = ("Erfahrung in der Führung von Mitarbeitenden oder in einer "
+             "vergleichbaren fachlichen Führungsrolle")
+    assert unmet_gates([req(quote, "seniority_mismatch")]) == []
+
+
+def test_willingness_to_lead_is_not_a_management_demand():
+    quote = ("Erfahrung in einer Führungsrolle oder die Bereitschaft, "
+             "Führungsverantwortung zu übernehmen")
+    assert unmet_gates([req(quote, "seniority_mismatch")]) == []
+
+
+def test_german_project_leadership_is_not_managing_people():
+    assert unmet_gates([req("Sie führen Projekte mit internationalen Teams", "seniority_mismatch")]) == []
+
+
 def test_leading_work_is_not_managing_people():
     for quote in [
         "leading large-scale learning transformations",

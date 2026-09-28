@@ -148,3 +148,27 @@ def test_a_retried_posting_keeps_its_first_seen_record(tmp_path):
     store.mark_seen([_p()], retryable_ids={"a"})
     assert store._seen["a"]["first_seen_at"] == first["first_seen_at"]
     assert store._seen["a"]["outcome"] == "below-floor"
+
+
+# --- settled URLs: what connectors may skip the detail call for ------------
+
+
+def test_settled_urls_lists_decided_postings(tmp_path):
+    store = SeenStore(tmp_path / "seen.json")
+    store.mark_seen([_p("a"), _p("b")])
+    assert store.settled_urls() == {"https://example.invalid/a", "https://example.invalid/b"}
+
+
+def test_a_posting_with_retries_left_is_not_settled(tmp_path):
+    """It comes back to be scored again, and scoring needs its description."""
+    store = SeenStore(tmp_path / "seen.json")
+    store.mark_seen([_p("a")])
+    store.mark_seen([_p("b")], retryable_ids={"b"})
+    assert store.settled_urls() == {"https://example.invalid/a"}
+
+
+def test_a_spent_retry_budget_settles_the_posting(tmp_path):
+    store = SeenStore(tmp_path / "seen.json")
+    for _ in range(NEAR_FLOOR_ATTEMPTS):
+        store.mark_seen([_p("b")], retryable_ids={"b"})
+    assert store.settled_urls() == {"https://example.invalid/b"}

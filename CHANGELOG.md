@@ -4,6 +4,36 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.4.1 — Faster fetching (2026-09-28)
+
+- **Fetching is much faster.** Nine board types — Workday, SmartRecruiters,
+  SuccessFactors, Avature, BambooHR, JOIN, BrassRing, Prospective and onlyfy —
+  load one page per posting for its description, and until now did so for
+  every posting on the board on every run, although nearly all of them had been
+  seen before and were dropped straight after. They now skip that page for a
+  posting already in `data/seen_postings.json` and take what they need from the
+  board's listing. On the author's setup of about 65 boards that is about 950
+  fewer page loads a day. Fetching every board took 3 minutes on the first run
+  with the change; the day before, one slow careers site had stretched it past 48.
+  Model costs do not change, since a posting already seen never reached the
+  model. A posting still due another scoring attempt is fetched in full, and
+  your first run over a board is unaffected: everything on it is new to you.
+
+- **The seniority check reads German postings.** A requirement to manage
+  people caps the skill score, but in German only the informal "du führst …
+  Team" and a few set phrases counted. So "Sie führen direkt 4 regionale Sales
+  Manager", "Erste Erfahrungen im Führen von Mitarbeitern" or "Leitung eines
+  Vertriebsteams" could slip past for a candidate who has never managed anyone.
+  They are now recognised. Leading without line authority ("fachliche
+  Führung") and a stated willingness to lead still do not count.
+
+- **The search log shows the time of each line**, so a slow board can be read
+  off the log instead of guessed at.
+
+- **`reports/runs.jsonl`: the company boards record `listing_only`,** the number
+  of postings a run took from the listing without loading their page, under
+  that source's `meta`. The record's schema version is unchanged.
+
 ## 1.4.0 — Checklist scoring (2026-09-23)
 
 - **Skill scoring works from a checklist of the posting's requirements.** The
