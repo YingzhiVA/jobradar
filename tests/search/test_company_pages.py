@@ -7,7 +7,9 @@ import pytest
 from jobradar.search.sources.base import RawPosting
 from jobradar.search.sources.company_pages import (
     _FETCHERS,
+    LISTING_ONLY,
     CompanyPagesSource,
+    KnownPostings,
     _fetch_avature,
     _fetch_bamboohr,
     _fetch_brassring,
@@ -2043,3 +2045,161 @@ def test_onlyfy_empty_board(_no_crawl_delay):
 def test_onlyfy_slug_must_be_the_subdomain(slug):
     with pytest.raises(ValueError, match="subdomain"):
         _fetch_onlyfy("H", slug, _AvatureClient({}))
+
+
+
+# --- settled postings: no detail request -----------------------------------
+#
+# A posting already settled in the seen store comes back from its listing row
+# alone. Each test pins the three things that matter: the detail request is not
+# made, the URL is the one STORED (a posting's identity is a hash of its URL, so
+# a rebuilt URL that differed would make a seen posting new again), and the
+# title is real (corroboration matches web-search leads by title).
+
+
+def _is_listing_only(posting):
+    return posting.raw.get(LISTING_ONLY) is True and posting.description == ""
+
+
+def test_successfactors_skips_the_detail_page_of_a_known_posting():
+    page_1 = "<table>{}{}</table>".format(
+        _sf_row("/ey/job/PM-Zurich/123/", "Product Manager", "Zurich, CH, 8005"),
+        _sf_row("/ey/job/Consultant-Bern/456/", "Consultant", "Berne, CH, 3008"),
+    )
+    client = _AvatureClient({
+        _sf_key(0): page_1,
+        _sf_key(2): page_1,
+        "https://careers.example.com/ey/job/PM-Zurich/123/": _SF_DETAIL,
+        "https://careers.example.com/ey/job/Consultant-Bern/456/": _SF_DETAIL,
+    })
+    known = KnownPostings(["https://careers.example.com/ey/job/PM-Zurich/123/"])
+
+    postings = _fetch_successfactors("EY", "careers.example.com/ey", client, known=known)
+
+    assert "https://careers.example.com/ey/job/PM-Zurich/123/" not in client.calls
+    assert len(client.calls) == 3  # two list pages, ONE detail
+    assert _is_listing_only(postings[0])
+    assert postings[0].title == "Product Manager"
+    assert not _is_listing_only(postings[1])
+    assert "Own the roadmap" in postings[1].description
+
+
+def test_workday_matches_a_known_posting_by_host_and_path_segment():
+    pages = {0: {"total": 2, "jobPostings": [
+        {"externalPath": "/job/Basel-City/PM_REQ-1", "title": "PM", "locationsText": "Basel (City)"},
+        {"externalPath": "/job/Zurich/Eng_REQ-2", "title": "Eng", "locationsText": "Zurich"},
+    ]}}
+    details = {
+        "/job/Basel-City/PM_REQ-1": _wd_detail(
+            title="Product Manager", desc="Own the roadmap", location="Basel (City)",
+            url="https://novartis.wd3.myworkdayjobs.com/Novartis_Careers/job/Basel-City/PM_REQ-1",
+        ),
+        "/job/Zurich/Eng_REQ-2": _wd_detail(
+            title="Engineer", desc="Build things", location="Zurich",
+            url="https://novartis.wd3.myworkdayjobs.com/Novartis_Careers/job/Zurich/Eng_REQ-2",
+        ),
+    }
+    client = _WorkdayClient(_WD_FACETS_CH, pages, details)
+    stored = "https://novartis.wd3.myworkdayjobs.com/Novartis_Careers/job/Basel-City/PM_REQ-1"
+
+    postings = _fetch_workday(
+        "Novartis", "novartis:wd3:Novartis_Careers", client, known=KnownPostings([stored])
+    )
+
+    assert client.detail_calls == 1
+    assert postings[0].url == stored  # exactly as stored, not rebuilt
+    assert postings[0].title == "PM"
+    assert _is_listing_only(postings[0])
+
+
+def test_workday_does_not_match_the_same_segment_on_another_board():
+    """Keyed by host: an identical job path on another tenant is a different posting."""
+    known = KnownPostings(["https://roche.wd3.myworkdayjobs.com/roche-ext/job/Basel-City/PM_REQ-1"])
+    assert known.by_segment("novartis.wd3.myworkdayjobs.com", "PM_REQ-1") is None
+
+
+def test_smartrecruiters_matches_a_known_posting_by_id():
+    """The stored company segment ("Acme") need not match the API slug ("acme")."""
+    pages = {0: {"totalFound": 2, "content": [
+        {"id": "1", "name": "PM Zurich", "location": {"fullLocation": "Zurich, , Switzerland"}},
+        {"id": "2", "name": "PM Remote", "location": {"fullLocation": "Berlin, , Germany"}},
+    ]}}
+    details = {
+        "1": _detail("PM Zurich", city="Zurich", country="Switzerland", desc="Own the roadmap",
+                     url="https://jobs.smartrecruiters.com/Acme/1-pm-zurich"),
+        "2": _detail("PM Remote", city="Berlin", country="Germany", desc="Growth PM",
+                     url="https://jobs.smartrecruiters.com/Acme/2-pm-remote"),
+    }
+    client = _SRClient(pages, details)
+    known = KnownPostings(["https://jobs.smartrecruiters.com/Acme/1-pm-zurich"])
+
+    postings = _fetch_smartrecruiters("Acme", "acme", client, known=known)
+
+    assert client.detail_calls == 1
+    assert postings[0].url == "https://jobs.smartrecruiters.com/Acme/1-pm-zurich"
+    assert postings[0].title == "PM Zurich"
+    assert _is_listing_only(postings[0])
+
+
+def test_bamboohr_matches_a_known_posting_by_id():
+    listing = {"result": [
+        {"id": "43", "jobOpeningName": "Data PM", "location": {"city": "Zurich"}},
+        {"id": "44", "jobOpeningName": "Engineer", "location": {"city": "Zurich"}},
+    ]}
+    details = {
+        "43": _bamboo_detail(name="Data PM", share_url="https://acme.bamboohr.com/careers/43", desc="x"),
+        "44": _bamboo_detail(name="Engineer", share_url="https://acme.bamboohr.com/careers/44", desc="y"),
+    }
+    client = _BambooClient(listing, details)
+
+    postings = _fetch_bamboohr(
+        "Acme", "acme", client, known=KnownPostings(["https://acme.bamboohr.com/careers/43"])
+    )
+
+    assert client.detail_calls == 1
+    assert postings[0].url == "https://acme.bamboohr.com/careers/43"
+    assert postings[0].title == "Data PM"
+    assert _is_listing_only(postings[0])
+
+
+def test_avature_takes_a_known_postings_title_from_its_url():
+    """Avature's title is otherwise only on the detail page, and corroboration
+    needs a title to match web-search leads against."""
+    client = _AvatureClient(_avature_pages())
+    url = "https://jobs.example.com/en_US/careers/JobDetail/Solution-Engineer/100"
+
+    postings = _fetch_avature(
+        "Siemens", "jobs.example.com:en_US/careers:Switzerland||", client,
+        known=KnownPostings([url]),
+    )
+
+    assert url not in client.calls
+    assert postings[0].url == url
+    assert postings[0].title == "Solution Engineer"
+    assert _is_listing_only(postings[0])
+
+
+def test_source_passes_known_postings_only_to_per_posting_connectors(monkeypatch):
+    received = {}
+
+    def per_posting(name, slug, client, known=None):
+        received["workday"] = known
+        return [RawPosting(source="workday", url="u1", title="t", company=name,
+                           description="", raw={LISTING_ONLY: True}),
+                RawPosting(source="workday", url="u2", title="t", company=name, description="d")]
+
+    def single_call(name, slug, client):  # would raise TypeError if handed `known`
+        return [RawPosting(source="greenhouse", url="u3", title="t", company=name, description="d")]
+
+    monkeypatch.setitem(_FETCHERS, "workday", per_posting)
+    monkeypatch.setitem(_FETCHERS, "greenhouse", single_call)
+    known = KnownPostings(["u1"])
+    result = CompanyPagesSource(
+        [{"name": "A", "ats": "workday", "slug": "a:wd1:s"},
+         {"name": "B", "ats": "greenhouse", "slug": "b"}],
+        known=known,
+    ).fetch()
+
+    assert received["workday"] is known
+    assert len(result.postings) == 3
+    assert result.meta["listing_only"] == 1  # lands in runs.jsonl

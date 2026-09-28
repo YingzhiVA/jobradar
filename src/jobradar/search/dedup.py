@@ -42,6 +42,25 @@ class SeenStore:
             if p.id not in self._seen or self._seen[p.id].get("retries_left", 0) > 0
         ]
 
+    def settled_urls(self) -> frozenset[str]:
+        """URLs of postings already decided, whose descriptions need not be fetched again.
+
+        A board connector that pays one HTTP request per posting for its
+        description (SuccessFactors, Workday, …) otherwise re-downloads every
+        posting it lists on every run, only for filter_unseen to drop nearly all
+        of them straight after. EY alone re-fetched ~150 pages a run for ~171
+        postings already in this store. Handing the connectors this set before
+        fetching lets them return a known posting from its listing row alone.
+
+        A posting still holding a near-floor retry budget is left out: it is
+        coming back to be scored again, and scoring needs its description.
+        """
+        return frozenset(
+            record["url"]
+            for record in self._seen.values()
+            if record.get("url") and not record.get("retries_left")
+        )
+
     def mark_seen(
         self,
         postings: list[Posting],

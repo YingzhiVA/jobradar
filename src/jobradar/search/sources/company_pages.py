@@ -20,7 +20,8 @@ import logging
 import re
 import time
 import xml.etree.ElementTree as ET
-from urllib.parse import urljoin
+from collections.abc import Iterable
+from urllib.parse import unquote, urljoin, urlsplit
 
 import httpx
 
@@ -29,6 +30,92 @@ from .base import FetchResult, RawPosting, parse_workplace_type, strip_html
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 15.0
+
+
+# --- postings already settled: skip their detail request -------------------
+
+# Marks a posting built from its listing row alone, with no description. See
+# KnownPostings.
+LISTING_ONLY = "listing_only"
+
+
+class KnownPostings:
+    """The seen store's settled URLs, indexed so a connector can recognise a
+    posting before paying for its detail page.
+
+    Nine connectors make one HTTP request per posting for its description, and
+    until this they made it for every posting a board listed, every run —
+    although nearly all of them were already in data/seen_postings.json and
+    were dropped by filter_unseen straight after. On 2026-09-24 that was most of
+    ~1,000 board requests, and a slow day at one careers site turned it into a
+    run of nearly an hour. A posting found here comes back from its listing row
+    instead (LISTING_ONLY, empty description), which is all that is left to do
+    with it: it still counts toward the board's raw total, and it still carries
+    its real title, because corroboration matches web-search leads by title.
+
+    Lookups always return the URL exactly as stored, never one rebuilt from the
+    listing. A posting's identity is a hash of its URL (models.posting_id), so a
+    reconstruction that differed by one character would turn a seen posting
+    into a "new" one and send it through the model again.
+    """
+
+    def __init__(self, urls: Iterable[str] = ()):
+        self.urls = frozenset(urls)
+        # (host, last path segment) -> URL, for boards whose public URL only
+        # arrives with the detail response but ends in something the listing
+        # already has: Workday's externalPath, BambooHR's opening id.
+        self._by_segment: dict[tuple[str, str], str] = {}
+        # (host, leading numeric id of the last segment) -> URL, for
+        # SmartRecruiters, whose posting URL is "<id>-<title slug>".
+        self._by_leading_id: dict[tuple[str, str], str] = {}
+        for url in self.urls:
+            parts = urlsplit(url)
+            host = parts.netloc.lower()
+            segment = unquote(parts.path.rstrip("/").rsplit("/", 1)[-1])
+            self._by_segment.setdefault((host, segment), url)
+            leading = re.match(r"\d+", segment)
+            if leading:
+                self._by_leading_id.setdefault((host, leading.group(0)), url)
+
+    def __len__(self) -> int:
+        return len(self.urls)
+
+    def exact(self, url: str) -> str | None:
+        return url if url in self.urls else None
+
+    def by_segment(self, host: str, segment: str) -> str | None:
+        return self._by_segment.get((host.lower(), unquote(segment)))
+
+    def by_leading_id(self, host: str, posting_id: str) -> str | None:
+        return self._by_leading_id.get((host.lower(), str(posting_id)))
+
+
+_NOTHING_KNOWN = KnownPostings()
+
+
+def _listing_only(
+    source: str, url: str, title: str, company: str, location: str | None = None
+) -> RawPosting:
+    """A settled posting, built from its listing row — no detail request."""
+    return RawPosting(
+        source=source,
+        url=url,
+        title=title,
+        company=company,
+        description="",
+        location=location,
+        raw={LISTING_ONLY: True},
+    )
+
+
+def _title_from_url(url: str) -> str:
+    """A readable title from a URL slug, for a board (Avature) whose title is
+    otherwise only on the detail page: ".../JobDetail/Senior-Manager-Tax/23429"
+    gives "Senior Manager Tax". Good enough for corroboration's token overlap.
+    """
+    segments = [unquote(s) for s in urlsplit(url).path.split("/") if s]
+    words = [s for s in segments if not s.isdigit() and "-" in s]
+    return words[-1].replace("-", " ") if words else ""
 
 # Share of configured companies that has to fail before the whole source is
 # called degraded (which marks the run incomplete in the report and email).
@@ -104,7 +191,9 @@ def _fetch_ashby(company_name: str, slug: str, client: httpx.Client) -> list[Raw
     return postings
 
 
-def _fetch_smartrecruiters(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_smartrecruiters(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     # The list endpoint is paginated (limit <= 100) and carries only metadata;
     # the per-posting detail endpoint carries the description (jobAd.sections)
     # and the clean postingUrl. So this is N+1 calls per company — fine for the
@@ -120,6 +209,16 @@ def _fetch_smartrecruiters(company_name: str, slug: str, client: httpx.Client) -
         for item in content:
             posting_id = item.get("id")
             if not posting_id:
+                continue
+            # The posting URL is "<id>-<title slug>" under a company segment
+            # whose capitalisation need not match the API slug, so the stored
+            # URL is found by host and id, never rebuilt.
+            stored = known.by_leading_id("jobs.smartrecruiters.com", posting_id)
+            if stored:
+                postings.append(_listing_only(
+                    "smartrecruiters", stored, item.get("name", ""), company_name,
+                    (item.get("location") or {}).get("fullLocation"),
+                ))
                 continue
             detail = client.get(f"{base}/{posting_id}")
             detail.raise_for_status()
@@ -477,7 +576,9 @@ def _workday_location(info: dict) -> str | None:
     return "; ".join(unique) or None
 
 
-def _fetch_workday(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_workday(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     # Workday needs three coordinates, not one token, so the slug is
     # "tenant:host:site", e.g. "novartis:wd3:Novartis_Careers". The host is the
     # datacenter segment (wd1/wd3/wd5/wd103) from the company's myworkdayjobs URL.
@@ -537,6 +638,16 @@ def _fetch_workday(company_name: str, slug: str, client: httpx.Client) -> list[R
         for job in page:
             external_path = job.get("externalPath")
             if not external_path:
+                continue
+            # The public URL only arrives with the detail response, but it ends
+            # in the same segment as externalPath, on the same host.
+            stored = known.by_segment(
+                f"{tenant}.{host}.myworkdayjobs.com", external_path.rstrip("/").rsplit("/", 1)[-1]
+            )
+            if stored:
+                postings.append(_listing_only(
+                    "workday", stored, job.get("title", ""), company_name, job.get("locationsText")
+                ))
                 continue
             # A posting can close between the list call and its detail call
             # (Workday's search index lags de-listing): the detail then 403s/404s.
@@ -633,7 +744,9 @@ def _bamboohr_location(job: dict) -> str | None:
     return ", ".join(p for p in parts if p) or None
 
 
-def _fetch_bamboohr(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_bamboohr(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     # BambooHR hosts each customer's board at {slug}.bamboohr.com. Its public
     # embed API lists every opening in one call (no pagination), but the
     # description only comes from the per-posting /detail endpoint — so this is
@@ -648,6 +761,13 @@ def _fetch_bamboohr(company_name: str, slug: str, client: httpx.Client) -> list[
     for item in resp.json().get("result", []):
         posting_id = item.get("id")
         if not posting_id:
+            continue
+        stored = known.by_segment(f"{slug}.bamboohr.com", str(posting_id))
+        if stored:
+            postings.append(_listing_only(
+                "bamboohr", stored, item.get("jobOpeningName", ""), company_name,
+                _bamboohr_location(item),
+            ))
             continue
         detail = client.get(f"{base}/{posting_id}/detail")
         detail.raise_for_status()
@@ -676,7 +796,9 @@ def _fetch_bamboohr(company_name: str, slug: str, client: httpx.Client) -> list[
     return postings
 
 
-def _fetch_join(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_join(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     page = client.get(f"https://join.com/companies/{slug}")
     page.raise_for_status()
     company = parse_join_company(page.text)
@@ -689,18 +811,22 @@ def _fetch_join(company_name: str, slug: str, client: httpx.Client) -> list[RawP
     while True:
         data = join_jobs_page(client, company_id, page_num)
         for item in data.get("items", []):
-            detail = client.get(f"https://join.com/api/public/jobs/{item['id']}")
-            detail.raise_for_status()
-            job = detail.json()
+            url = f"https://join.com/companies/{slug}/{item.get('idParam', '')}"
             location = ", ".join(
                 p
                 for p in ((item.get("city") or {}).get("cityName"), (item.get("country") or {}).get("name"))
                 if p
             ) or None
+            if known.exact(url):
+                postings.append(_listing_only("join", url, item.get("title", ""), company_name, location))
+                continue
+            detail = client.get(f"https://join.com/api/public/jobs/{item['id']}")
+            detail.raise_for_status()
+            job = detail.json()
             postings.append(
                 RawPosting(
                     source="join",
-                    url=f"https://join.com/companies/{slug}/{item.get('idParam', '')}",
+                    url=url,
                     title=item.get("title", ""),
                     company=company_name,
                     description=job.get("description", ""),
@@ -765,7 +891,9 @@ def _avature_location(fields: dict[str, str]) -> str | None:
     return None
 
 
-def _fetch_avature(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_avature(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     # Avature needs a host + portal path, plus an optional search path segment
     # that scopes the listing server-side — so the slug is
     # "host:portalPath:searchPathSegment", e.g.
@@ -818,6 +946,9 @@ def _fetch_avature(company_name: str, slug: str, client: httpx.Client) -> list[R
 
     postings: list[RawPosting] = []
     for url in detail_urls:
+        if known.exact(url):
+            postings.append(_listing_only("avature", url, _title_from_url(url), company_name))
+            continue
         # A posting can close between the list call and its detail call; skip
         # that one posting rather than abort the whole company (same rationale
         # as the Workday fetcher).
@@ -903,7 +1034,9 @@ def _sf_description(page_html: str) -> str:
     return strip_html(page_html[start:])
 
 
-def _fetch_successfactors(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_successfactors(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     # The slug is the search page's host[/site] prefix — "careers.ey.com/ey"
     # (site mounted under a path) or "careers.swissre.com" (mounted at root).
     # Job hrefs are host-relative, so the host is also the join base for them.
@@ -935,6 +1068,9 @@ def _fetch_successfactors(company_name: str, slug: str, client: httpx.Client) ->
         for href, title, location in rows:
             seen.add(href)
             url = urljoin(f"https://{host}/", href)
+            if known.exact(url):
+                postings.append(_listing_only("successfactors", url, title, company_name, location))
+                continue
             # Same per-posting skip as Avature/Workday: a posting that closed
             # since the list call 404s here.
             try:
@@ -1160,7 +1296,9 @@ def _brassring_location(answers: dict[str, str]) -> str | None:
     return "; ".join(v for v in values if v) or None
 
 
-def _fetch_brassring(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_brassring(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     # The slug is "host:partnerid:siteid[:Option1|Option2]", read off the
     # Talent Gateway URL (jobs.ubs.com/TGnewUI/Search/home/HomeWithPreLoad?
     # partnerid=25008&siteid=5012). One tenant runs several sites — UBS keeps
@@ -1245,6 +1383,11 @@ def _fetch_brassring(company_name: str, slug: str, client: httpx.Client) -> list
     postings: list[RawPosting] = []
     for req_id, answers, link in listed:
         url = link or f"{page_url}?partnerid={partner_id}&siteid={site_id}&PageType=JobDetails&jobid={req_id}"
+        if known.exact(url):
+            postings.append(_listing_only(
+                "brassring", url, html.unescape(answers.get("jobtitle") or ""), company_name
+            ))
+            continue
         try:
             detail = client.get(
                 page_url,
@@ -1351,7 +1494,9 @@ def _job_posting_ld(page_html: str) -> dict | None:
     return None
 
 
-def _fetch_prospective(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_prospective(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     # The slug is the career center id, optionally with a UI language:
     # "1000982" or "1000982:en" (the list's labels; postings keep their own
     # language either way).
@@ -1381,6 +1526,12 @@ def _fetch_prospective(company_name: str, slug: str, client: httpx.Client) -> li
 
     postings: list[RawPosting] = []
     for item in items:
+        if known.exact(item["url"]):
+            postings.append(_listing_only(
+                "prospective", item["url"], html.unescape(item["title"]), company_name,
+                item["location"] or None,
+            ))
+            continue
         try:
             detail = client.get(item["url"], headers=_HTML_HEADERS, follow_redirects=True)
             detail.raise_for_status()
@@ -1474,7 +1625,9 @@ def _onlyfy_cards(page_html: str) -> list[tuple[str, str, str]]:
     ]
 
 
-def _fetch_onlyfy(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_onlyfy(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     # The slug is the career page's subdomain: "hexagon-robotics" for
     # hexagon-robotics.onlyfy.jobs.
     if not _ONLYFY_SLUG_RE.fullmatch(slug or ""):
@@ -1508,6 +1661,14 @@ def _fetch_onlyfy(company_name: str, slug: str, client: httpx.Client) -> list[Ra
 
     postings: list[RawPosting] = []
     for job_id, title, info in cards:
+        url = f"{base}/en/job/{job_id}"
+        if known.exact(url):
+            # Worth the most here: every detail request on this board waits
+            # _ONLYFY_DELAY first, at the site's own request.
+            postings.append(_listing_only(
+                "onlyfy", url, title, company_name, info.partition("|")[0].strip() or None
+            ))
+            continue
         # Same per-posting skip as the other HTML boards: a posting that
         # closed since the list call is gone here.
         try:
@@ -1521,7 +1682,7 @@ def _fetch_onlyfy(company_name: str, slug: str, client: httpx.Client) -> list[Ra
         postings.append(
             RawPosting(
                 source="onlyfy",
-                url=f"{base}/en/job/{job_id}",
+                url=url,
                 title=title,
                 company=company_name,
                 description=_onlyfy_visible_text(detail.text),
@@ -1619,19 +1780,34 @@ _FETCHERS = {
 }
 
 
+# The connectors that make one HTTP request per posting for its description,
+# and so accept a KnownPostings to skip it for postings already settled. The
+# others read every description off one listing call and have nothing to skip.
+_SKIPS_KNOWN = frozenset(
+    {
+        "smartrecruiters", "workday", "bamboohr", "join", "avature",
+        "successfactors", "brassring", "prospective", "onlyfy",
+    }
+)
+
+
 class CompanyPagesSource:
     """Fetches postings for every company listed in config/companies.yaml."""
 
     name = "company_pages"
 
-    def __init__(self, companies: list[dict] | None):
+    def __init__(self, companies: list[dict] | None, known: KnownPostings | None = None):
         """companies: list of {"name": str, "ats": <one of _FETCHERS>, "slug": str}.
 
         None is accepted and means no boards: it is what YAML gives for a
         `companies:` key whose every entry is commented out, which is how the
         template ships.
+
+        known: postings already settled in the seen store, whose detail
+        requests the per-posting connectors skip (see KnownPostings).
         """
         self.companies = [c for c in (companies or []) if isinstance(c, dict)]
+        self.known = known or _NOTHING_KNOWN
 
     def fetch(self) -> FetchResult:
         postings: list[RawPosting] = []
@@ -1643,6 +1819,7 @@ class CompanyPagesSource:
         # pre-location-filter) is deliberate: it measures board liveness, not
         # Swiss relevance, so a board full of foreign ads still reads as alive.
         company_counts: dict[str, int] = {}
+        listing_only_total = 0
         with httpx.Client(timeout=_TIMEOUT) as client:
             for company in self.companies:
                 name = company.get("name") or "?"
@@ -1671,7 +1848,10 @@ class CompanyPagesSource:
                     company_counts[name] = 0
                     continue
                 try:
-                    found = fetcher(company["name"], company["slug"], client)
+                    if ats in _SKIPS_KNOWN:
+                        found = fetcher(company["name"], company["slug"], client, known=self.known)
+                    else:
+                        found = fetcher(company["name"], company["slug"], client)
                 except (httpx.HTTPError, ValueError) as exc:
                     # ValueError covers a malformed connector-specific slug (e.g.
                     # a Workday "tenant:host:site") — skip that one company, don't
@@ -1682,6 +1862,13 @@ class CompanyPagesSource:
                     continue
                 postings.extend(found)
                 company_counts[name] = len(found)
+                listing_only = sum(1 for p in found if p.raw.get(LISTING_ONLY))
+                if listing_only:
+                    listing_only_total += listing_only
+                    logger.info(
+                        "%s: %d of %d postings already seen, detail requests skipped",
+                        name, listing_only, len(found),
+                    )
         detail = (
             f"{len(skipped)} of {len(self.companies)} companies skipped: {', '.join(skipped)}"
             if skipped
@@ -1697,5 +1884,11 @@ class CompanyPagesSource:
             and len(skipped) / len(self.companies) >= _DEGRADED_SKIP_FRACTION
         )
         return FetchResult(
-            self.name, postings, ok=ok, detail=detail, meta={"company_counts": company_counts}
+            self.name,
+            postings,
+            ok=ok,
+            detail=detail,
+            # listing_only lands in runs.jsonl, so the saving is measurable run
+            # over run rather than only visible in one log.
+            meta={"company_counts": company_counts, "listing_only": listing_only_total},
         )
