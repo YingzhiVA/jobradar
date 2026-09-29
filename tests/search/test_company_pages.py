@@ -1286,6 +1286,43 @@ def test_avature_bad_slug_raises():
         _fetch_avature("Acme", "just-a-token", _AvatureClient({}))
 
 
+def test_avature_pages_by_offset_alone_and_reads_json_ld_location():
+    # careers.mt.com: pagination links carry only "?jobOffset=N" (no
+    # RecordsPerPage), and detail pages have no labeled location field — the
+    # location is in the page's schema.org JobPosting.
+    detail = "https://jobs.example.com/en_US/careers/JobDetail/1"
+    page_1 = (
+        f'<a href="{detail}/10">Lab Engineer</a><a href="{detail}/11">Service Technician</a>'
+        f'<a href="{_AVATURE_SEARCH_URL}?jobOffset=0">1</a>'
+        f'<a href="{_AVATURE_SEARCH_URL}?jobOffset=2">2</a>'
+        f'<a href="{_AVATURE_SEARCH_URL}?jobOffset=4">3</a>'
+    )
+    ld = (
+        '<script type="application/ld+json">{"@type": "JobPosting", "title": "Lab Engineer",'
+        ' "jobLocation": {"@type": "Place", "address": {"addressLocality": "Nänikon-Greifensee",'
+        ' "addressRegion": "Zürich", "addressCountry": "Switzerland"}}}</script>'
+    )
+    client = _AvatureClient(
+        {
+            _AVATURE_SEARCH_URL: page_1,
+            (_AVATURE_SEARCH_URL, (("jobOffset", 2),)): f'<a href="{detail}/12">Data Scientist</a>',
+            (_AVATURE_SEARCH_URL, (("jobOffset", 4),)): "<p>No results</p>",
+            f"{detail}/10": _avature_detail("Lab Engineer", "Build balances", {}).replace(
+                "</head>", f"{ld}</head>"
+            ),
+            # og:title escaped twice, as careers.mt.com serves it
+            f"{detail}/11": _avature_detail("Montage &amp;amp; Service", "Fix balances", {}),
+            f"{detail}/12": _avature_detail("Data Scientist", "Model balances", {}),
+        }
+    )
+
+    postings = _fetch_avature("Mettler-Toledo", "jobs.example.com:en_US/careers:Switzerland||", client)
+
+    assert [p.title for p in postings] == ["Lab Engineer", "Montage & Service", "Data Scientist"]
+    assert postings[0].location == "Nänikon-Greifensee, Zürich"
+    assert postings[1].location is None
+
+
 # --- SuccessFactors ---
 
 
@@ -2177,6 +2214,28 @@ def test_avature_takes_a_known_postings_title_from_its_url():
     assert postings[0].url == url
     assert postings[0].title == "Solution Engineer"
     assert _is_listing_only(postings[0])
+
+
+def test_avature_takes_a_known_postings_title_from_the_list_when_its_url_has_none():
+    # jobs.siemens.com and careers.mt.com detail URLs carry only an id; the
+    # first link's text is the title, a later "Learn more" link repeats the href.
+    url = "https://jobs.example.com/en_US/careers/JobDetail/517332"
+    client = _AvatureClient(
+        {
+            _AVATURE_SEARCH_URL: (
+                f'<a class="link" href="{url}"> Inside Sales &amp; Support </a>'
+                f'<a href="{url}">Learn more</a>'
+            )
+        }
+    )
+
+    postings = _fetch_avature(
+        "Siemens", "jobs.example.com:en_US/careers:Switzerland||", client,
+        known=KnownPostings([url]),
+    )
+
+    assert [p.title for p in postings] == ["Inside Sales & Support"]
+    assert client.calls == [_AVATURE_SEARCH_URL]
 
 
 def test_source_passes_known_postings_only_to_per_posting_connectors(monkeypatch):

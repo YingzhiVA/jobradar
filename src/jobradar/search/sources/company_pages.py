@@ -355,10 +355,13 @@ def _fetch_workable(company_name: str, slug: str, client: httpx.Client) -> list[
     return postings
 
 
-def _teamtailor_location(jobposting: dict) -> str | None:
-    # schema.org JobPosting jobLocation -> address. addressCountry is a code
-    # ("CH"), so use locality + region (human-readable) for the location filter.
+def _job_posting_location(jobposting: dict) -> str | None:
+    # schema.org JobPosting jobLocation -> address. addressCountry is often a
+    # code ("CH"), so use locality + region (human-readable) for the location
+    # filter. jobLocation is a list on Teamtailor, a single Place on Avature.
     locations = jobposting.get("jobLocation") or []
+    if isinstance(locations, dict):
+        locations = [locations]
     if not locations:
         return None
     address = (locations[0] or {}).get("address") or {}
@@ -385,7 +388,7 @@ def _fetch_teamtailor(company_name: str, slug: str, client: httpx.Client) -> lis
                 title=item.get("title") or jobposting.get("title", ""),
                 company=company_name,
                 description=description,
-                location=_teamtailor_location(jobposting),
+                location=_job_posting_location(jobposting),
                 raw={"id": item.get("id"), "date_published": item.get("date_published")},
             )
         )
@@ -853,9 +856,14 @@ _HTML_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) jobradar"
 }
 
-# --- Avature ("Careers Marketplace": Siemens, Deloitte CH, Siemens Healthineers) ---
+# --- Avature ("Careers Marketplace": Siemens, Deloitte CH, Mettler-Toledo) ---
 
-_AVATURE_JOB_LINK_RE = re.compile(r'href="([^"#?]*/JobDetail/[^"#?]+)')
+# The anchor text is the posting's title on the first link to it (a later
+# "Learn more" link repeats the href on jobs.siemens.com). Detail URLs don't
+# always carry a title slug ("JobDetail/1/22476" on careers.mt.com,
+# "JobDetail/517332" on jobs.siemens.com), so the list is the one place a
+# settled posting gets its title without a detail request.
+_AVATURE_JOB_LINK_RE = re.compile(r'href="([^"#?]*/JobDetail/[^"#?]+)[^"]*"[^>]*>(.*?)</a>', re.S)
 # Pagination links name their offset param after the site's record type
 # ("folderOffset" on jobs.siemens.com, "jobOffset" on apply.deloitte.ch), so the
 # prefix and the site's fixed page size are read off the page's own pagination
@@ -863,6 +871,9 @@ _AVATURE_JOB_LINK_RE = re.compile(r'href="([^"#?]*/JobDetail/[^"#?]+)')
 # the RSS feed at SearchJobs/.../feed/ is capped at 20 items with no working
 # offset at all — verified 2026-08-12 — which is why this parses HTML instead.)
 _AVATURE_PAGINATION_RE = re.compile(r"([A-Za-z]+)RecordsPerPage=(\d+)&(?:amp;)?\1Offset=\d+")
+# Some sites link pages by offset alone ("?jobOffset=10" on careers.mt.com);
+# the page size is then the smallest nonzero offset linked.
+_AVATURE_OFFSET_RE = re.compile(r"[?&;]([A-Za-z]+)Offset=(\d+)")
 _AVATURE_OG_TITLE_RE = re.compile(r'<meta property="og:title" content="([^"]*)"')
 # A detail page splits its content over several article--details blocks: the
 # first holds the labeled metadata fields, a later one the "Job description"
@@ -912,28 +923,37 @@ def _fetch_avature(
     if search_path:
         search_url += f"{search_path}/"
 
-    detail_urls: list[str] = []
+    # detail url -> title from the list (dicts keep insertion order)
+    listed: dict[str, str] = {}
 
     def collect(page_html: str) -> int:
         new = 0
-        for href in _AVATURE_JOB_LINK_RE.findall(page_html):
+        for href, anchor in _AVATURE_JOB_LINK_RE.findall(page_html):
             url = urljoin(f"https://{host}/", html.unescape(href))
-            if url not in detail_urls:
-                detail_urls.append(url)
+            if url not in listed:
+                listed[url] = strip_html(anchor)
                 new += 1
         return new
 
     resp = client.get(search_url, headers=_HTML_HEADERS, follow_redirects=True)
     resp.raise_for_status()
     collect(resp.text)
+    prefix, page_size, page_params = "", 0, {}
     pagination = _AVATURE_PAGINATION_RE.search(resp.text)
     if pagination:
         prefix, page_size = pagination.group(1), int(pagination.group(2))
+        page_params = {f"{prefix}RecordsPerPage": page_size}
+    else:
+        offsets = [(p, int(o)) for p, o in _AVATURE_OFFSET_RE.findall(resp.text) if int(o) > 0]
+        if offsets:
+            prefix = offsets[0][0]
+            page_size = min(o for p, o in offsets if p == prefix)
+    if prefix:
         offset = page_size
         while True:
             resp = client.get(
                 search_url,
-                params={f"{prefix}RecordsPerPage": page_size, f"{prefix}Offset": offset},
+                params={**page_params, f"{prefix}Offset": offset},
                 headers=_HTML_HEADERS,
                 follow_redirects=True,
             )
@@ -945,9 +965,10 @@ def _fetch_avature(
             offset += page_size
 
     postings: list[RawPosting] = []
-    for url in detail_urls:
+    for url, listed_title in listed.items():
         if known.exact(url):
-            postings.append(_listing_only("avature", url, _title_from_url(url), company_name))
+            title = listed_title or _title_from_url(url)
+            postings.append(_listing_only("avature", url, title, company_name))
             continue
         # A posting can close between the list call and its detail call; skip
         # that one posting rather than abort the whole company (same rationale
@@ -965,12 +986,19 @@ def _fetch_avature(
             RawPosting(
                 source="avature",
                 url=url,
-                title=html.unescape(title_match.group(1)) if title_match else "",
+                # Unescaped twice: careers.mt.com escapes og:title twice
+                # ("Montage &amp;amp; Prüftechnik").
+                title=html.unescape(html.unescape(title_match.group(1)))
+                if title_match
+                else listed_title,
                 company=company_name,
                 # Metadata fields (location, workload %, organization) lead,
                 # prose follows — both useful context for scoring, so keep all.
                 description="\n\n".join(strip_html(block) for block in articles).strip(),
-                location=_avature_location(fields),
+                # careers.mt.com has no labeled location field, only the
+                # schema.org JobPosting every detail page carries.
+                location=_avature_location(fields)
+                or _job_posting_location(_job_posting_ld(detail.text) or {}),
                 raw=fields,
             )
         )

@@ -172,8 +172,15 @@ def test_shipped_config_matches_the_documented_defaults():
     root = Path(__file__).resolve().parents[1]
     shipped = load_search_settings(root)
     # The two situation switches (rav, sources) are legitimately flipped in a
-    # private copy, so only the dials are pinned to their defaults here.
-    assert replace(shipped, rav=Rav(), sources=Sources()) == SearchSettings()
+    # private copy, and min_interest is tuned to taste (a private copy runs it
+    # at 40), so those follow the file; every other dial is pinned to its
+    # default here.
+    defaults = SearchSettings()
+    expected = replace(
+        defaults,
+        thresholds=replace(defaults.thresholds, min_interest=shipped.thresholds.min_interest),
+    )
+    assert replace(shipped, rav=Rav(), sources=Sources()) == expected
 
 
 def test_describe_mentions_every_dial():
