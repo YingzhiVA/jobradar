@@ -41,7 +41,7 @@ switch on. Rough figures with the default models, from September 2026:
 | Activity | About |
 | --- | --- |
 | A daily run with no boards switched on (web search only) | $0.25–0.30 |
-| A daily run on the author's setup of about 65 boards | $1.03 |
+| A daily run on the author's setup of about 65 boards | $0.90 |
 | One drafted application (CV + cover letter) | $0.25–0.45 |
 
 **Your first run is the exception.** It treats every posting currently open
@@ -53,42 +53,60 @@ no board ships switched on: start with five or ten, and add more a few at a
 time. [docs/COSTS.md](docs/COSTS.md) has the details and how to check your
 own spend.
 
-Create a dedicated API key named `jobradar` in the Claude Console and set a
-monthly spend limit there; then its usage shows on its own and cannot exceed
-what you chose.
+The quick start below has you make a dedicated API key with a monthly spend
+limit, so the tool's usage shows on its own and cannot exceed what you chose.
 
 ## Quick start (about ten minutes)
 
 1. **Make your own private copy.** Click **Use this template → Create a new
    repository** on GitHub and choose **Private**. Your CV and application
    drafts will live in that repo, so it must not be public.
-2. **Clone and install.**
+2. **Get a Claude API key.** Sign in to the [Claude
+   Console](https://platform.claude.com/), add some credit under **Billing**
+   (a new account has none, and $10 covers your first run and more than a
+   week of daily runs), then create a key under **API keys**.
+   Name it `jobradar` and set a monthly spend limit, so its usage shows on
+   its own and can never exceed what you chose. Copy the key when it is
+   shown: it starts with `sk-ant-`, and the Console won't show it again.
+3. **Clone and install.**
 
    ```bash
    git clone https://github.com/<you>/jobradar.git && cd jobradar
    python3 -m venv .venv
    ./.venv/bin/pip install -e ".[dev]"
-   cp .env.example .env        # then paste your ANTHROPIC_API_KEY into .env
+   cp .env.example .env        # then paste your key from step 2 into .env
    ```
 
-3. **Tell it who you are.** Two files, both Markdown:
+4. **Tell it who you are.** Two files, both Markdown:
    - `profile/cvs/` — add your CV as a `.md` file (one per role type if you
      have several), then delete `example.md`. A Word CV (`.docx`) works too:
-     drop it in and the setup check in step 6 makes the Markdown for you.
+     drop it in and the setup check in step 7 makes the Markdown for you.
+
+     **Use your full base CV, not one you trimmed for an earlier
+     application.** Everything reads from it. Skill fit is scored against it.
+     When you apply, the tailored CV is made by cutting bullets from it for
+     that one posting, and nothing is ever added that it doesn't contain.
+     Experience left out here can't earn a match and can't appear in an
+     application. So include every role, project and skill you would want
+     considered, and write each bullet as well as you can. Tailoring picks
+     bullets, reorders them and matches their wording to the posting, but it
+     won't fix a weak one. If you keep one CV per role type, each one should
+     still cover all your experience. They should differ in emphasis, not in
+     what they leave out.
    - `profile/identity.md` — replace the template with a real page about what
      you are moving toward and away from. This drives interest fit; vague
      text gets vague scores.
-4. **Tell it what is non-negotiable** in `config/constraints.yaml`: cantons,
+5. **Tell it what is non-negotiable** in `config/constraints.yaml`: cantons,
    workload range, office days. The shipped example is three cantons around
    Zürich.
-5. **Pick the company boards to scan.** None are switched on.
+6. **Pick the company boards to scan.** None are switched on.
    `config/companies.yaml` groups them by industry, with the list of sections
    at the top of the file. Remove the `# ` from all three lines of each board
    you want. **Start with five or ten**: your first run scores every open
    posting on the boards you chose, so it costs far more than a normal day
    (see [What it costs](#what-it-costs)). You can add more later, a few at a
    time. With none chosen, only web search runs.
-6. **Check the setup**, then do a dry run (real Claude calls on sample
+7. **Check the setup**, then do a dry run (real Claude calls on sample
    postings, no live sources), then a real one:
 
    ```bash

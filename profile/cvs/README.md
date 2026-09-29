@@ -19,6 +19,12 @@ document the expected format.
 If you only have one CV, just add the one file; the tool works fine with a
 single CV (every posting is simply scored against it).
 
+Each file should be a complete base CV, not a version trimmed for one
+application. Scoring only sees what these files contain, and a tailored CV is
+made by cutting bullets from one of them, never by adding to it. Role-type
+variants should differ in emphasis and ordering, not in which experience they
+leave out.
+
 ## From Word
 
 If your CV is a Word file, just put the `.docx` here. The setup check

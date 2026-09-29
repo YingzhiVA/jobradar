@@ -61,7 +61,7 @@ international-board example above.
 | Pass every filter without a model call | 716 |
 
 Adding Jobgether's 80, the whole catalogue comes to roughly **$8–15** in model
-calls at the per-call rates above, against about $1.03 for a normal day —
+calls at the per-call rates above, against about $0.90 for a normal day —
 once, and then back to normal. The
 Swiss boards dominate: AXA alone put 167 postings through, EY 99, Deloitte
 86. With five or ten boards a first run is usually one to two dollars, though
@@ -75,7 +75,11 @@ when more than fifteen are switched on before your first run.
 
 ### A daily run
 
-About **$1.03 a day** for the author's setup of about 65 boards. A typical
+About **$0.90 a day** for the author's setup of about 65 boards: the average
+of four daily runs in late September 2026, as the Claude Console reported it.
+The breakdown below is worked out from one run's token counts and comes to a
+little more, about $1.03; the day-to-day figure moves with how many postings
+reach the scorer. A typical
 weekday there fetches about a thousand new postings, most of them from one
 large international board and dropped for free by the location filter, with
 about 80 reaching the scorer, 3 surfaced and 5 web searches:
