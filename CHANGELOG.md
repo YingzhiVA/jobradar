@@ -4,6 +4,17 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.5.1 — RAV postcode check (2026-09-29)
+
+- **RAV postcodes match the posting's town.** When a posting names only a
+  town, the model fills in a postcode from memory, and on postings listing
+  several locations it gave Zug roles Lugano's 6900. The postcode is now
+  checked against the location for about twenty Swiss towns that postings
+  name often: a guess that belongs to none of the named towns is replaced by
+  the first one's postcode. Towns outside that list keep the model's guess.
+  Postcodes already in `applications.json` are not changed; check the PLZ
+  column of `--rav` before filing.
+
 ## 1.5.0 — Robotics and industry boards (2026-09-29)
 
 - **Nine more boards in the example watchlist.** Robotics and drones:
