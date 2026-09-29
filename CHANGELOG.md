@@ -4,6 +4,27 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.5.0 — Robotics and industry boards (2026-09-29)
+
+- **Nine more boards in the example watchlist.** Robotics and drones:
+  Wingtra, Voliro, Gravis Robotics, Fixposition and the RAI Institute's Zürich
+  office. Industry, hardware & quantum: ABB, Hitachi Energy, Mettler-Toledo and
+  Zurich Instruments. Leica Geosystems is switched back on, and Stryker
+  (Selzach) is listed but switched off.
+
+- **Avature boards that page by offset alone are read in full.** Mettler-Toledo's
+  careers site links its result pages as `?jobOffset=10` with no page-size
+  parameter, and only its first 10 postings were fetched. The connector now
+  reads the page size off those links. A posting whose page has no labelled
+  location field takes its location from the page's schema.org data instead of
+  arriving without one, which the canton filter would have dropped.
+
+- **Already-seen Avature postings keep their titles.** A seen posting is taken
+  from the board's listing without a detail request, and its title was read
+  from its web address. Siemens' and Mettler-Toledo's addresses carry only an
+  id, so those postings had no title, which weakened matching them against
+  web-search leads. The title now comes from the listing itself.
+
 ## 1.4.1 — Faster fetching (2026-09-28)
 
 - **Fetching is much faster.** Nine board types — Workday, SmartRecruiters,
