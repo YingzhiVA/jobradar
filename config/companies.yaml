@@ -27,9 +27,9 @@
 #   Consulting & IT services (8)
 #   Banking, insurance & finance data (6)
 #   Pharma & biotech (5)
-#   Medtech & digital health (7)
-#   Robotics, drones & aerospace (7)
-#   Industry, hardware & quantum (6)
+#   Medtech & digital health (8)
+#   Robotics, drones & aerospace (12)
+#   Industry, hardware & quantum (10)
 #   Property & climate (6)
 #   Consumer, marketplaces & travel (3)
 #   Job intermediaries (1) — not employers; read the note before switching on
@@ -353,6 +353,13 @@ companies:
   # - name: Oviva
   #   ats: ashby
   #   slug: oviva
+  # Stryker's orthopaedics site in Selzach SO (the only Swiss location on its
+  # board): R&D, biomechanics testing, manufacturing. A global Workday board
+  # (~1500 postings) scoped to Switzerland server-side; the country facet is
+  # spelled `Location_Country`, as on Julius Baer's board.
+  # - name: Stryker
+  #   ats: workday
+  #   slug: stryker:wd1:StrykerCareers
 
   # ── Robotics, drones & aerospace ───────────────────────────────────────────
   # ETH Zurich robotics spin-off.
@@ -381,6 +388,33 @@ companies:
   # - name: Hexagon Robotics
   #   ats: onlyfy
   #   slug: hexagon-robotics
+  # Mapping drones (WingtraOne/WingtraRAY), Zürich; global sales roles share
+  # the board. The slug has a "-2" suffix, read off the careers page's Lever
+  # call.
+  # - name: Wingtra
+  #   ats: lever
+  #   slug: wingtra-2
+  # Contact-inspection drones, Zürich. The BambooHR subdomain is "voliroar",
+  # not "voliro".
+  # - name: Voliro
+  #   ats: bamboohr
+  #   slug: voliroar
+  # Autonomous construction machinery (ETH spin-off), Zürich, with field teams
+  # in the US and UK.
+  # - name: Gravis Robotics
+  #   ats: lever
+  #   slug: gravisrobotics
+  # GNSS/sensor-fusion positioning for robots and autonomous vehicles,
+  # Schlieren ZH.
+  # - name: Fixposition
+  #   ats: bamboohr
+  #   slug: fixposition
+  # RAI Institute (Robotics and AI Institute, ex-Boston Dynamics AI Institute).
+  # This Lever board is the one its careers page links to and holds only the
+  # Zürich office's roles (internships, as of Sept 2026).
+  # - name: RAI Institute
+  #   ats: lever
+  #   slug: rai
 
   # ── Industry, hardware & quantum ───────────────────────────────────────────
   # All of Siemens Schweiz (every division incl. Smart Infrastructure — the
@@ -391,6 +425,21 @@ companies:
   # - name: Siemens
   #   ats: avature
   #   slug: "jobs.siemens.com:en_US/externaljobs:Switzerland||"
+  # ABB. careers.abb is a Phenom front-end over an open Workday board, as with
+  # Roche and J&J. Scoped to Switzerland by the locationCountry facet (~40
+  # postings): mostly Baden, Dättwil and Untersiggenthal AG, plus Quartino TI
+  # and Morges VD, which the location gate drops. No robotics roles: ABB
+  # Robotics is being sold to SoftBank (closing mid-to-late 2026).
+  # - name: ABB
+  #   ats: workday
+  #   slug: abb:wd3:External_Career_Page
+  # Hitachi Energy (ex-ABB Power Grids), HQ in Zürich, plants in Lenzburg,
+  # Baden, Turgi and Dättwil AG. The board is the whole Hitachi group's
+  # (~4000 postings), scoped to Switzerland by the locationCountry facet
+  # (~90); every Swiss posting there is Hitachi Energy's.
+  # - name: Hitachi Energy
+  #   ats: workday
+  #   slug: hitachi:wd1:hitachi
   # Leica Geosystems, Hexagon's Geosystems division (surveying and reality
   # capture), Heerbrugg SG. A global board (37 postings in 7 countries) cut to
   # its Swiss ones by the connector's country filter; most ads are in German.
@@ -410,6 +459,20 @@ companies:
   # - name: Corintis
   #   ats: teamtailor
   #   slug: corintis
+  # Mettler-Toledo: precision instruments (lab, industrial and product
+  # inspection), operational HQ in Greifensee/Nänikon ZH, labs in Urdorf.
+  # careers.mt.com is Avature. The "Switzerland||" segment is full-text, so
+  # about 20 of its ~45 results are foreign postings that mention Switzerland;
+  # the location gate drops those before any LLM cost. (The board's Country
+  # filter is an autocomplete the connector can't reach.)
+  # - name: Mettler-Toledo
+  #   ats: avature
+  #   slug: "careers.mt.com:en_US/careers:Switzerland||"
+  # Zurich Instruments: control electronics for quantum computing and test &
+  # measurement (Rohde & Schwarz group), Zürich, with sales offices abroad.
+  # - name: Zurich Instruments
+  #   ats: lever
+  #   slug: zurichinstruments
   # - name: ID Quantique
   #   ats: greenhouse
   #   slug: idquantique
