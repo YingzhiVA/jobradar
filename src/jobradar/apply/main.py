@@ -51,6 +51,7 @@ from . import lint, pdf, progress
 from .extract import JDExtract, extract_jd
 from .fetch import MIN_USABLE_CHARS, fetch_page
 from .findings import Finding, load_findings
+from .postcode import resolve_postcode
 from .prep import generate_prep, render_prep_md
 from .queue import QueueEntry, load_queue
 from .tailor import build_jd_block, language_name, translate_cv, write_application_docs
@@ -485,7 +486,7 @@ def process_entry(
         uid=uid,
         title=jd.title,
         company=jd.company,
-        postcode=jd.postcode.strip(),
+        postcode=resolve_postcode(jd.location, jd.postcode),
         prepared_on=today,
         tier="full" if entry.full else "quick",
         base_cv=base_cv,
