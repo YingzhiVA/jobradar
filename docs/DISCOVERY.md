@@ -24,7 +24,8 @@ grouped by industry, that you can switch on by hand.
 
 It pulls candidate company names from two sources, then probes each against
 the supported applicant-tracking systems (Greenhouse / Lever / Ashby /
-Personio / SmartRecruiters / Recruitee / Workable / Teamtailor / BambooHR)
+Personio / SmartRecruiters / Recruitee / Workable / Teamtailor / BambooHR /
+Breezy)
 with a handful of common slug guesses:
 
 1. **web search** — Swiss-operating companies that fit your profile (the

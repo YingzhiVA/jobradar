@@ -15,7 +15,7 @@ This is a setup-time/occasional helper, not part of the daily run:
 
 Candidate names (from either source) are probed against the supported ATSs'
 public APIs (Greenhouse / Lever / Ashby / Personio / Recruitee / Workable /
-Teamtailor / join / BambooHR / SmartRecruiters) with a handful of common slug
+Teamtailor / join / BambooHR / Breezy / SmartRecruiters) with a handful of common slug
 guesses (GET the board and check it has at least one live ad). Because the
 probe is ground truth, the discovery step can be fuzzy: a wrong or hallucinated
 name simply fails the probe and is dropped, so false positives cost nothing. A
@@ -26,7 +26,7 @@ shadowing a live one on a later ATS.
 Results are written to data/discovered_companies.yaml as SUGGESTIONS, never
 auto-merged into companies.yaml: slug-guessing can still produce false positives
 (a guessed slug coincidentally belonging to an unrelated company of a similar
-name). Greenhouse, SmartRecruiters, Recruitee and Workable expose a company_name
+name). Greenhouse, SmartRecruiters, Recruitee, Workable and Breezy expose a company_name
 to sanity-check against — Lever, Ashby and BambooHR don't, so review those
 manually.
 
@@ -127,6 +127,9 @@ _ATS_PROBE_URLS = {
     # 302-redirects to the marketing site (status != 200, filtered out below), so a
     # 200 whose body carries a `result` list is a genuine board.
     "bamboohr": "https://{slug}.bamboohr.com/careers/list",
+    # Breezy hosts each customer at {slug}.breezy.hr; a non-customer subdomain
+    # answers 404. The feed is a bare JSON list, like Lever's.
+    "breezy": "https://{slug}.breezy.hr/json",
     "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=1",
 }
 
@@ -260,7 +263,7 @@ def probe_company(
             # Require ≥1 posting for every ATS. For most, the probe response
             # already carries the full list, so this is a presence-of-content
             # check with no extra HTTP.
-            if ats == "lever" and not (isinstance(data, list) and data):
+            if ats in ("lever", "breezy") and not (isinstance(data, list) and data):
                 continue
             if ats in ("greenhouse", "ashby") and not data.get("jobs"):
                 continue
@@ -287,6 +290,8 @@ def probe_company(
             elif ats == "teamtailor":
                 jp = data["items"][0].get("_jobposting") or {}
                 verified_name = (jp.get("hiringOrganization") or {}).get("name")
+            elif ats == "breezy":
+                verified_name = (data[0].get("company") or {}).get("name")
 
             return CompanyMatch(name=company_name, ats=ats, slug=slug, verified_company_name=verified_name)
     return None

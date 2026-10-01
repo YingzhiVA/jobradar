@@ -43,7 +43,7 @@ class KnownPostings:
     """The seen store's settled URLs, indexed so a connector can recognise a
     posting before paying for its detail page.
 
-    Nine connectors make one HTTP request per posting for its description, and
+    Ten connectors make one HTTP request per posting for its description, and
     until this they made it for every posting a board listed, every run —
     although nearly all of them were already in data/seen_postings.json and
     were dropped by filter_unseen straight after. On 2026-09-24 that was most of
@@ -1786,6 +1786,103 @@ def _fetch_google(company_name: str, slug: str, client: httpx.Client) -> list[Ra
     return postings
 
 
+# --- BreezyHR (Verity) -------------------------------------------------------
+
+
+# The posting text on a Breezy page, for postings without JSON-LD (Breezy
+# leaves it off those it doesn't list on Google Jobs, such as an open
+# application). The apply buttons' container always follows it.
+_BREEZY_DESCRIPTION_RE = re.compile(
+    r'<div class="description">(.*?)</div>\s*<div class="apply-container"', re.DOTALL
+)
+
+
+def _breezy_locations(job: dict) -> list[dict]:
+    # `locations` is every location; a posting outside Google Jobs leaves it
+    # empty and has only its primary `location`.
+    return [loc for loc in job.get("locations") or [job.get("location")] if loc]
+
+
+def _breezy_location(job: dict) -> str | None:
+    # Each Breezy location is structured city / state / country, plus
+    # is_remote. Spell each one out ("Zurich, Switzerland") and join several
+    # with ";", which the location filter reads as separate segments. Breezy's
+    # own `name` ("Zurich, CH") uses the country code, which canton resolution
+    # and remote_countries can't read.
+    segments = []
+    for loc in _breezy_locations(job):
+        parts = [
+            loc.get("city"),
+            (loc.get("state") or {}).get("name"),
+            (loc.get("country") or {}).get("name"),
+        ]
+        if loc.get("is_remote"):
+            parts.append("Remote")
+        segment = ", ".join(p for p in parts if p) or loc.get("name")
+        if segment:
+            segments.append(segment)
+    return "; ".join(segments) or None
+
+
+def _breezy_remote(job: dict) -> bool | None:
+    # Remote only when every location is; a role offered remote in one place
+    # and on-site in another is left undecided for the location filter.
+    flags = {loc["is_remote"] for loc in _breezy_locations(job) if "is_remote" in loc}
+    return flags.pop() if len(flags) == 1 else None
+
+
+def _fetch_breezy(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
+    # Breezy hosts each customer's board at {slug}.breezy.hr (a non-customer
+    # subdomain answers 404). Its /json feed lists every published posting in
+    # one call but carries no description, so each new posting costs one
+    # request for its public page, which embeds a schema.org JobPosting.
+    resp = client.get(f"https://{slug}.breezy.hr/json")
+    resp.raise_for_status()
+    postings = []
+    for job in resp.json():
+        url = job.get("url")
+        if not url:
+            continue
+        title = job.get("name", "")
+        location = _breezy_location(job)
+        if known.exact(url):
+            postings.append(_listing_only("breezy", url, title, company_name, location))
+            continue
+        try:
+            detail = client.get(url)
+            detail.raise_for_status()
+        except httpx.HTTPError as exc:
+            # Closed between the listing call and this one.
+            logger.info("Skipping unavailable %s posting %s: %s", company_name, url, exc)
+            continue
+        posting = _job_posting_ld(detail.text) or {}
+        description = posting.get("description")
+        if not description:
+            match = _BREEZY_DESCRIPTION_RE.search(detail.text)
+            description = match.group(1) if match else detail.text
+        postings.append(
+            RawPosting(
+                source="breezy",
+                url=url,
+                title=title or posting.get("title", ""),
+                company=company_name,
+                description=strip_html(description),
+                location=location,
+                remote=_breezy_remote(job),
+                raw={
+                    "id": job.get("id"),
+                    "department": job.get("department"),
+                    "type": (job.get("type") or {}).get("name"),
+                    "salary": job.get("salary") or None,
+                    "published_date": job.get("published_date"),
+                },
+            )
+        )
+    return postings
+
+
 _FETCHERS = {
     "greenhouse": _fetch_greenhouse,
     "lever": _fetch_lever,
@@ -1805,6 +1902,7 @@ _FETCHERS = {
     "prospective": _fetch_prospective,
     "google": _fetch_google,
     "onlyfy": _fetch_onlyfy,
+    "breezy": _fetch_breezy,
 }
 
 
@@ -1814,7 +1912,7 @@ _FETCHERS = {
 _SKIPS_KNOWN = frozenset(
     {
         "smartrecruiters", "workday", "bamboohr", "join", "avature",
-        "successfactors", "brassring", "prospective", "onlyfy",
+        "successfactors", "brassring", "prospective", "onlyfy", "breezy",
     }
 )
 

@@ -4,6 +4,34 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.6.0 — BreezyHR boards (2026-10-01)
+
+- **BreezyHR boards can be scanned.** A new `breezy` board type reads
+  career pages hosted on BreezyHR (`<slug>.breezy.hr`, where the slug is the
+  page's subdomain). Each new posting costs one extra page load for its
+  description; postings already seen skip it, as on the other boards that
+  work this way. The monthly discovery run now checks BreezyHR too.
+- **Verity is back, on BreezyHR.** The Zurich drone company left Lever, so
+  its old entry found nothing. It is now `breezy` / `verity-ag`, with three
+  Zurich roles open when this was written.
+- **Three more changes to the board list.** The monthly board-health check
+  (`reports/company_health.md`) flagged boards that had been empty for 72
+  days:
+  - OnlineDoctor moved from Personio to Teamtailor: `teamtailor` /
+    `onlinedoctorag`.
+  - Ubique is removed. It now lists jobs on its own website and takes
+    applications by email, which jobradar can't read.
+  - Ledgy (equity-management software, Zurich) is added. When this was
+    written, Ledgy's open roles were all in London or remote elsewhere in
+    Europe, and OnlineDoctor's were all in Hamburg, so neither adds anything
+    until a Swiss role opens.
+- **If you switched on Verity, OnlineDoctor or Ubique, edit your own copy.**
+  Pulling this release does not change your `config/companies.yaml`. The old
+  entries don't fail; they quietly find nothing. Change the `ats` and `slug`
+  of the two moved boards as above, and delete Ubique. To see the new
+  entries, run `git show upstream/master:config/companies.yaml`, then check
+  your edit with `python -m jobradar.doctor`.
+
 ## 1.5.2 — CV dates on their own line (2026-10-01)
 
 - **Role dates get their own line in tailored CVs.** A CV exported from Word
