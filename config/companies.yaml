@@ -23,8 +23,8 @@
 # Sections, in this order (boards in each):
 #   Big tech & AI labs (5) — global names with Swiss offices, mostly Zurich
 #   AI & data products (9) — Swiss start-ups and scale-ups selling AI or data
-#   Software, SaaS & telecom (6)
-#   Consulting & IT services (8)
+#   Software, SaaS & telecom (7)
+#   Consulting & IT services (7)
 #   Banking, insurance & finance data (6)
 #   Pharma & biotech (5)
 #   Medtech & digital health (8)
@@ -38,12 +38,14 @@
 #   name: how the company appears in reports
 #   ats:  greenhouse | lever | ashby | smartrecruiters | personio | recruitee |
 #         workable | teamtailor | workday | join | bamboohr | avature |
-#         successfactors | icims | brassring | prospective | google | onlyfy
+#         successfactors | icims | brassring | prospective | google | onlyfy |
+#         breezy
 #   slug: the board token used in that ATS's public job-board URL, e.g.
 #     greenhouse: https://boards-api.greenhouse.io/v1/boards/<slug>/jobs
 #     lever:      https://api.lever.co/v0/postings/<slug>
 #     ashby:      https://api.ashbyhq.com/posting-api/job-board/<slug>
 #     bamboohr:   https://<slug>.bamboohr.com/careers/list  (slug = careers subdomain)
+#     breezy:     https://<slug>.breezy.hr/json  (slug = careers subdomain)
 # You can usually find the slug in the company's own "Careers" page URL, or by
 # viewing the page source for a link to boards.greenhouse.io / jobs.lever.co /
 # jobs.ashbyhq.com. `python -m jobradar.discovery.discover` guesses slugs for
@@ -193,6 +195,10 @@ companies:
   # - name: Perk
   #   ats: ashby
   #   slug: perk
+  # Equity-management SaaS, Zurich HQ.
+  # - name: Ledgy
+  #   ats: greenhouse
+  #   slug: ledgy
   # Swiss-only board (no country facet, lists cities); exposes workload %
   # (Work_Shift facet: "80-100%" etc.) in postings.
   # - name: Swisscom
@@ -227,9 +233,6 @@ companies:
   # - name: ELCA
   #   ats: recruitee
   #   slug: elca
-  # - name: Ubique
-  #   ats: recruitee
-  #   slug: ubique
   # Danish-HQ with a Zurich office.
   # - name: Trifork
   #   ats: teamtailor
@@ -346,9 +349,11 @@ companies:
   # - name: Kyan Health
   #   ats: ashby
   #   slug: kyanhealth
+  # Moved off Personio (personio/onlinedoctor still answers 200 but empty);
+  # careers.onlinedoctor.ch is a Teamtailor site on the onlinedoctorag account.
   # - name: OnlineDoctor
-  #   ats: personio
-  #   slug: onlinedoctor
+  #   ats: teamtailor
+  #   slug: onlinedoctorag
   # Digital health/therapeutics for diabetes and weight management.
   # - name: Oviva
   #   ats: ashby
@@ -375,9 +380,11 @@ companies:
   # - name: Auterion
   #   ats: greenhouse
   #   slug: auterion
+  # Moved off Lever (lever/verity answers 200 but empty); verity.net/careers
+  # embeds the Breezy board.
   # - name: Verity
-  #   ats: lever
-  #   slug: verity
+  #   ats: breezy
+  #   slug: verity-ag
   # Was "Daedalean" (lever/daedalean): acquired by Destinus Group, whose board
   # is workable/destinusgroup. The old lever board still answers 200 but empty.
   # - name: Destinus Group
