@@ -444,6 +444,8 @@ def process_entry(
         + "\n",
         encoding="utf-8",
     )
+    # Before the translation call too, so it copies the split headings.
+    tailored.tailored_cv_markdown = pdf.split_role_periods(tailored.tailored_cv_markdown)
     (folder_path / "tailored_cv.md").write_text(
         tailored.tailored_cv_markdown.strip() + "\n", encoding="utf-8"
     )
@@ -470,7 +472,7 @@ def process_entry(
             )
         if translated:
             (folder_path / f"tailored_cv_{lang}.md").write_text(
-                translated.strip() + "\n", encoding="utf-8"
+                pdf.split_role_periods(translated).strip() + "\n", encoding="utf-8"
             )
             cv_translation_language = lang
         else:
