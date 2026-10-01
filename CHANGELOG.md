@@ -4,6 +4,16 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.5.2 — CV dates on their own line (2026-10-01)
+
+- **Role dates get their own line in tailored CVs.** A CV exported from Word
+  often loses the tab between a job title and its dates, and the tailored CV
+  copied that: "Product OwnerMay 2024 - August 2026". Title and dates are now
+  split onto two lines whenever a tailored or translated CV is written,
+  whatever the separator was (none, spaces, "|" or a comma), and the PDF sets
+  the dates line in grey at body-text size. CVs already in `applications/`
+  keep their markdown, but `--pdf KEY` renders them with the new layout.
+
 ## 1.5.1 — RAV postcode check (2026-09-29)
 
 - **RAV postcodes match the posting's town.** When a posting names only a

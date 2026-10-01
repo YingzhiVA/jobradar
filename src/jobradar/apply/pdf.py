@@ -60,6 +60,8 @@ li { margin: 0.8mm 0; }
 a { color: #1a1a1a; text-decoration: none; }
 strong { font-weight: 600; }
 hr { border: none; border-top: 1px solid #ccc; margin: 4mm 0; }
+/* The dates-and-place line under a CV role or degree heading. */
+.cv-period { color: #555; }
 li, h2, h3 { page-break-inside: avoid; }
 /* One blank line the author left in the markdown for spacing (e.g. between a
    letterhead and the greeting). Markdown collapses runs of blank lines to a
@@ -142,7 +144,65 @@ def _autolink_bare_urls(md_text: str) -> str:
     return "".join(out)
 
 
+# Where a CV's dates begin: a month and year (English, German or French, as
+# the CVs come in those), a numeric month.year, or a bare year starting a
+# range. Case-sensitive on purpose: these start a phrase, they don't sit
+# inside a word.
+_MONTHS = (
+    "January|February|March|April|May|June|July|August|September|October|November|December"
+    "|Januar|Februar|März|Maerz|Mai|Juni|Juli|Oktober|Dezember"
+    "|Jänner|janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre"
+)
+_PERIOD_START = (
+    rf"(?:(?:{_MONTHS})\.?\s+\d{{4}}\b|\d{{1,2}}[./]\d{{4}}\b|(?:19|20)\d{{2}}\s*(?:\\?[-–]|to\b|bis\b))"
+)
+# "**Org** *- Title<sep>Period*", the italic part holding both title and
+# dates. <sep> is whatever the CV happened to carry: nothing at all (a Word tab
+# lost in an export), a run of spaces, or a "|" or comma.
+_GLUED_HEADER = re.compile(
+    rf"^(?P<head>\*\*[^*\n]+\*\*\s*(?:[-–—]\s*)?\*)(?P<title>[^*\n]*?[^\s|,*])"
+    rf"(?:\s*[|,]\s*|\s*)(?P<period>{_PERIOD_START}[^*\n]*?)\*\s*$"
+)
+# A line that is only a period, italic or not: the line under a role heading.
+_PERIOD_LINE = re.compile(rf"^(?P<i>\*?)(?P<period>{_PERIOD_START}[^*\n]*?)(?P=i)\s*$")
+
+
+def split_role_periods(md_text: str) -> str:
+    """Move a CV heading's dates onto their own italic line.
+
+    The model copies whatever role-heading layout the base CV has, and the
+    common failure is title and dates on one line with no separator at all
+    ("Product OwnerMay 2024 - ..."), from a tab a Word export dropped. A
+    two-line heading reads cleanly in the markdown and lets the PDF set the
+    dates in grey. Idempotent: an already-split heading is left alone.
+    """
+    out: list[str] = []
+    for line in md_text.splitlines(keepends=True):
+        m = _GLUED_HEADER.match(line.rstrip("\n"))
+        if m is None:
+            out.append(line)
+            continue
+        newline = "\n" if line.endswith("\n") else ""
+        out.append(f"{m['head']}{m['title']}*\n*{m['period'].strip()}*{newline}")
+    return "".join(out)
+
+
+def _style_period_lines(md_text: str) -> str:
+    """Mark the period line under each bold heading so the stylesheet can set
+    it grey. Only a line directly under a "**...**" line counts, so a date
+    opening a sentence elsewhere is left as prose."""
+    lines = md_text.split("\n")
+    for i in range(1, len(lines)):
+        if not lines[i - 1].startswith("**"):
+            continue
+        m = _PERIOD_LINE.match(lines[i])
+        if m:
+            lines[i] = f'<span class="cv-period">{m["period"].strip()}</span>'
+    return "\n".join(lines)
+
+
 def markdown_to_html(md_text: str, title: str) -> str:
+    md_text = _style_period_lines(split_role_periods(md_text))
     # nl2br: single newlines become real line breaks - CVs and letters rely on
     # them (role/date lines, address blocks), unlike prose markdown.
     body = md.markdown(

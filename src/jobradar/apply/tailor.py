@@ -218,6 +218,9 @@ based on the candidate's CV "{base_cv}" (also in the system prompt).
   scans look for), but keep each claim traceable to the base CV.
 - Adjust the professional summary to speak directly to this role's core
   requirements.
+- Give each role and degree a two-line heading: employer and title on the
+  first line, then dates and location alone on the next line in italics,
+  e.g. "**Acme AG** *- Product Owner*" then "*May 2024 - August 2026, Zurich*".
 - Output the COMPLETE tailored CV as markdown, including contact details and
   every section that survived, ready to be exported to PDF.
 
