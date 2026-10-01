@@ -13,6 +13,7 @@ from jobradar.search.sources.company_pages import (
     _fetch_avature,
     _fetch_bamboohr,
     _fetch_brassring,
+    _fetch_breezy,
     _fetch_google,
     _fetch_icims,
     _fetch_join,
@@ -1859,6 +1860,150 @@ def test_prospective_bad_slug_raises():
 
 def test_prospective_registered():
     assert _FETCHERS["prospective"] is _fetch_prospective
+
+
+# --- BreezyHR: JSON listing + JSON-LD on the posting page ---
+
+
+_BREEZY_LIST_URL = "https://acme.breezy.hr/json"
+
+
+class _BreezyClient:
+    """Fake serving the /json listing and canned posting pages keyed by URL."""
+
+    def __init__(self, listing, pages):
+        self._listing = listing
+        self._pages = pages
+        self.calls: list[str] = []
+
+    def get(self, url):
+        self.calls.append(url)
+        if url == _BREEZY_LIST_URL:
+            return _Resp(self._listing)
+        page = self._pages.get(url)
+        return _HtmlResp(page or "", status=200 if page is not None else 404)
+
+
+def _breezy_loc(city, country, code, remote=False, state=None):
+    loc = {"city": city, "country": {"name": country, "id": code}, "is_remote": remote,
+           "name": f"{city}, {code}"}
+    if state:
+        loc["state"] = {"name": state}
+    return loc
+
+
+def _breezy_job(job_id, title, locations):
+    return {
+        "id": job_id,
+        "name": title,
+        "url": f"https://acme.breezy.hr/p/{job_id}-{title.lower().replace(' ', '-')}",
+        "published_date": "2026-08-31T06:29:59.917Z",
+        "type": {"id": "fullTime", "name": "Full-Time"},
+        "location": locations[0],
+        "locations": locations,
+        "department": "Engineering",
+        "salary": "",
+        "company": {"name": "Acme", "friendly_id": "acme"},
+    }
+
+
+def _breezy_page(title, description):
+    posting = {"@context": "https://schema.org/", "@type": "JobPosting", "title": title,
+               "description": description}
+    return (
+        '<html><head><script type="application/ld+json">'
+        '{"@context": "http://schema.org", "@type": "WebSite", "name": "Breezy HR"}</script>'
+        f'<script type="application/ld+json">{json.dumps(posting)}</script></head></html>'
+    )
+
+
+def test_breezy_lists_and_reads_json_ld():
+    vision = _breezy_job("8ae3", "Vision Engineer", [_breezy_loc("Zurich", "Switzerland", "CH")])
+    hybrid = _breezy_job("71b0", "Tech Lead", [
+        _breezy_loc("Zurich", "Switzerland", "CH"),
+        _breezy_loc("Berlin", "Germany", "DE", remote=True, state="Berlin"),
+    ])
+    client = _BreezyClient([vision, hybrid], {
+        vision["url"]: _breezy_page("Vision Engineer", "<p>Drones &amp; depth data</p>"),
+        hybrid["url"]: _breezy_page("Tech Lead", "<p>Lead</p>"),
+    })
+
+    postings = _fetch_breezy("Acme", "acme", client)
+
+    assert [p.title for p in postings] == ["Vision Engineer", "Tech Lead"]
+    p = postings[0]
+    assert p.source == "breezy"
+    assert p.url == vision["url"]
+    assert p.company == "Acme"
+    # the WebSite JSON-LD block ahead of it is passed over
+    assert p.description == "Drones & depth data"
+    # country spelled out, not Breezy's "Zurich, CH"
+    assert p.location == "Zurich, Switzerland"
+    assert p.remote is False
+    assert p.raw["type"] == "Full-Time" and p.raw["salary"] is None
+    # several locations become ";" segments; mixed remote is left undecided
+    assert postings[1].location == "Zurich, Switzerland; Berlin, Berlin, Germany, Remote"
+    assert postings[1].remote is None
+    assert client.calls == [_BREEZY_LIST_URL, vision["url"], hybrid["url"]]
+
+
+def test_breezy_all_remote_posting_is_remote():
+    job = _breezy_job("1", "PM", [_breezy_loc("Zurich", "Switzerland", "CH", remote=True)])
+    client = _BreezyClient([job], {job["url"]: _breezy_page("PM", "x")})
+    (posting,) = _fetch_breezy("Acme", "acme", client)
+    assert posting.remote is True
+    assert posting.location == "Zurich, Switzerland, Remote"
+
+
+def test_breezy_reads_a_posting_outside_google_jobs():
+    """No JSON-LD and an empty `locations`: the page's description block and the
+    primary `location` stand in."""
+    job = _breezy_job("1", "Open Application", [_breezy_loc("Zurich", "Switzerland", "CH")])
+    job["locations"] = []
+    page = (
+        "<html><style>.apply-container .app { color: red }</style>"
+        '<div class="description"><p>Tell us &amp; we listen</p></div>'
+        '<div class="apply-container"><a>Apply</a></div></html>'
+    )
+    client = _BreezyClient([job], {job["url"]: page})
+
+    (posting,) = _fetch_breezy("Acme", "acme", client)
+
+    assert posting.description == "Tell us & we listen"
+    assert posting.location == "Zurich, Switzerland"
+    assert posting.remote is False
+
+
+def test_breezy_skips_the_detail_page_of_a_known_posting():
+    seen = _breezy_job("1", "Seen Role", [_breezy_loc("Zurich", "Switzerland", "CH")])
+    new = _breezy_job("2", "New Role", [_breezy_loc("Zurich", "Switzerland", "CH")])
+    client = _BreezyClient([seen, new], {new["url"]: _breezy_page("New Role", "x")})
+
+    postings = _fetch_breezy("Acme", "acme", client, known=KnownPostings([seen["url"]]))
+
+    assert seen["url"] not in client.calls
+    assert postings[0].url == seen["url"]
+    assert postings[0].title == "Seen Role"
+    assert postings[0].location == "Zurich, Switzerland"
+    assert _is_listing_only(postings[0])
+    assert postings[1].description == "x"
+
+
+def test_breezy_skips_posting_closed_since_listing():
+    alive = _breezy_job("1", "Alive", [_breezy_loc("Zurich", "Switzerland", "CH")])
+    closed = _breezy_job("2", "Closed", [_breezy_loc("Zurich", "Switzerland", "CH")])
+    client = _BreezyClient([alive, closed], {alive["url"]: _breezy_page("Alive", "x")})
+    assert [p.title for p in _fetch_breezy("Acme", "acme", client)] == ["Alive"]
+
+
+def test_breezy_empty_board():
+    client = _BreezyClient([], {})
+    assert _fetch_breezy("Acme", "acme", client) == []
+    assert client.calls == [_BREEZY_LIST_URL]
+
+
+def test_breezy_registered():
+    assert _FETCHERS["breezy"] is _fetch_breezy
 
 
 # --- Lever: workplaceType carries the remote flag the location text lacks ---

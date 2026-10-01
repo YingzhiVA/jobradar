@@ -269,6 +269,25 @@ def test_probe_company_finds_teamtailor_match_and_reports_verified_name():
     )
 
 
+def test_probe_company_finds_breezy_match_and_reports_verified_name():
+    fake_client = _FakeClient(
+        {
+            "https://acme.breezy.hr/json": _FakeResponse(
+                200, [{"name": "Engineer", "company": {"name": "Acme AG", "friendly_id": "acme"}}]
+            ),
+        }
+    )
+    match = probe_company("Acme", fake_client)
+    assert match == CompanyMatch(
+        name="Acme", ats="breezy", slug="acme", verified_company_name="Acme AG"
+    )
+
+
+def test_probe_company_ignores_empty_breezy_board():
+    fake_client = _FakeClient({"https://acme.breezy.hr/json": _FakeResponse(200, [])})
+    assert probe_company("Acme", fake_client) is None
+
+
 def test_probe_company_finds_workable_match_and_reports_verified_name():
     fake_client = _FakeClient(
         {
