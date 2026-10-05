@@ -4,6 +4,42 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.7.0 — Deep links from web search (2026-10-05)
+
+- **Web-search leads must link to the posting itself.** Every match in the
+  2026-10-02 report linked to a careers landing page (`liip.ch/jobs`,
+  `jua.ai/careers`, `frontify.com/careers`, `pricehubble.com/careers`), and
+  none of the four roles existed: the search model had read that a company
+  hires, named a plausible role, and attached the careers page. The page
+  answers, so the link check called it live. Three changes close this:
+  - A lead whose link is a landing or listing page is dropped before scoring.
+    This covers a bare domain, a path made only of careers words in English,
+    German, French or Italian (`/careers`, `/de/karriere/offene-stellen`), and
+    a hosted ATS board with no posting under it (`jobs.lever.co/acme`). A
+    query key that names one posting (`/careers?gh_jid=123`) still counts as a
+    posting link. This replaces the old drop of bare domains only.
+  - A lead whose link the search never returned is dropped. The model sees
+    search results, not the open web, so a link that isn't among them was
+    remembered or made up. Matching ignores `www.`, trailing slashes and
+    tracking parameters.
+  - The search prompt now asks for the posting page, copied from a result,
+    with the posting's own title, and says an empty answer is acceptable. It
+    also suggests searches naming ATS hosts, which find posting pages more
+    often.
+- **More job boards are treated as aggregators**: builtin.com, dice.com,
+  eFinancialCareers, f6s, freehire.me, frontaliereticino.ch, JobLeads,
+  jobmaps.ch, jobsinforex, MeetFrank, Remote Rocketship, WeAreDevelopers,
+  weloveproduct.co, and more Glassdoor domains. Each had shown up in web-search
+  output, mostly as a search-results page rather than a posting.
+- **`reports/runs.jsonl`**: the web-search funnel's `pathless_dropped` is now
+  `listing_dropped`, and it gains `ungrounded_dropped` and
+  `grounding_checked`. The last one is false when a response carried no
+  result links to check against; the check is then skipped with a warning
+  rather than dropping every lead.
+- **Expect fewer web-search leads.** On 2026-10-02, at least 10 of the 13
+  leads would have been dropped as landing pages. Fewer leads here means
+  fewer made-up roles in the report, not fewer real ones.
+
 ## 1.6.0 — BreezyHR boards (2026-10-01)
 
 - **BreezyHR boards can be scanned.** A new `breezy` board type reads
