@@ -4,6 +4,19 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.7.1 — Board health after 28 days (2026-10-05)
+
+- **The board-health check flags a dry board after 28 days, down from 45.**
+  A board that has moved or closed costs every posting it would have found,
+  so it should show up within one monthly discovery run rather than two. A
+  board that is only quiet costs a glance at the report. The
+  `JOBRADAR_HEALTH_STALE_DAYS` environment variable still overrides it.
+- **Frontify moved from Lever to Ashby: `ashby` / `frontify`.** Its Lever
+  board still answers but lists nothing.
+- **If you switched on Frontify, edit your own copy.** Pulling this does not
+  change your `config/companies.yaml`, and the old entry quietly finds
+  nothing. Change its `ats` to `ashby`; the slug stays `frontify`.
+
 ## 1.7.0 — Deep links from web search (2026-10-05)
 
 - **Web-search leads must link to the posting itself.** Every match in the

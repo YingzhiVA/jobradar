@@ -178,8 +178,9 @@ companies:
   #   slug: giottoai
 
   # ── Software, SaaS & telecom ───────────────────────────────────────────────
+  # Moved off Lever (lever/frontify answers 200 but empty).
   # - name: Frontify
-  #   ats: lever
+  #   ats: ashby
   #   slug: frontify
   # Lausanne-founded digital-employee-experience company.
   # - name: Nexthink

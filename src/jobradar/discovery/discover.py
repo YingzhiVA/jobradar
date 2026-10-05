@@ -93,10 +93,10 @@ _MATCH_TTL_DAYS = int(
 # keep the prompt bounded; the most-recently-relevant ones are enough to steer.
 _MAX_EXCLUSIONS_IN_PROMPT = 400
 # A configured board that has produced no postings for this many days is
-# flagged for review. Long enough that a startup quiet for a few weeks isn't
-# flagged; short enough that a dead/migrated board surfaces within a monthly
-# cycle or two. Advisory only — a false flag costs a glance, not an action.
-_HEALTH_STALE_DAYS = int(os.environ.get("JOBRADAR_HEALTH_STALE_DAYS", "45"))
+# flagged for review. Four weeks: a dead/migrated board costs every posting
+# it would have surfaced, so it should show up within one monthly cycle; a
+# quiet startup flagged by mistake costs only a glance. Advisory only.
+_HEALTH_STALE_DAYS = int(os.environ.get("JOBRADAR_HEALTH_STALE_DAYS", "28"))
 _LEDGER_PATH = ROOT / "data" / "discovery_ledger.json"
 # Written by this module, never hand-edited (each run replaces the file
 # wholesale), which is why it sits in data/ with the other generated state
