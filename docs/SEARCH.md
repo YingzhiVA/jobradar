@@ -5,17 +5,23 @@ rank, write up, report. This page covers how to steer it and what it does.
 
 ## Configure
 
-1. **`config/companies.yaml`** — the career pages to scan. **Nothing is
-   scanned until you switch boards on**: the file ships as a catalogue of 69
-   Swiss boards grouped by industry (big tech, AI, software, consulting,
-   finance, pharma, medtech, robotics, industry, property and climate,
-   consumer), every one commented out, with each board's connector quirks
-   noted next to it. Remove
-   the `# ` from all three lines of each board you want, then run
-   `python -m jobradar.doctor`, which catches an entry uncommented only in
-   part. Begin with a handful: the first run over a board scores every
-   posting currently open on it (see [COSTS.md](COSTS.md#your-first-run)).
-   See [DISCOVERY.md](DISCOVERY.md) for finding boards that aren't listed.
+1. **`config/companies.yaml`** — the career pages to scan, by name.
+   **Nothing is scanned until you add boards**: list one company per line,
+   spelled as in `config/boards.yaml`, then run `python -m jobradar.doctor`,
+   which catches a misspelt name. Begin with a handful: the first run over
+   a board scores every posting currently open on it (see
+   [COSTS.md](COSTS.md#your-first-run)).
+
+   `config/boards.yaml` is the catalogue you choose from: 79 Swiss boards
+   grouped by industry (big tech, AI, software, consulting, finance, pharma,
+   medtech, robotics, industry, property and climate, consumer), with each
+   board's ATS, slug and connector quirks. It is maintained upstream, so
+   when a company moves to another ATS, `git pull` fixes the board for you.
+   Don't edit it for your own needs. For a board it lacks, give the entry
+   in `companies.yaml` its own `ats` and `slug` (the file's header shows
+   how); [DISCOVERY.md](DISCOVERY.md) helps find them. The same form for a
+   board the catalogue has scans yours instead, and `doctor` warns while
+   the two differ.
 2. **`config/constraints.yaml`** — hard requirements, applied as pure code
    before any model call. For Switzerland, prefer `allowed_cantons` over
    `allowed_cities`: postings usually name a town rather than the canton, so
@@ -107,7 +113,7 @@ record shape and `jq` examples.
 
 ## How a run works
 
-1. **Fetch** — pull postings from the boards switched on in
+1. **Fetch** — pull postings from the boards selected in
    `config/companies.yaml`, the ETH job board if enabled, and (unless
    `--no-web-search`) a profile-driven web-search discovery query. A
    web-search lead is kept only if its link is the posting's own page and

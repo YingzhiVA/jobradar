@@ -518,6 +518,26 @@ def test_discover_skips_web_search_when_disabled(monkeypatch):
     assert called["search"] is False
 
 
+
+def test_discover_treats_catalogue_companies_as_known(monkeypatch):
+    # A company the shared list already has is never re-probed or suggested,
+    # whether it came from the seed list or from web search, and the search is
+    # told not to spend its answer on it.
+    captured = {}
+
+    def fake_search(c, intent, exclude=None):
+        captured["exclude"] = exclude
+        return ["frontify", "NewCo"]
+
+    probed = []
+    monkeypatch.setattr(discover_mod, "search_company_names", fake_search)
+    monkeypatch.setattr(discover_mod, "probe_company", lambda n, c, skip=None: probed.append(n) or None)
+
+    discover([], client=object(), seed_names=["Verity"], catalog_names=["Frontify", "Verity"])
+
+    assert probed == ["NewCo"]
+    assert {"Frontify", "Verity"} <= set(captured["exclude"])
+
 def test_discover_skips_ledger_known_and_records_outcomes(monkeypatch):
     from datetime import datetime, timedelta, timezone
 
@@ -711,6 +731,18 @@ def test_render_health_report_groups_by_status():
     assert "Possibly moved to bamboohr/e" in text
     assert "dry 90 days" in text
 
+
+
+def test_render_health_report_names_the_file_to_fix():
+    findings = [
+        HealthFinding(name="Shared", ats="lever", slug="s", dry_days=40, status="empty", origin="catalog"),
+        HealthFinding(name="Mine", ats="lever", slug="m", dry_days=40, status="empty", origin="local"),
+        HealthFinding(name="Bare", ats="lever", slug="b", dry_days=40, status="empty"),
+    ]
+    text = render_health_report(findings, date(2026, 7, 1))
+    assert "**Shared** (lever/s, from config/boards.yaml)" in text
+    assert "**Mine** (lever/m, from your companies.yaml)" in text
+    assert "**Bare** (lever/b)" in text
 
 def test_render_health_report_empty_is_reassuring():
     text = render_health_report([], date(2026, 7, 1))

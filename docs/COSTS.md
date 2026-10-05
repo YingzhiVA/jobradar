@@ -35,8 +35,8 @@ finalists get a Sonnet write-up.
 A normal day only processes what is new since the day before. The first run
 over a board is different: every posting currently open on it is new to you,
 so all of those that pass your constraints are scored at once. Adding a board
-later costs one such catch-up for that board alone. This is why no board
-ships switched on.
+later costs one such catch-up for that board alone. This is why no board is
+selected out of the box.
 
 How much depends less on the number of boards than on how many of their
 postings survive your constraints, because the location filter drops
@@ -54,7 +54,7 @@ all, fetched and run through the free filters with the template's three
 cantons, stopping before any model call. Jobgether's own first run is the
 international-board example above.
 
-| First run, those 64 boards switched on | Postings |
+| First run, those 64 boards selected | Postings |
 | --- | --- |
 | Open on those boards, all of them new to you | 3,726 |
 | Reach the paid stages | 1,245 |
@@ -69,9 +69,9 @@ it depends on which: a large Swiss-only board costs more on its own than most.
 A wider location setting than the template's three cantons raises every one
 of these numbers.
 
-So: switch on the five or ten boards closest to your field, read a few
+So: select the five or ten boards closest to your field, read a few
 reports, then add more a few at a time. `python -m jobradar.doctor` warns
-when more than fifteen are switched on before your first run.
+when more than fifteen are selected before your first run.
 
 ### A daily run
 
@@ -106,7 +106,7 @@ scored again on up to two later runs before being written off, since a single
 draw is not a reliable enough verdict to discard a posting on. A day's run
 includes those re-scorings, so the table already accounts for them.
 
-With fewer boards switched on the scoring line shrinks; with none, only web
+With fewer boards selected the scoring line shrinks; with none, only web
 search remains.
 
 Each additional posting scored adds a little under a cent. A first run
@@ -140,7 +140,7 @@ requests beyond the trial credit.
 
 | To spend less | Where |
 | --- | --- |
-| Switch on fewer boards, and add them a few at a time | `config/companies.yaml` |
+| Select fewer boards, and add them a few at a time | `config/companies.yaml` |
 | Skip web search (the biggest single cost) | `--no-web-search`, or `JOBRADAR_WEB_SEARCH_MAX_USES` in `.env` |
 | Search less often | `schedule.frequency` in `config/search.yaml` |
 | Surface fewer finalists (fewer Sonnet write-ups) | `output.max_best`, `output.max_okay` |

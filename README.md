@@ -8,8 +8,9 @@ are filtered out before any of that. What reaches you is at most one "best"
 match a day plus a few "okay" ones, and a day with nothing is a normal day.
 
 It finds postings itself: from the company career pages you choose (a
-catalogue of 69 Swiss boards across seventeen applicant-tracking systems ships
-with it, grouped by industry and all switched off), and from Claude's web search. It never scrapes or automates LinkedIn. When you decide
+catalogue of 79 Swiss boards across nineteen applicant-tracking systems ships
+with it, grouped by industry, and none is scanned until you pick it), and from
+Claude's web search. It never scrapes or automates LinkedIn. When you decide
 to apply, it drafts a tailored CV and cover letter in the posting's language,
 keeps a submission log, and can prepare an interview sheet from your own
 stories.
@@ -36,21 +37,20 @@ your submission log. Off by default.
 
 You pay Anthropic for what the tool reads and writes; the tool itself is
 free (MIT). What a run costs depends mostly on how many company boards you
-switch on. Rough figures with the default models, from September 2026:
+select. Rough figures with the default models, from September 2026:
 
 | Activity | About |
 | --- | --- |
-| A daily run with no boards switched on (web search only) | $0.25–0.30 |
+| A daily run with no boards selected (web search only) | $0.25–0.30 |
 | A daily run on the author's setup of about 65 boards | $0.90 |
 | One drafted application (CV + cover letter) | $0.25–0.45 |
 
 **Your first run is the exception.** It treats every posting currently open
 on the boards you chose as new, and scores all of those that pass your
-constraints in one go. With every board in the catalogue switched on that is
+constraints in one go. With every board in the catalogue selected that is
 roughly $8–15, eight to fifteen times a normal day; with five or ten boards,
-usually one to two dollars. That is why
-no board ships switched on: start with five or ten, and add more a few at a
-time. [docs/COSTS.md](docs/COSTS.md) has the details and how to check your
+usually one to two dollars. That is why no board is selected out of the box:
+start with five or ten, and add more a few at a time. [docs/COSTS.md](docs/COSTS.md) has the details and how to check your
 own spend.
 
 The quick start below has you make a dedicated API key with a monthly spend
@@ -99,10 +99,11 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
 5. **Tell it what is non-negotiable** in `config/constraints.yaml`: cantons,
    workload range, office days. The shipped example is three cantons around
    Zürich.
-6. **Pick the company boards to scan.** None are switched on.
-   `config/companies.yaml` groups them by industry, with the list of sections
-   at the top of the file. Remove the `# ` from all three lines of each board
-   you want. **Start with five or ten**: your first run scores every open
+6. **Pick the company boards to scan.** None are selected.
+   `config/boards.yaml` lists the boards jobradar knows, grouped by industry,
+   with the list of sections at the top of the file. Add the name of each
+   board you want to `config/companies.yaml`, one per line.
+   **Start with five or ten**: your first run scores every open
    posting on the boards you chose, so it costs far more than a normal day
    (see [What it costs](#what-it-costs)). You can add more later, a few at a
    time. With none chosen, only web search runs.
@@ -127,7 +128,7 @@ Three phases, each its own module, sharing the profile you set up once:
 
 1. **Company discovery** (`jobradar.discovery`), occasional: find companies
    worth scanning and feed them into `config/companies.yaml`. Optional; the
-   shipped catalogue is switched off, board by board, until you choose.
+   shipped catalogue in `config/boards.yaml` already covers 79 Swiss boards.
 2. **Search** (`jobradar.search`), the daily run: fetch postings, filter,
    score, report the few worth your time.
 3. **Apply** (`jobradar.apply`), on demand: turn chosen postings into

@@ -1918,7 +1918,8 @@ _SKIPS_KNOWN = frozenset(
 
 
 class CompanyPagesSource:
-    """Fetches postings for every company listed in config/companies.yaml."""
+    """Fetches postings for every board selected in config/companies.yaml, as
+    resolved against config/boards.yaml by jobradar.boards."""
 
     name = "company_pages"
 

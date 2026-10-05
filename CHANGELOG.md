@@ -4,6 +4,36 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.8.0 — Shared board list (2026-10-05)
+
+- **Board details now come from one shared list, `config/boards.yaml`.**
+  It holds every board jobradar knows (79 Swiss boards), with each one's ATS,
+  slug and notes, and `git pull` keeps it up to date. Until now each user's
+  `config/companies.yaml` carried its own copy of those details, which a pull
+  never updates. So when a company moved to another ATS, its entry quietly
+  found nothing until you edited it by hand, as 1.6.0 and 1.7.1 had to ask
+  you to.
+- **`config/companies.yaml` now names the boards to scan**, one per line:
+
+  ```yaml
+  companies:
+    - Frontify
+    - Verity
+  ```
+
+  For a board the shared list lacks, give the entry its own `ats` and `slug`,
+  as before. The same form for a board the shared list has scans yours
+  instead, and `python -m jobradar.doctor` warns while the two differ.
+- **Your existing `companies.yaml` keeps working.** Its full entries count
+  as your own boards. To follow the shared list, replace each entry with its
+  name; `doctor` names any entry whose ATS or slug differs from the shared
+  list, and those are the stale ones.
+- **`doctor` checks the shared list too**, and fails on a name it can't
+  find there, typically a typo.
+- **Discovery skips companies the shared list already has**, and the
+  board-health report says which file each flagged board comes from:
+  `config/boards.yaml` or your `companies.yaml`.
+
 ## 1.7.1 — Board health after 28 days (2026-10-05)
 
 - **The board-health check flags a dry board after 28 days, down from 45.**

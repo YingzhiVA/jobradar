@@ -66,7 +66,7 @@ _ETH_ON = Sources(eth_jobs=EthSource(enabled=True))
 
 def test_build_sources_omits_arbeitnow_and_includes_web_search():
     sources = _build_sources(
-        {"companies": []}, BASE_CONSTRAINTS, identity="x", client=object(),
+        [], BASE_CONSTRAINTS, identity="x", client=object(),
         use_web_search=True, sources_settings=_ETH_ON,
     )
     types = [type(s) for s in sources]
@@ -78,7 +78,7 @@ def test_build_sources_omits_arbeitnow_and_includes_web_search():
 
 def test_build_sources_skips_web_search_when_disabled():
     sources = _build_sources(
-        {"companies": []}, BASE_CONSTRAINTS, identity="x", client=object(),
+        [], BASE_CONSTRAINTS, identity="x", client=object(),
         use_web_search=False, sources_settings=_ETH_ON,
     )
     # company_pages + ETH board stay; only web_search is gated by the flag.
@@ -88,7 +88,7 @@ def test_build_sources_skips_web_search_when_disabled():
 def test_build_sources_omits_eth_by_default():
     # The board's categories are role-specific, so nobody gets it unasked.
     sources = _build_sources(
-        {"companies": []}, BASE_CONSTRAINTS, identity="x", client=object(), use_web_search=False
+        [], BASE_CONSTRAINTS, identity="x", client=object(), use_web_search=False
     )
     assert [type(s) for s in sources] == [CompanyPagesSource]
 
@@ -96,7 +96,7 @@ def test_build_sources_omits_eth_by_default():
 def test_build_sources_passes_eth_job_types_from_settings():
     settings = Sources(eth_jobs=EthSource(enabled=True, job_types=(4, 7)))
     sources = _build_sources(
-        {"companies": []}, BASE_CONSTRAINTS, identity="x", client=object(),
+        [], BASE_CONSTRAINTS, identity="x", client=object(),
         use_web_search=False, sources_settings=settings,
     )
     eth = next(s for s in sources if isinstance(s, EthJobsSource))
@@ -217,11 +217,3 @@ def test_location_desc_prefers_unrestricted_remote_when_remote_ok():
     )
     assert "based in" not in _build_location_desc(constraints)
 
-
-def test_build_sources_survives_an_all_commented_company_list():
-    # The template ships with every board commented out: {"companies": None}.
-    sources = _build_sources(
-        {"companies": None}, BASE_CONSTRAINTS, identity="x", client=object(), use_web_search=False
-    )
-    assert [type(s) for s in sources] == [CompanyPagesSource]
-    assert sources[0].companies == []

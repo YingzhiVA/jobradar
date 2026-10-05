@@ -26,6 +26,7 @@ import anthropic
 import yaml
 from dotenv import load_dotenv
 
+from ..boards import load_companies
 from ..config import ConfigError, Sources, load_search_settings
 from .corroborate import corroborate
 from .dedup import SeenStore
@@ -141,7 +142,7 @@ def _build_location_desc(constraints: Constraints) -> str:
 
 
 def _build_sources(
-    companies_config: dict,
+    companies: list[dict],
     constraints: Constraints,
     identity: str,
     client: anthropic.Anthropic,
@@ -154,7 +155,7 @@ def _build_sources(
     # postings to a Switzerland-focused search while still costing a normalize
     # pass each. Re-add it here if/when the search broadens to EU-remote roles.
     optional = sources_settings or Sources()
-    sources: list = [CompanyPagesSource(companies_config.get("companies") or [], known=known)]
+    sources: list = [CompanyPagesSource(companies, known=known)]
     # ETH's own job board, per job-type category — which categories are worth
     # scanning depends on the user's role, so it is a config switch.
     if optional.eth_jobs.enabled:
@@ -307,7 +308,11 @@ def run(
     client = anthropic.Anthropic()
     _check_authentication(client)
 
-    companies_config = yaml.safe_load((ROOT / "config" / "companies.yaml").read_text()) or {}
+    # companies.yaml names the boards; boards.yaml says where each one is. An
+    # entry that can't be resolved costs only itself, as a warning here.
+    selection = load_companies(ROOT)
+    for note in selection.notes:
+        logger.warning("companies.yaml: %s", note.message)
     constraints_config = yaml.safe_load((ROOT / "config" / "constraints.yaml").read_text()) or {}
     constraints = Constraints.from_dict(constraints_config)
 
@@ -322,7 +327,7 @@ def run(
         # of what they list on any given day.
         known = KnownPostings(SeenStore(ROOT / "data" / "seen_postings.json").settled_urls())
         sources = _build_sources(
-            companies_config, constraints, identity, client, use_web_search,
+            selection.boards, constraints, identity, client, use_web_search,
             sources_settings=settings.sources,
             known=known,
         )
