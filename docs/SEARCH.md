@@ -109,7 +109,12 @@ record shape and `jq` examples.
 
 1. **Fetch** — pull postings from the boards switched on in
    `config/companies.yaml`, the ETH job board if enabled, and (unless
-   `--no-web-search`) a profile-driven web-search discovery query.
+   `--no-web-search`) a profile-driven web-search discovery query. A
+   web-search lead is kept only if its link is the posting's own page and
+   came back in the search results. Careers landing pages (`/careers`,
+   `/jobs`), job-board search pages and links the model wrote itself are
+   dropped, because a plausible title attached to a careers page is how
+   made-up roles reached the report.
 2. **Corroborate** (`search/corroborate.py`) — check each web-search lead
    against the employer's own listing, if this run happened to fetch one. A
    lead is dropped only when two independent weak signals agree: the liveness

@@ -4,10 +4,12 @@ from jobradar.search.sources.web_search import (
     WebSearchSource,
     _extract_json,
     _is_aggregator,
-    _is_pathless,
+    _is_listing_page,
     _parse_postings,
+    _result_urls,
     _search_count,
     _search_queries,
+    _url_key,
 )
 from jobradar.search.sources.base import LIVENESS_CONFIRMED, LIVENESS_UNVERIFIED
 
@@ -24,6 +26,26 @@ class _ToolUseBlock:
     def __init__(self, query):
         self.type = "server_tool_use"
         self.input = {"query": query}
+
+
+class _SearchResult:
+    def __init__(self, url):
+        self.type = "web_search_result"
+        self.url = url
+
+
+class _SearchResultBlock:
+    """A web_search_tool_result block: the pages one search returned."""
+
+    def __init__(self, *urls):
+        self.type = "web_search_tool_result"
+        self.content = [_SearchResult(u) for u in urls]
+
+
+class _Citation:
+    def __init__(self, url):
+        self.type = "web_search_result_location"
+        self.url = url
 
 
 class _ServerToolUse:
@@ -174,6 +196,8 @@ def test_is_aggregator_matches_hosts_and_subdomains():
     assert _is_aggregator("https://www.datacareer.ch/job/12051/x/") is True
     assert _is_aggregator("https://jobs.ch/en/vacancies/detail/123/") is True
     assert _is_aggregator("https://de.indeed.com/viewjob?jk=abc") is True
+    assert _is_aggregator("https://www.efinancialcareers.com/jobs/ai-product-manager/in-switzerland") is True
+    assert _is_aggregator("https://www.glassdoor.sg/Job/switzerland-fintech-product-manager-jobs.htm") is True
     # A direct employer / ATS link must NOT be treated as an aggregator.
     assert _is_aggregator("https://boards.greenhouse.io/acme/jobs/1") is False
     assert _is_aggregator("https://careers.reprisk.com/senior-pm") is False
@@ -181,26 +205,110 @@ def test_is_aggregator_matches_hosts_and_subdomains():
     assert _is_aggregator("https://datacareer.ch.evil.com/job/1") is False
 
 
-def test_is_pathless_matches_bare_roots_only():
-    # Bare careers-board roots — no path, no query — are not real permalinks.
-    assert _is_pathless("https://jobs.ethz.ch/") is True
-    assert _is_pathless("https://jobs.ethz.ch") is True
-    # A deep permalink has a path and must be kept.
-    assert _is_pathless("https://jobs.ethz.ch/job/view/JOPG_ethz_4qitaLpc1SITqqBSBf") is False
-    assert _is_pathless("https://boards.greenhouse.io/x/jobs/2") is False
-    # Root-with-query is kept: some ATSs put the job id in the query string.
-    assert _is_pathless("https://jobs.example.com/?gh_jid=123") is False
+# Every link in the 2026-10-02 report. All four roles were checked by hand and
+# none of them existed: each was a plausible title attached to a careers page.
+_REPORT_2026_10_02_LINKS = [
+    "https://www.liip.ch/jobs",
+    "https://www.jua.ai/careers",
+    "https://www.frontify.com/careers",
+    "https://www.pricehubble.com/careers",
+]
 
 
-def test_fetch_drops_pathless_links():
-    # A bare board root is dropped before liveness even runs; the deep permalink
-    # for the same board survives. filter_live is stubbed all-live by the fixture.
+@pytest.mark.parametrize("url", _REPORT_2026_10_02_LINKS)
+def test_is_listing_page_catches_the_2026_10_02_links(url):
+    assert _is_listing_page(url) is True
+
+
+def test_is_listing_page_matches_bare_roots():
+    assert _is_listing_page("https://jobs.ethz.ch/") is True
+    assert _is_listing_page("https://jobs.ethz.ch") is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.frontify.com/en/careers",
+        "https://www.acme.ch/de-ch/karriere/offene-stellen/",
+        "https://www.acme.ch/company/careers/open-positions",
+        "https://www.acme.ch/fr/carrieres/emplois.html",
+        "https://www.acme.ch/careers?lang=en&page=2",
+        "https://www.acme.ch/jobs?department=product&utm_source=x",
+        "https://jobs.lever.co/acme",
+        "https://jobs.ashbyhq.com/acme/",
+        "https://boards.greenhouse.io/acme",
+        "https://boards.greenhouse.io/acme/jobs",
+        "https://apply.workable.com/acme/",
+    ],
+)
+def test_is_listing_page_matches_landing_and_board_pages(url):
+    assert _is_listing_page(url) is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://jobs.ethz.ch/job/view/JOPG_ethz_4qitaLpc1SITqqBSBf",
+        "https://boards.greenhouse.io/x/jobs/2",
+        "https://jobs.lever.co/acme/1b2c3d4e-0000-4000-8000-000000000000",
+        "https://jobs.ashbyhq.com/acme/7f3e",
+        "https://apply.workable.com/acme/j/ABC123/",
+        "https://www.acme.ch/jobs/senior-product-manager-ai",
+        "https://careers.reprisk.com/senior-pm",
+        "https://acme.jobs.personio.de/job/1234567",
+        # A query key that names one posting makes even a root or /careers deep.
+        "https://jobs.example.com/?gh_jid=123",
+        "https://www.acme.ch/careers?jobId=42",
+        "https://www.acme.ch/karriere?id=7",
+    ],
+)
+def test_is_listing_page_keeps_posting_pages(url):
+    assert _is_listing_page(url) is False
+
+
+def test_tracking_parameters_do_not_count_as_a_posting_id():
+    # gclid ends in "id" but is tracking, not a posting id.
+    assert _is_listing_page("https://www.acme.ch/careers?gclid=abc") is True
+
+
+def test_url_key_ignores_cosmetic_differences():
+    assert _url_key("https://www.Acme.ch/jobs/pm-ai/") == _url_key("http://acme.ch/jobs/pm-ai")
+    assert _url_key("https://acme.ch/jobs/pm?utm_source=g&b=2&a=1#apply") == _url_key(
+        "https://acme.ch/jobs/pm?a=1&b=2"
+    )
+    assert _url_key("https://acme.ch/jobs/pm-ai") != _url_key("https://acme.ch/jobs/pm-ml")
+
+
+def test_result_urls_reads_search_results_and_citations():
+    cited = _Block("text", "Acme is hiring")
+    cited.citations = [_Citation("https://acme.ch/jobs/cited")]
+    resp = _Response(
+        content=[
+            _ToolUseBlock("q"),
+            _SearchResultBlock("https://acme.ch/jobs/a", "https://www.beta.ch/careers/b/"),
+            cited,
+        ]
+    )
+    assert _result_urls(resp) == {"acme.ch/jobs/a", "beta.ch/careers/b", "acme.ch/jobs/cited"}
+
+
+def test_result_urls_tolerates_an_errored_search():
+    errored = _SearchResultBlock()
+    errored.content = {"type": "web_search_tool_result_error", "error_code": "unavailable"}
+    assert _result_urls(_Response(content=[errored])) == set()
+
+
+def test_fetch_drops_listing_pages():
+    # A bare board root and a /careers landing page are dropped before liveness
+    # even runs; the deep permalink survives. filter_live is stubbed all-live.
     resp = _Response(
         content=[
             _Block(
                 "text",
                 '{"postings": ['
                 '{"title": "A", "company": "ETH", "url": "https://jobs.ethz.ch/"},'
+                '{"title": "Senior AI Product Manager", "company": "Jua.ai", '
+                '"url": "https://www.jua.ai/careers"},'
                 '{"title": "B", "company": "ETH", "url": "https://jobs.ethz.ch/job/view/ABC"}'
                 "]}",
             )
@@ -209,7 +317,63 @@ def test_fetch_drops_pathless_links():
     )
     result = _source(resp).fetch()
     assert [p.url for p in result.postings] == ["https://jobs.ethz.ch/job/view/ABC"]
-    assert "1 pathless dropped" in result.detail
+    assert "2 listing page dropped" in result.detail
+    assert result.meta["listing_dropped"] == 2
+
+
+def test_fetch_drops_every_2026_10_02_link():
+    postings = ",".join(
+        f'{{"title": "Role {i}", "company": "C{i}", "url": "{url}"}}'
+        for i, url in enumerate(_REPORT_2026_10_02_LINKS)
+    )
+    resp = _Response(
+        content=[
+            _SearchResultBlock(*_REPORT_2026_10_02_LINKS),
+            _Block("text", f'{{"postings": [{postings}]}}'),
+        ],
+        web_search_requests=5,
+    )
+    result = _source(resp).fetch()
+    assert result.ok  # the model searched; an empty day is genuine, not degraded
+    assert result.postings == []
+    assert result.meta["listing_dropped"] == 4
+
+
+def test_fetch_drops_links_the_search_never_returned():
+    # The model returned two deep links, but the search only ever showed it one:
+    # the other was recalled or assembled, so it is dropped.
+    resp = _Response(
+        content=[
+            _ToolUseBlock("ai product manager zurich"),
+            _SearchResultBlock("https://jobs.lever.co/acme/1111", "https://acme.ch/careers"),
+            _Block(
+                "text",
+                '{"postings": ['
+                '{"title": "A", "company": "Acme", "url": "https://jobs.lever.co/acme/1111/"},'
+                '{"title": "B", "company": "Acme", "url": "https://jobs.lever.co/acme/2222"}'
+                "]}",
+            ),
+        ],
+        web_search_requests=1,
+    )
+    result = _source(resp).fetch()
+    assert [p.url for p in result.postings] == ["https://jobs.lever.co/acme/1111/"]
+    assert "1 not in results dropped" in result.detail
+    assert result.meta["ungrounded_dropped"] == 1
+    assert result.meta["grounding_checked"] is True
+
+
+def test_fetch_skips_the_results_check_when_no_result_urls_came_back():
+    # No result blocks at all (an SDK shape we don't read): keep the links rather
+    # than empty the run, and say the check didn't happen.
+    resp = _Response(
+        content=[_Block("text", '{"postings": [{"title": "A", "company": "C", "url": "https://c.example/jobs/a"}]}')],
+        web_search_requests=1,
+    )
+    result = _source(resp).fetch()
+    assert len(result.postings) == 1
+    assert result.meta["grounding_checked"] is False
+    assert result.meta["ungrounded_dropped"] == 0
 
 
 def test_fetch_drops_aggregator_links(monkeypatch):

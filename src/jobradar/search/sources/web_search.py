@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import anthropic
 from pydantic import BaseModel, ValidationError
@@ -56,6 +56,9 @@ _AGGREGATOR_HOSTS = (
     "indeed.ch",
     "glassdoor.com",
     "glassdoor.ch",
+    "glassdoor.de",
+    "glassdoor.sg",
+    "glassdoor.co.uk",
     "linkedin.com",
     "levels.fyi",
     "monster.com",
@@ -63,6 +66,22 @@ _AGGREGATOR_HOSTS = (
     "stepstone.com",
     "stepstone.de",
     "xing.com",
+    # Seen in web_search output up to 2026-10-02, mostly as search-result pages
+    # (/jobs/<keyword>/in-switzerland) rather than a posting.
+    "builtin.com",
+    "dice.com",
+    "efinancialcareers.com",
+    "efinancialcareers.ch",
+    "f6s.com",
+    "freehire.me",
+    "frontaliereticino.ch",
+    "jobleads.com",
+    "jobmaps.ch",
+    "jobsinforex.com",
+    "meetfrank.com",
+    "remoterocketship.com",
+    "wearedevelopers.com",
+    "weloveproduct.co",
 )
 
 
@@ -72,21 +91,143 @@ def _is_aggregator(url: str) -> bool:
     return any(host == h or host.endswith("." + h) for h in _AGGREGATOR_HOSTS)
 
 
-def _is_pathless(url: str) -> bool:
-    """True if the URL is a bare domain root with nothing identifying a specific
-    posting — empty path (or just "/") AND no query string.
+# Path segments that name a careers section rather than any one role, in the
+# languages Swiss employers publish in. A URL whose path is made only of these
+# (plus locale codes and file extensions) is a landing or listing page.
+_LISTING_SEGMENTS = frozenset({
+    # English
+    "career", "careers", "job", "jobs", "jobs-and-careers", "careers-and-jobs",
+    "vacancy", "vacancies", "opening", "openings", "current-openings",
+    "open-positions", "open-roles", "positions", "roles", "opportunities",
+    "join", "join-us", "joinus", "work-with-us", "work-for-us", "hiring",
+    "we-are-hiring", "all-jobs", "job-search", "search", "search-results",
+    "about", "about-us", "company", "team", "people", "life", "index", "home",
+    # German
+    "karriere", "karrieren", "stellen", "offene-stellen", "stellenangebote",
+    "stellenmarkt", "jobsuche", "offene-positionen", "arbeiten-bei-uns",
+    "unternehmen", "ueber-uns",
+    # French and Italian
+    "carriere", "carrieres", "carrière", "carrières", "emploi", "emplois",
+    "offres", "offres-d-emploi", "postes", "postes-vacants", "rejoignez-nous",
+    "lavora-con-noi", "lavoro", "carriera", "posizioni-aperte",
+})
 
-    Such a link is never a real permalink; it's the careers-board homepage the
-    model handed back when it couldn't (or didn't) surface the deep link. Two
-    reasons to drop it before scoring: (1) it hashes to a *different* dedup id
-    than the same role's real /job/view/... permalink from a direct source, so
-    it defeats de-duplication (the ETH AI Center repeat on 2026-07-09); and
-    (2) it would ship a useless "apply here" link pointing at a board homepage.
-    A query string is kept as meaningful because some ATSs put the job id there
-    (e.g. ?gh_jid=123), so root-with-query is still a specific posting.
+# en, de, fr-ch, en_US: language prefixes that say nothing about the role.
+_LOCALE_SEGMENT = re.compile(r"^[a-z]{2}(?:[-_][a-z]{2})?$")
+
+# Query keys that pick out one posting (?gh_jid=123, ?jobId=9, ?id=4), as
+# opposed to ones that filter or page a listing (?lang=en, ?page=2,
+# ?department=product). Matched in full on the lowercased key.
+_POSTING_QUERY_KEY = re.compile(
+    r"id|jid|gh_jid|job|"
+    r"(?:job|position|posting|req|requisition|vacancy|opening)[_-]?id"
+)
+
+# Tracking parameters that differ between a search result and the same link as
+# the model copies it, and say nothing about which page it is.
+_TRACKING_QUERY_PREFIXES = ("utm_", "gclid", "fbclid", "mc_", "_hs", "ref", "src", "source")
+
+
+def _meaningful_query(query: str) -> list[tuple[str, str]]:
+    """The query's parameters, tracking ones removed."""
+    return [
+        (k, v)
+        for k, v in parse_qsl(query, keep_blank_values=True)
+        if not k.lower().startswith(_TRACKING_QUERY_PREFIXES)
+    ]
+
+
+# Hosted ATS boards, where the first path segment is the employer's board and a
+# posting needs more after it: jobs.lever.co/acme is the board,
+# jobs.lever.co/acme/<uuid> a role. Value is the fewest segments a posting has.
+_ATS_POSTING_DEPTH = {
+    "jobs.lever.co": 2,
+    "jobs.eu.lever.co": 2,
+    "jobs.ashbyhq.com": 2,
+    "boards.greenhouse.io": 3,
+    "job-boards.greenhouse.io": 3,
+    "job-boards.eu.greenhouse.io": 3,
+    "apply.workable.com": 3,
+    "careers.smartrecruiters.com": 2,
+    "jobs.smartrecruiters.com": 2,
+}
+
+
+def _query_names_posting(query: str) -> bool:
+    """True if the query string carries a key that identifies one posting."""
+    return any(_POSTING_QUERY_KEY.fullmatch(k.lower()) for k, _ in _meaningful_query(query))
+
+
+def _is_listing_page(url: str) -> bool:
+    """True if the URL is a careers landing or listing page rather than the page
+    of one posting: a bare domain root, a path made only of generic careers
+    words (https://www.liip.ch/jobs, https://www.frontify.com/en/careers), or a
+    hosted ATS board with no posting under it (https://jobs.lever.co/acme).
+
+    Such a link is never a permalink, and it is how a made-up role gets in.
+    Every link in the 2026-10-02 report was one (Liip /jobs, Jua.ai, Frontify
+    and PriceHubble /careers), all four titles were checked by hand, and none
+    of the roles existed: the model had read that a company hires, named a
+    plausible role, and handed back the careers page as its link. The page
+    answers 200, so the liveness check called each one confirmed. A landing
+    page also hashes to a different dedup id than the same role's real
+    permalink from a direct source (the ETH AI Center repeat on 2026-07-09).
+
+    A query key that names a posting keeps the URL (some ATSs put the job id
+    there, e.g. /careers?gh_jid=123); one that only filters or pages a listing
+    does not.
     """
     parts = urlsplit(url)
-    return parts.path.strip("/") == "" and not parts.query
+    if parts.query and _query_names_posting(parts.query):
+        return False
+    segments = [s for s in parts.path.lower().split("/") if s]
+    host = (parts.hostname or "").lower()
+    depth = _ATS_POSTING_DEPTH.get(host)
+    if depth is not None:
+        return len(segments) < depth
+    for segment in segments:
+        stem = segment.rsplit(".", 1)[0] if "." in segment else segment
+        if stem not in _LISTING_SEGMENTS and not _LOCALE_SEGMENT.match(stem):
+            return False
+    return True
+
+
+def _url_key(url: str) -> str:
+    """A comparable form of a URL for matching the model's links against the
+    search results: scheme, leading www., trailing slash, fragment and tracking
+    parameters dropped, host lowercased, remaining query sorted.
+    """
+    parts = urlsplit(url.strip())
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    path = parts.path.rstrip("/")
+    query = sorted(_meaningful_query(parts.query))
+    return host + path + ("?" + urlencode(query) if query else "")
+
+
+def _result_urls(response) -> set[str]:
+    """Keys (see _url_key) of every URL the web_search tool actually returned
+    this run: each search result, plus each citation on the answer text.
+
+    These are the only links the model could have seen. web_search hands it
+    result pages, not the open web, so a posting URL outside this set came from
+    its own memory or was assembled by hand, and neither is a link to trust.
+    Tolerant of the SDK's block shapes; an errored search contributes nothing.
+    """
+    keys: set[str] = set()
+    for block in response.content:
+        kind = getattr(block, "type", None)
+        if kind == "web_search_tool_result":
+            content = getattr(block, "content", None)
+            for result in content if isinstance(content, list) else ():
+                url = getattr(result, "url", None)
+                if url:
+                    keys.add(_url_key(url))
+        elif kind == "text":
+            for citation in getattr(block, "citations", None) or ():
+                url = getattr(citation, "url", None)
+                if url:
+                    keys.add(_url_key(url))
+    return keys
 
 # Discovery model. Defaulting to Haiku: in practice it's the MORE reliable tier
 # here — Haiku + the basic web_search_20250305 completes in ~1-2 min, while
@@ -164,24 +305,41 @@ for the same substance, and by employer type (startup / scale-up / enterprise \
 / research lab). Each new search should reach roles the previous ones wouldn't \
 have surfaced.
 
-On LINKS, aim for quality but don't let it cost you a good lead:
-- Strongly prefer the employer's own careers page or the direct ATS posting \
-(Greenhouse, Lever, Ashby, Workday, SmartRecruiters, etc.) — that link is the \
-most likely to be current and directly applyable.
-- Avoid third-party aggregators and cached snapshots where you can (e.g. \
-levels.fyi, Glassdoor, LinkedIn job mirrors, generic job-board search pages); \
-they often serve listings that closed months ago. Favor roles that look \
-recently posted.
-- Give the most direct, specific URL you can find. If the only link you can \
-find for an otherwise strong-fit role is imperfect, still include it rather \
-than drop the role — the downstream liveness check will catch a dead link.
+On LINKS, every posting must be a real, specific job opening you saw in your \
+search results. This rule is strict, unlike the fit guidance above:
+- The url must be the page of THAT ONE posting: the employer's own posting \
+page or the direct ATS posting (Greenhouse, Lever, Ashby, Workday, \
+SmartRecruiters, Personio, Workable, etc.), e.g. \
+https://jobs.lever.co/acme/1b2c3d4e or https://www.acme.ch/jobs/senior-product-manager-ai.
+- NEVER return a careers landing page, a job listing or search page, or a \
+company homepage (e.g. https://www.acme.ch/careers, https://www.acme.ch/jobs, \
+https://jobs.lever.co/acme). Code drops these, so returning one wastes the \
+lead.
+- Copy the url exactly as it appears in a search result. Never build, guess \
+or complete a url, and never give one from memory: code checks every url \
+against the search results and drops any that isn't among them.
+- Use the title exactly as the posting states it. Do not name a role a \
+company "probably" has because it hires in that area, and do not turn a \
+company's general hiring page into a role. If you can't find the posting \
+page itself, leave the role out.
+- Write the description only from what the search result says about that \
+posting.
+- A search aimed at posting pages finds deep links far more often than a \
+generic one, e.g. a query naming an ATS host (jobs.lever.co, \
+boards.greenhouse.io, jobs.ashbyhq.com, jobs.personio.de, apply.workable.com) \
+alongside the role and place.
+- Avoid third-party aggregators and cached snapshots (e.g. levels.fyi, \
+Glassdoor, LinkedIn job mirrors, jobs.ch, generic job-board search pages); \
+they often serve listings that closed months ago, and code drops them. Favor \
+roles that look recently posted.
 
 Respond with ONLY a JSON object (no prose, no markdown fences) matching this shape:
 {{"postings": [{{"title": str, "company": str, "url": str, "location": str | null, \
 "description": str}}]}}
 
-Only return {{"postings": []}} if you genuinely found no plausibly-fitting \
-roles after actually searching.
+Return {{"postings": []}} if your searches found no posting pages for \
+plausibly-fitting roles. An empty list is a valid answer; a guessed posting \
+is not.
 """
 
 
@@ -359,16 +517,37 @@ class WebSearchSource:
         for p in aggregators:
             logger.info("web_search dropped aggregator link: %s — %s", p.title, p.url)
 
-        # Drop bare careers-board roots (no path, no query). These aren't real
-        # permalinks: they defeat URL-keyed de-duplication (the same role's real
-        # permalink from a direct source hashes to a different id) and would ship
-        # a homepage link as the "apply" URL. Backstop for the model returning a
-        # lossy link despite the prompt's "most direct URL" steer.
-        pathed = [p for p in direct if not _is_pathless(p.url)]
-        pathless = [p for p in direct if _is_pathless(p.url)]
-        for p in pathless:
-            logger.info("web_search dropped pathless link: %s — %s", p.title, p.url)
-        direct = pathed
+        # Drop careers landing and listing pages: bare roots, /careers, /jobs,
+        # an ATS board with no posting under it. Not one of these is a permalink,
+        # and a landing page is how a made-up role gets in: the model names a
+        # role the company might have, attaches the careers page, and the page
+        # answers 200 (every match in the 2026-10-02 report). Backstop for the
+        # prompt's deep-link rule, which the model does not always follow.
+        listing = [p for p in direct if _is_listing_page(p.url)]
+        direct = [p for p in direct if not _is_listing_page(p.url)]
+        for p in listing:
+            logger.info("web_search dropped listing-page link: %s — %s", p.title, p.url)
+
+        # Drop links the search never returned. web_search shows the model
+        # result pages, not the open web, so a posting URL outside the results
+        # was recalled from training or assembled by hand: a guess, whether at a
+        # role that closed long ago or at one that never existed. Skipped, with a
+        # warning, when the response carries no result URLs at all, so a change
+        # in the SDK's block shape can't silently empty every run.
+        grounded_urls = _result_urls(response)
+        ungrounded: list[RawPosting] = []
+        if grounded_urls:
+            ungrounded = [p for p in direct if _url_key(p.url) not in grounded_urls]
+            direct = [p for p in direct if _url_key(p.url) in grounded_urls]
+            for p in ungrounded:
+                logger.info("web_search dropped link not in search results: %s — %s", p.title, p.url)
+        elif direct:
+            logger.warning(
+                "web_search response carried no result URLs (%d searches); "
+                "could not check %d links against the search results",
+                searches,
+                len(direct),
+            )
 
         # Liveness check: drop links that are definitively gone (404/410) before
         # they reach scoring. Catches dead *direct* postings (the stale-Swisscom
@@ -392,8 +571,10 @@ class WebSearchSource:
             detail += f", {len(unverified)} unverified"
         if aggregators:
             detail += f", {len(aggregators)} aggregator dropped"
-        if pathless:
-            detail += f", {len(pathless)} pathless dropped"
+        if listing:
+            detail += f", {len(listing)} listing page dropped"
+        if ungrounded:
+            detail += f", {len(ungrounded)} not in results dropped"
         if not ok:
             detail += " (model did not search)"
         # Structured discovery funnel for the per-run observability artifact:
@@ -405,7 +586,9 @@ class WebSearchSource:
             "live": len(confirmed),
             "unverified": len(unverified),
             "aggregators_dropped": len(aggregators),
-            "pathless_dropped": len(pathless),
+            "listing_dropped": len(listing),
+            "ungrounded_dropped": len(ungrounded),
+            "grounding_checked": bool(grounded_urls),
             "dead_dropped": len(dead),
         }
         return FetchResult(self.name, kept, ok=ok, detail=detail, meta=meta)
