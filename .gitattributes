@@ -5,6 +5,9 @@
 # (python -m jobradar.doctor reminds you): git config merge.ours.driver true
 profile/**        merge=ours
 config/*.yaml     merge=ours
+# Except the shared board catalogue, which is maintained upstream: it merges
+# like code, so a board fixed there reaches your copy on the next pull.
+config/boards.yaml !merge
 config/*.txt      merge=ours
 applications/**   merge=ours
 data/**           merge=ours

@@ -71,7 +71,8 @@ with the templates that ship in the repo.
 | File | Holds | Docs |
 | --- | --- | --- |
 | `config/constraints.yaml` | Hard requirements: cantons, workload, office days | comments in the file |
-| `config/companies.yaml` | Where to look: the career pages to scan — none until you switch them on | [SEARCH.md](SEARCH.md) |
+| `config/companies.yaml` | Where to look: the boards to scan, by name — none until you add them | [SEARCH.md](SEARCH.md) |
+| `config/boards.yaml` | The shared catalogue of boards; maintained upstream, updated by `git pull` | [SEARCH.md](SEARCH.md) |
 | `config/search.yaml` | How the search is steered, the RAV and ETH switches | [SEARCH.md](SEARCH.md) |
 | `config/retention.yaml` | How long reports and applications stay active | [APPLY.md](APPLY.md) |
 
@@ -85,7 +86,11 @@ Code improvements land in the public jobradar repo; your copy pulls them.
 Your own files are protected: the shipped `.gitattributes` marks `profile/`,
 `config/`, `applications/`, `data/` and `reports/` as *yours* in a merge, so
 an upstream change to a template or a config comment never overwrites what
-you wrote. That needs a one-time git setting:
+you wrote. The one exception is `config/boards.yaml`, the shared catalogue of
+company boards: it merges like code, so a board that moved to another ATS is
+fixed in your copy by the next pull. Don't edit it for your own needs; a board
+of your own goes in `config/companies.yaml` with its `ats` and `slug`.
+The protection needs a one-time git setting:
 
 ```bash
 git config merge.ours.driver true          # honour the .gitattributes rules

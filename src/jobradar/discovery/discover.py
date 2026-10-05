@@ -55,11 +55,11 @@ from pathlib import Path
 
 import anthropic
 import httpx
-import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
 
 from . import discovery_ledger
+from ..boards import BOARDS_FILE, load_companies, read_catalog
 from ..llm import model_for, web_search_tool_type
 from ..matching import load_profile
 from ..search import company_health
@@ -403,20 +403,25 @@ def discover(
     use_web_search: bool = True,
     web_intent: str = "",
     seed_names: list[str] | None = None,
+    catalog_names: Iterable[str] = (),
     ledger: discovery_ledger.Ledger | None = None,
     now: datetime | None = None,
     ttl_days: int = _DROP_TTL_DAYS,
     match_ttl_days: int = _MATCH_TTL_DAYS,
 ) -> list[CompanyMatch]:
+    """catalog_names: the companies config/boards.yaml already has a board for.
+    They count as known even when not selected: suggesting one would only
+    re-derive, from a slug guess, a board the shared list already confirms."""
     now = now or datetime.now(timezone.utc)
     already_configured = {c["name"].strip().lower() for c in existing_companies if c.get("name")}
+    in_catalog = {n.strip().lower(): n for n in catalog_names}
 
     names: list[str] = list(seed_names or [])
     if use_web_search:
         # Exclude what we've already settled (configured + still-authoritative
         # ledger entries) so the search budget goes to genuinely new names.
         # Stale verdicts are intentionally NOT excluded — they're due for re-check.
-        exclude = sorted({c["name"] for c in existing_companies if c.get("name")})
+        exclude = sorted({c["name"] for c in existing_companies if c.get("name")} | set(in_catalog.values()))
         if ledger:
             exclude += discovery_ledger.active_names(
                 ledger, now, ttl_days, _PROBE_VERSION, match_ttl_days
@@ -436,6 +441,13 @@ def discover(
     for name in names:
         key = name.strip().lower()
         if not key or key in already_configured or key in seen:
+            continue
+        if key in in_catalog:
+            logger.info(
+                "%s is already in config/%s; add it to config/companies.yaml to scan it",
+                in_catalog[key], BOARDS_FILE,
+            )
+            seen.add(key)
             continue
         if ledger is not None and discovery_ledger.should_skip_probe(
             ledger, name, now, ttl_days, _PROBE_VERSION, match_ttl_days
@@ -472,7 +484,8 @@ def render_suggestions_yaml(matches: list[CompanyMatch], run_date: date) -> str:
     lines = [
         f"# Auto-discovered on {run_date.isoformat()}.",
         "# These are SUGGESTIONS based on guessed ATS slugs, not confirmed matches —",
-        "# verify each one (e.g. open the URL) before copying it into companies.yaml.",
+        "# verify each one (e.g. open the URL) before copying it into companies.yaml",
+        "# (or into config/boards.yaml, if it belongs in the shared list).",
         "# Greenhouse and SmartRecruiters hits include the API's own company_name",
         "# for a quick sanity check; Lever and Ashby don't expose one.",
         "",
@@ -503,6 +516,9 @@ class HealthFinding(BaseModel):
     status: str
     note: str = ""
     moved_to: CompanyMatch | None = None  # a live board found on another ATS
+    # Where the board's ats/slug came from, so the report says which file to
+    # fix: "catalog" (config/boards.yaml) or "override"/"local" (companies.yaml).
+    origin: str = ""
 
 
 def diagnose_stale(
@@ -526,6 +542,7 @@ def diagnose_stale(
             continue  # removed from config since the run history was written
         ats = (entry.get("ats") or "").lower()
         slug = entry.get("slug") or ""
+        origin = entry.get("origin") or ""
         # The configured board plus any human-flagged collisions for this name.
         migration_skip = {(ats, slug)}
         if ledger is not None:
@@ -534,7 +551,7 @@ def diagnose_stale(
         if fetcher is None:
             findings.append(
                 HealthFinding(
-                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days,
+                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, origin=origin,
                     status="unsupported", note=f"no connector for ATS {ats!r}",
                 )
             )
@@ -545,7 +562,7 @@ def diagnose_stale(
         except (httpx.HTTPError, ValueError) as exc:
             findings.append(
                 HealthFinding(
-                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days,
+                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, origin=origin,
                     status="gone", note=f"board unreachable: {exc}",
                     moved_to=probe_company(s.name, client, skip=migration_skip),
                 )
@@ -555,7 +572,7 @@ def diagnose_stale(
         if live_count > 0:
             findings.append(
                 HealthFinding(
-                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, status="has_ads",
+                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, origin=origin, status="has_ads",
                     note=f"{live_count} ad(s) live now, but daily runs recorded none — "
                     "connector/pipeline issue or flakiness",
                 )
@@ -563,7 +580,7 @@ def diagnose_stale(
         else:
             findings.append(
                 HealthFinding(
-                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, status="empty",
+                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, origin=origin, status="empty",
                     moved_to=probe_company(s.name, client, skip=migration_skip),
                 )
             )
@@ -576,6 +593,16 @@ _HEALTH_GROUPS = [
     ("has_ads", "Board has ads but daily runs saw none — investigate the connector"),
     ("unsupported", "ATS no longer supported"),
 ]
+
+
+# Which file a finding's board details came from, named in the report so a
+# moved board is fixed in the right place: the shared list for everyone, or
+# the user's own entry.
+_ORIGIN_FILES = {
+    "catalog": "config/boards.yaml",
+    "override": "your companies.yaml",
+    "local": "your companies.yaml",
+}
 
 
 def render_health_report(findings: list[HealthFinding], run_date: date) -> str:
@@ -602,8 +629,10 @@ def render_health_report(findings: list[HealthFinding], run_date: date) -> str:
                 else ""
             )
             note = f" — {f.note}" if f.note else ""
+            where = _ORIGIN_FILES.get(f.origin)
+            source = f", from {where}" if where else ""
             lines.append(
-                f"- **{f.name}** ({f.ats}/{f.slug}) — dry {f.dry_days} days{note}.{moved}"
+                f"- **{f.name}** ({f.ats}/{f.slug}{source}) — dry {f.dry_days} days{note}.{moved}"
             )
     return "\n".join(lines) + "\n"
 
@@ -695,8 +724,11 @@ def main(argv: list[str] | None = None) -> None:
 
     client = anthropic.Anthropic()
 
-    companies_config = yaml.safe_load((ROOT / "config" / "companies.yaml").read_text()) or {}
-    existing_companies = companies_config.get("companies") or []
+    existing_companies = load_companies(ROOT).boards
+    catalog_names = [
+        e["name"] for e in read_catalog(ROOT / "config" / BOARDS_FILE)
+        if isinstance(e, dict) and e.get("name")
+    ]
 
     _cvs, identity, _stories = load_profile(ROOT / "profile")
     seed_names = load_seed_companies(_SEED_PATH)
@@ -713,6 +745,7 @@ def main(argv: list[str] | None = None) -> None:
         use_web_search=use_web_search,
         web_intent=_discovery_intent(identity),
         seed_names=seed_names,
+        catalog_names=catalog_names,
         ledger=ledger,
     )
     discovery_ledger.save_ledger(_LEDGER_PATH, ledger)
