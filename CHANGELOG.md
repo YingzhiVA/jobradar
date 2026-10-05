@@ -4,7 +4,7 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
-## Unreleased
+## 1.7.1 — Board health after 28 days (2026-10-05)
 
 - **The board-health check flags a dry board after 28 days, down from 45.**
   A board that has moved or closed costs every posting it would have found,
