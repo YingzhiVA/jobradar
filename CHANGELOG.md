@@ -4,7 +4,7 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
-## Unreleased
+## 1.7.0 — Deep links from web search (2026-10-05)
 
 - **Web-search leads must link to the posting itself.** Every match in the
   2026-10-02 report linked to a careers landing page (`liip.ch/jobs`,
