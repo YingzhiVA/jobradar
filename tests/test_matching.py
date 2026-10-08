@@ -12,6 +12,7 @@ from jobradar.matching import (
     effective_category,
     effective_strength,
     score_postings,
+    unmet_core_gaps,
     unmet_gates,
 )
 from jobradar.models import Posting, ScoredPosting
@@ -197,6 +198,13 @@ def test_line_management_demands_still_gate():
         "Experience leading and developing substantial global teams through periods of change",
         "operative und personelle Führung des P&C-Privatkunden-Teams",
         "Du führst, entwickelst und coachst ein engagiertes Team",
+        "Lead and develop the transformation team",
+        "Lead and develop the transformation team: Strengthen transformation governance, "
+        "ways of working, and team capabilities to increase execution speed and effectiveness.",
+        "Proven people leadership experience, including leading, developing, and retaining high-performing teams.",
+        "Demonstrated people leadership, stakeholder management, and communication skills",
+        "Proven ability to lead, mentor, and develop a high-performing team of engineering managers",
+        "leading, mentoring, and developing high-performing global teams",
     ]:
         assert effective_category(req(quote, "seniority_mismatch")) == "seniority_mismatch", quote
         assert unmet_gates([req(quote, "seniority_mismatch")]) == [quote], quote
@@ -242,6 +250,15 @@ def test_leading_work_is_not_managing_people():
         "leading large-scale learning transformations",
         "substantial leadership of large, complex, cross-functional programs",
         "leading cross-team product alignment and strategic coherence",
+    ]:
+        assert unmet_gates([req(quote, "seniority_mismatch")]) == [], quote
+
+
+def test_a_project_team_is_still_a_matrix_team():
+    """The transformation-team exception does not reach project teams."""
+    for quote in [
+        "Lead, coach, and motivate project team members, fostering accountability and high performance",
+        "3 years of experience in a technical leadership role leading project teams and setting technical direction",
     ]:
         assert unmet_gates([req(quote, "seniority_mismatch")]) == [], quote
 
@@ -371,6 +388,100 @@ def test_other_category_is_ignored_entirely():
         req("Willingness to travel 30% of the time", "other"),
     ])
     assert score == 100
+
+
+def test_experience_weighs_like_the_other_fit_categories():
+    """A track record the candidate only partly has must cost the posting.
+
+    ABB Transformation Manager, 2026-10-07: these lines sat in `other` and the
+    posting scored 100 on its degree and years lines alone.
+    """
+    degree = met("Bachelor's or Master's degree in Business, Engineering, Finance", "degree")
+    years = met("10+ years of experience in business transformation", "years_of_experience")
+    track = req(
+        "Proven track record of leading large-scale, cross-functional transformation programs",
+        "experience", verdict="partial",
+    )
+    value = req(
+        "Strong understanding of transformation value realization", "experience", verdict="partial"
+    )
+    score, gates = compute_skill_score([degree, years, track, value])
+    assert gates == []
+    assert score == round(100 * (0.25 + 1 + 0.5 + 0.5) / 3.25)
+
+
+def test_abb_transformation_manager_lands_on_the_floor():
+    """The whole posting: two partial track records plus a team the role runs."""
+    score, gates = compute_skill_score([
+        met("Bachelor's or Master's degree in Business, Engineering, Finance", "degree"),
+        met("10+ years of experience in business transformation", "years_of_experience"),
+        req("Proven track record of leading large-scale, cross-functional transformation programs",
+            "experience", verdict="partial"),
+        met("Experience working with senior executives", "experience"),
+        req("Lead and develop the transformation team", "seniority_mismatch"),
+        met("working model is hybrid", "other"),
+    ])
+    assert gates == ["Lead and develop the transformation team"]
+    assert score == DEFAULT_MIN_SKILL
+
+
+def _many_met(n=6):
+    return [met(f"Requirement {i}", "experience") for i in range(n)]
+
+
+def test_one_unmet_core_must_have_caps_above_the_floor():
+    """Artefact, Engagement Manager: met lines must not outvote the one gap
+    that decides the screen. Capped, not gated — it still surfaces.
+    """
+    quote = "Approximately 5–8 years of experience in strategy consulting"
+    reqs = _many_met() + [req(quote, "years_of_experience")]
+    score, gates = compute_skill_score(reqs)
+    assert gates == []
+    assert score == DEFAULT_MIN_SKILL + 10
+    assert unmet_core_gaps(reqs) == [quote]
+    assert is_eligible(_scored(score))
+
+
+def test_each_core_category_triggers_the_cap():
+    for category in ["years_of_experience", "domain_or_industry", "technology"]:
+        score, _ = compute_skill_score(_many_met() + [req("x", category)])
+        assert score == DEFAULT_MIN_SKILL + 10, category
+
+
+def test_what_does_not_trigger_the_core_cap():
+    """`experience` is left out on purpose (one-draw misreads of
+    responsibilities), degree for its mis-flag history, and a partial or a
+    softened requirement is not a decisive gap.
+    """
+    for extra in [
+        req("Work closely with the Audiological team", "experience"),
+        req("MSc in Computer Science", "degree"),
+        req("5 years of Databricks", "technology", verdict="partial"),
+        req("Databricks experience", "technology", strength="preferred"),
+        req("Databricks experience is a strong plus", "technology"),
+    ]:
+        reqs = _many_met(20) + [extra]
+        score, _ = compute_skill_score(reqs)
+        assert score > DEFAULT_MIN_SKILL + 10, extra.quote
+        assert unmet_core_gaps(reqs) == [], extra.quote
+
+
+def test_the_core_cap_never_raises_a_low_score():
+    score, _ = compute_skill_score([
+        req("5 years of Databricks", "technology"),
+        req("Banking experience", "domain_or_industry"),
+        met("Python", "technology"),
+    ])
+    assert score == 33
+
+
+def test_a_gate_still_lands_on_the_floor_below_the_core_cap():
+    score, gates = compute_skill_score(_many_met() + [
+        req("5 years in strategy consulting", "years_of_experience"),
+        req("hire, mentor, and manage the team", "seniority_mismatch"),
+    ])
+    assert gates == ["hire, mentor, and manage the team"]
+    assert score == DEFAULT_MIN_SKILL
 
 
 def test_seniority_gap_still_caps_end_to_end():
