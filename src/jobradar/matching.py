@@ -183,6 +183,14 @@ def build_profile_block(
 # language is a genuine gate that no tailored CV closes, and lumping it into
 # `other` meant a posting demanding "zwingend fliessend Deutsch" carried no
 # penalty at all.
+#
+# `experience` was split out of `other` for the same reason. With no category
+# for a kind of work done, "Proven track record of leading large-scale,
+# cross-functional transformation programs" landed in `other`, which weighs
+# nothing. Over the checklists stored up to 2026-10-07, `other` held 23% of all
+# requirements, and 16 of the 23 postings scoring 95 or more had an unmet or
+# partial must-have in it. ABB's Transformation Manager scored 100 on a degree
+# and a years line while two partials sat there unweighted.
 RequirementCategory = Literal[
     "work_eligibility",
     "licence_or_certification",
@@ -191,6 +199,7 @@ RequirementCategory = Literal[
     "degree",
     "years_of_experience",
     "domain_or_industry",
+    "experience",
     "technology",
     "other",
 ]
@@ -217,8 +226,8 @@ _GATE_CATEGORIES = frozenset(
 # MIS-flagged — an MSc in Biomedical Engineering read as failing "MSc in
 # Computer Science, Mathematics, or similar" four separate times — so a degree
 # gap should tilt a score, not decide it. `other` is zero: it is the bucket for
-# everything the taxonomy has no opinion about (travel, commute, on-call), and
-# those are the candidate's call, not the scorer's.
+# the terms of the job rather than its qualifications (travel, commute,
+# working model, on-call), and those are the candidate's call, not the scorer's.
 # Gate categories are deliberately absent: they are eligibility facts, not
 # degrees of fit. Holding a work permit says nothing about how well someone
 # would do the job, and lacking one is not a shortfall to be averaged away — it
@@ -229,6 +238,7 @@ _GATE_CATEGORIES = frozenset(
 _CATEGORY_WEIGHT: dict[str, float] = {
     "years_of_experience": 1.0,
     "domain_or_industry": 1.0,
+    "experience": 1.0,
     "technology": 1.0,
     "degree": 0.25,
     "other": 0.0,
@@ -251,6 +261,23 @@ _EXTRA_WEIGHT = 0.2
 # than a slip, so that drops below the floor and stops surfacing.
 _CAP_FEW_UNMET = DEFAULT_MIN_SKILL  # 1-2 gates: still eligible, bottom of the pile
 _CAP_MANY_UNMET = 50  # 3+ gates: below the floor, does not surface
+
+# A weighted mean lets met lines outvote a decisive gap. Artefact's Engagement
+# Manager demands 5-8 years of strategy consulting, unmet in all five rescore
+# draws, and still scored 80 because the met lines around it diluted it. So an
+# unmet must-have in these categories caps the score: the posting still
+# surfaces, but the report's best slot (combined >= best_threshold) would need
+# an interest score of 90 or more to reach.
+#
+# Not a gate: these are the gaps a tailored CV or a recruiter conversation can
+# sometimes close, so the cap sits above the floor rather than on it.
+# `experience` is deliberately left out. In the v3 rescore it never carried a
+# consistent gap on its own, but it did produce one-draw "unmet" verdicts on
+# responsibilities misread as requirements ("Work closely with the Audiological
+# team"), and a cap turns each of those into a 20-point cliff. Degree stays out
+# for the reason it weighs 0.25 (see _CATEGORY_WEIGHT).
+_CORE_GAP_CATEGORIES = frozenset({"years_of_experience", "domain_or_industry", "technology"})
+_CAP_CORE_GAP = DEFAULT_MIN_SKILL + 10
 
 # Words that mark a stated requirement as optional, in the languages Swiss
 # postings actually use. Surveying this candidate's 32 applications, explicit
@@ -355,12 +382,18 @@ def effective_strength(requirement: _Requirement) -> str:
 # ("Du führst, entwickelst und coachst ein engagiertes Team"), hence the width.
 _LINE_MANAGEMENT_RE = re.compile(
     r"people[\s-]manag"
+    # "Demonstrated people leadership" and "Proven people leadership experience,
+    # including leading, developing, and retaining high-performing teams" both
+    # failed every marker below, so a tag the model got right was discarded.
+    r"|people[\s-]lead"
     r"|direct\s+reports?"
     r"|\bhir(?:e|ing)\b"
     r"|performance\s+manag"
     r"|\bmanag(?:e|es|ing)\b[^.;]{0,80}\bteams?\b"
     r"|\bteam\s+lead\b"
-    r"|lead(?:ing)?\s+and\s+(?:manag|develop)\w*[^.;]{0,30}\bteams?\b"
+    # A verb list before the "and": "lead, mentor, and develop a high-performing
+    # team of engineering managers" (Roche, missed on 1 of 5 rescore draws).
+    r"|lead(?:ing)?(?:,\s*\w+)*,?\s+and\s+(?:manag|develop)\w*[^.;]{0,30}\bteams?\b"
     r"|\blead\s+a\s+(?:dedicated|small|global)?\s*\w*\s*team\b"
     r"|accountab\w*\s+for\s+[^.;]{0,40}organi[sz]ations?"
     # German. The first version covered only the informal "du führst …Team" and
@@ -381,7 +414,13 @@ _LINE_MANAGEMENT_RE = re.compile(
 _NOT_LINE_MANAGEMENT_RE = re.compile(
     r"reporting\s+to"
     r"|cross[\s-]functional|cross[\s-]team|matrix"
-    r"|\bprojects?\b|\bprogram(?:me)?s?\b|workstreams?|transformations?"
+    r"|\bprojects?\b|\bprogram(?:me)?s?\b|workstreams?"
+    # Leading a transformation is leading work; "Lead and develop the
+    # transformation team" (ABB, 2026-10-07) names a standing team the role
+    # runs, and the veto turned it into a 100. A project or programme team stays
+    # vetoed: those are matrix teams by nature ("Lead, coach, and motivate
+    # project team members").
+    r"|transformations?(?!\s+teams?\b)"
     # German counterparts of the same exclusions. "fachliche Führung" is
     # leadership without line authority — "…Führung von Mitarbeitenden oder in
     # einer vergleichbaren fachlichen Führungsrolle" is satisfiable without ever
@@ -392,16 +431,28 @@ _NOT_LINE_MANAGEMENT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# The same clause boundary the marker windows use, plus the colon that joins a
+# bullet's heading to its elaboration.
+_CLAUSE_SPLIT_RE = re.compile(r"[.;:]")
+
 
 def _shows_line_management(quote: str) -> bool:
     """Whether a quote demands managing people, as opposed to leading work.
 
-    A veto wins over a marker: "leadership experience, for example by leading
-    projects, technical workstreams or serving as a (deputy) team lead" names a
-    team lead, but it is satisfiable by leading a project, so it is not a demand
-    for line management.
+    A veto wins over a marker in the same clause: "leadership experience, for
+    example by leading projects, technical workstreams or serving as a (deputy)
+    team lead" names a team lead, but it is satisfiable by leading a project, so
+    it is not a demand for line management.
+
+    Only in the same clause, though. Once the scorer quoted ABB's whole bullet,
+    "Lead and develop the transformation team: Strengthen transformation
+    governance, ...", the elaboration after the colon vetoed the demand before
+    it.
     """
-    return bool(_LINE_MANAGEMENT_RE.search(quote)) and not _NOT_LINE_MANAGEMENT_RE.search(quote)
+    return any(
+        _LINE_MANAGEMENT_RE.search(clause) and not _NOT_LINE_MANAGEMENT_RE.search(clause)
+        for clause in _CLAUSE_SPLIT_RE.split(quote)
+    )
 
 
 def effective_category(requirement: _Requirement) -> str:
@@ -433,6 +484,20 @@ def unmet_gates(requirements: list[_Requirement]) -> list[str]:
         if effective_strength(r) == "must_have"
         and r.verdict == "unmet"
         and effective_category(r) in _GATE_CATEGORIES
+    ]
+
+
+def unmet_core_gaps(requirements: list[_Requirement]) -> list[str]:
+    """The unmet must-have requirements that cap the score at _CAP_CORE_GAP,
+    as quoted text. Shown in the report next to the gates, so a capped score
+    says what capped it.
+    """
+    return [
+        r.quote
+        for r in requirements
+        if effective_strength(r) == "must_have"
+        and r.verdict == "unmet"
+        and effective_category(r) in _CORE_GAP_CATEGORIES
     ]
 
 
@@ -504,6 +569,8 @@ def compute_skill_score(
         fit = _CORE_WEIGHT * core + _EXTRA_WEIGHT * extra
 
     score = round(100 * fit)
+    if unmet_core_gaps(requirements):
+        score = min(score, _CAP_CORE_GAP)
     gates = unmet_gates(requirements)
     if gates:
         cap = _CAP_FEW_UNMET if len(gates) <= 2 else _CAP_MANY_UNMET
@@ -564,8 +631,13 @@ qualities** — communication, analytical thinking, problem-solving, teamwork, \
 stakeholder management, being proactive or curious — unless the posting ties \
 one to something specific and checkable. Nearly every posting asks for these, \
 nearly every candidate claims them, and listing them buries the requirements \
-that actually decide the screen. At most 10 entries, and fewer when the \
-posting states fewer. Skip boilerplate about company values and benefits.
+that actually decide the screen. **People leadership is not one of these \
+generic qualities**: a demand for people leadership or for developing a team \
+the role runs is a seniority_mismatch requirement, even when it shares a \
+bullet with generic ones ("Demonstrated people leadership, stakeholder \
+management, and communication skills") — list it as its own entry. At most 10 \
+entries, and fewer when the posting states fewer. Skip boilerplate about \
+company values and benefits.
 
 For each requirement give:
 
@@ -599,8 +671,17 @@ posting does not say the role manages people, do not use this category.
    - degree — an academic qualification of any kind.
    - years_of_experience — a stated minimum number of years.
    - domain_or_industry — experience in a particular sector or domain.
+   - experience — a kind of work the candidate must already have done, or a \
+capability they must have shown in practice: "a track record of leading \
+large-scale transformation programs", "experience working with senior \
+executives", "hands-on experience building data pipelines". Use it when the \
+requirement names WHAT the work was, rather than the sector \
+(domain_or_industry), the tool (technology) or the duration \
+(years_of_experience).
    - technology — a named tool, platform, language, framework, or stack.
-   - other — anything that fits none of the above.
+   - other — the terms of the job, not a qualification: location, working \
+model, travel, workload, contract length, start date, the hiring process. Do \
+NOT put a demand about the candidate's past work here; that is experience.
    A demand for five years of SOC experience is years_of_experience even when \
 the candidate has none at all, and a demand for Databricks is technology even \
 when it is listed as essential. Each category carries its own weight, applied \
@@ -763,6 +844,9 @@ def score_posting(
     brief_reason = parsed.brief_reason
     if gates:
         brief_reason = f"{brief_reason} Unmet hard requirements: {'; '.join(gates)}."
+    core_gaps = unmet_core_gaps(parsed.requirements)
+    if core_gaps:
+        brief_reason = f"{brief_reason} Unmet core requirements: {'; '.join(core_gaps)}."
     return ScoredPosting(
         posting=posting,
         skill_score=skill_score,

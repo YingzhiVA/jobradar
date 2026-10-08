@@ -4,6 +4,43 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.9.0 — Track records count (2026-10-08)
+
+- **A track record you only partly have now lowers the skill score.**
+  Requirements like "proven track record of leading large-scale transformation
+  programs" or "experience working with senior executives" had no category of
+  their own. They were filed with location and travel, which never count, so a
+  posting could score 100 on its degree and years lines while you only partly
+  met the rest. They now have their own category, `experience`, which counts
+  like industry, technology and years.
+
+- **One clear gap caps the score at 70.** If you don't meet a required number
+  of years, an industry, or a technology, the skill score stops at 70, however
+  many other lines you meet. Before, the lines you met could average away the
+  one gap that decides the screen: an engagement-manager role demanding 5–8
+  years of strategy consulting scored 80 for a candidate with none. The posting
+  still appears, but it can only take the top slot with an interest score of
+  90 or more. Partly met, preferred, and "…is a plus" requirements don't trigger
+  the cap, and neither do degrees or `experience` lines. The report says which
+  requirement capped the score.
+
+- **More people-management demands are recognised.** "Demonstrated people
+  leadership", "lead, mentor, and develop a team of managers" and "lead and
+  develop the transformation team" now cap the score at the floor when you have
+  not managed people, as the line-management check already did for other
+  wording. Leading projects, programmes and cross-functional teams still does
+  not count as managing people.
+
+- **Expect your scores to move.** Postings that scored near 100 on short
+  checklists drop, and postings with one clear gap stop at 70. Across the
+  author's applied postings, the typical score went up rather than down, so
+  this is not simply a stricter scorer. Look at a week of reports before
+  retuning `min_skill` or `best_threshold` in `config/search.yaml`.
+
+- **`reports/runs.jsonl` gains a category value.** Requirements can now be
+  tagged `experience`. The schema version stays at 5, and existing lines are
+  unchanged.
+
 ## 1.8.0 — Shared board list (2026-10-05)
 
 - **Board details now come from one shared list, `config/boards.yaml`.**
