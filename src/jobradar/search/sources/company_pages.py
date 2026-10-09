@@ -43,7 +43,7 @@ class KnownPostings:
     """The seen store's settled URLs, indexed so a connector can recognise a
     posting before paying for its detail page.
 
-    Ten connectors make one HTTP request per posting for its description, and
+    Eleven connectors make one HTTP request per posting for its description, and
     until this they made it for every posting a board listed, every run —
     although nearly all of them were already in data/seen_postings.json and
     were dropped by filter_unseen straight after. On 2026-09-24 that was most of
@@ -1883,6 +1883,107 @@ def _fetch_breezy(
     return postings
 
 
+# --- Eightfold (On) ----------------------------------------------------------
+
+
+# Eightfold's standardizedLocations end in an ISO country code ("Zürich, ZH,
+# CH"). Postings are kept when any location is in one of these, the same
+# Swiss scoping _WORKDAY_TARGET_COUNTRIES gives Workday: every new posting
+# costs a detail request for its description, and a foreign one would only be
+# dropped by the location filter after paying for it.
+_EIGHTFOLD_TARGET_COUNTRY_CODES = {"CH": "Switzerland"}
+
+# The search endpoint returns ten positions a page whatever `num` asks for.
+# A board this many pages deep is not a careers site but a misread slug.
+_EIGHTFOLD_MAX_PAGES = 100
+
+
+def _eightfold_location(position: dict) -> str | None:
+    # The country code spelled out ("Zürich, ZH, Switzerland"), so that
+    # remote_countries can read a Swiss location that names no town; several
+    # locations joined with ";", which the location filter reads as segments.
+    segments = []
+    for loc in position.get("standardizedLocations") or []:
+        head, _, code = loc.rpartition(", ")
+        country = _EIGHTFOLD_TARGET_COUNTRY_CODES.get(code)
+        segments.append(f"{head}, {country}" if head and country else country or loc)
+    return "; ".join(dict.fromkeys(segments)) or None
+
+
+def _eightfold_in_scope(position: dict) -> bool:
+    return any(
+        loc.rpartition(", ")[2] in _EIGHTFOLD_TARGET_COUNTRY_CODES
+        for loc in position.get("standardizedLocations") or []
+    )
+
+
+def _fetch_eightfold(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
+    # Eightfold serves a company's careers site from its own host (jobs.on.com)
+    # and keys every API call by the company's domain (on.com), which need not
+    # match the host, so the slug carries both: "jobs.on.com:on.com". The
+    # site's robots.txt allows /api/pcsx, which is what its own careers page
+    # calls: a paginated search with metadata only, and a per-position detail
+    # call carrying the description.
+    host, _, domain = slug.partition(":")
+    if not host or not domain:
+        raise ValueError(f"Eightfold slug must be 'host:domain', got {slug!r}")
+    base = f"https://{host}/api/pcsx"
+    postings: list[RawPosting] = []
+    start = 0
+    for _ in range(_EIGHTFOLD_MAX_PAGES):
+        resp = client.get(f"{base}/search", params={"domain": domain, "start": start})
+        resp.raise_for_status()
+        data = resp.json().get("data") or {}
+        page = data.get("positions") or []
+        for position in page:
+            position_id = position.get("id")
+            if not position_id or not _eightfold_in_scope(position):
+                continue
+            title = position.get("name", "")
+            location = _eightfold_location(position)
+            stored = known.by_segment(host, str(position_id))
+            if stored:
+                postings.append(_listing_only("eightfold", stored, title, company_name, location))
+                continue
+            detail = client.get(
+                f"{base}/position_details",
+                params={"position_id": position_id, "domain": domain, "hl": "en"},
+            )
+            if detail.status_code == 404:
+                # Closed between the search call and this one.
+                logger.info("Skipping unavailable %s position %s", company_name, position_id)
+                continue
+            detail.raise_for_status()
+            job = detail.json().get("data") or {}
+            postings.append(
+                RawPosting(
+                    source="eightfold",
+                    url=job.get("publicUrl")
+                    or urljoin(f"https://{host}", f"/careers/job/{position_id}"),
+                    title=title or job.get("name", ""),
+                    company=company_name,
+                    description=strip_html(job.get("jobDescription") or ""),
+                    location=location,
+                    remote=parse_workplace_type(position.get("workLocationOption")),
+                    raw={
+                        "id": position_id,
+                        "atsJobId": position.get("atsJobId"),
+                        "department": position.get("department"),
+                        "creationTs": position.get("creationTs"),
+                        "postedTs": position.get("postedTs"),
+                    },
+                )
+            )
+        start += len(page)
+        if not page or start >= data.get("count", 0):
+            return postings
+    raise ValueError(
+        f"Eightfold board {slug!r} has more than {_EIGHTFOLD_MAX_PAGES} pages; check the slug"
+    )
+
+
 _FETCHERS = {
     "greenhouse": _fetch_greenhouse,
     "lever": _fetch_lever,
@@ -1903,6 +2004,7 @@ _FETCHERS = {
     "google": _fetch_google,
     "onlyfy": _fetch_onlyfy,
     "breezy": _fetch_breezy,
+    "eightfold": _fetch_eightfold,
 }
 
 
@@ -1913,6 +2015,7 @@ _SKIPS_KNOWN = frozenset(
     {
         "smartrecruiters", "workday", "bamboohr", "join", "avature",
         "successfactors", "brassring", "prospective", "onlyfy", "breezy",
+        "eightfold",
     }
 )
 

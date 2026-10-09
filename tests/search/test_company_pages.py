@@ -14,6 +14,7 @@ from jobradar.search.sources.company_pages import (
     _fetch_bamboohr,
     _fetch_brassring,
     _fetch_breezy,
+    _fetch_eightfold,
     _fetch_google,
     _fetch_icims,
     _fetch_join,
@@ -2004,6 +2005,132 @@ def test_breezy_empty_board():
 
 def test_breezy_registered():
     assert _FETCHERS["breezy"] is _fetch_breezy
+
+
+# --- Eightfold: paginated search + per-position detail ---
+
+
+_EF_SEARCH_URL = "https://jobs.acme.com/api/pcsx/search"
+_EF_DETAIL_URL = "https://jobs.acme.com/api/pcsx/position_details"
+
+
+class _EightfoldClient:
+    """Fake serving ten-per-page search results and position details by id."""
+
+    def __init__(self, positions, details, page_size=10):
+        self._positions = positions
+        self._details = details  # position id -> description HTML
+        self._page_size = page_size
+        self.calls: list[tuple[str, dict]] = []
+
+    def get(self, url, params=None):
+        self.calls.append((url, dict(params or {})))
+        assert params["domain"] == "acme.com"
+        if url == _EF_SEARCH_URL:
+            start = params["start"]
+            page = self._positions[start:start + self._page_size]
+            return _Resp({"status": 200, "data": {"positions": page, "count": len(self._positions)}})
+        position_id = params["position_id"]
+        if position_id not in self._details:
+            return _Resp({"status": 404, "error": {"message": "Position not found"}}, status=404)
+        return _Resp({"status": 200, "data": {
+            "id": position_id,
+            "publicUrl": f"https://jobs.acme.com/careers/job/{position_id}",
+            "jobDescription": self._details[position_id],
+        }})
+
+    def detail_ids(self):
+        return [p["position_id"] for url, p in self.calls if url == _EF_DETAIL_URL]
+
+
+def _ef_position(position_id, name, *standardized, option="onsite"):
+    return {
+        "id": position_id,
+        "name": name,
+        "standardizedLocations": list(standardized),
+        "workLocationOption": option,
+        "atsJobId": f"JR{position_id}",
+        "positionUrl": f"/careers/job/{position_id}",
+    }
+
+
+def test_eightfold_keeps_swiss_positions_and_reads_details():
+    zurich = _ef_position(1, "Retail Allocation Analyst", "Zürich, ZH, CH")
+    multi = _ef_position(2, "Senior Lead, Copy", "Zürich, ZH, CH", "London, England, GB")
+    tokyo = _ef_position(3, "Head of Marketing, Japan", "Shibuya, Tokyo, JP")
+    client = _EightfoldClient([zurich, multi, tokyo], {
+        1: "<p>Allocate &amp; plan</p>", 2: "<p>Write</p>", 3: "<p>Market</p>",
+    })
+
+    postings = _fetch_eightfold("Acme", "jobs.acme.com:acme.com", client)
+
+    assert [p.title for p in postings] == ["Retail Allocation Analyst", "Senior Lead, Copy"]
+    p = postings[0]
+    assert p.source == "eightfold"
+    assert p.url == "https://jobs.acme.com/careers/job/1"
+    assert p.description == "Allocate & plan"
+    # country code spelled out for remote_countries; multi-site joined by ";"
+    assert p.location == "Zürich, ZH, Switzerland"
+    assert postings[1].location == "Zürich, ZH, Switzerland; London, England, GB"
+    assert p.remote is False
+    # the Tokyo role never costs a detail request
+    assert client.detail_ids() == [1, 2]
+
+
+def test_eightfold_pages_until_count():
+    positions = [_ef_position(i, f"Role {i}", "Zürich, ZH, CH") for i in range(1, 24)]
+    client = _EightfoldClient(positions, {i: "x" for i in range(1, 24)})
+
+    postings = _fetch_eightfold("Acme", "jobs.acme.com:acme.com", client)
+
+    assert len(postings) == 23
+    starts = [p["start"] for url, p in client.calls if url == _EF_SEARCH_URL]
+    assert starts == [0, 10, 20]
+
+
+def test_eightfold_skips_the_detail_request_of_a_known_posting():
+    seen = _ef_position(1, "Seen Role", "Zürich, ZH, CH")
+    new = _ef_position(2, "New Role", "Zürich, ZH, CH")
+    client = _EightfoldClient([seen, new], {2: "x"})
+    known = KnownPostings(["https://jobs.acme.com/careers/job/1"])
+
+    postings = _fetch_eightfold("Acme", "jobs.acme.com:acme.com", client, known=known)
+
+    assert [p.title for p in postings] == ["Seen Role", "New Role"]
+    assert postings[0].raw == {LISTING_ONLY: True}
+    assert postings[0].url == "https://jobs.acme.com/careers/job/1"
+    assert client.detail_ids() == [2]
+
+
+def test_eightfold_skips_position_closed_since_search():
+    alive = _ef_position(1, "Alive", "Zürich, ZH, CH")
+    closed = _ef_position(2, "Closed", "Zürich, ZH, CH")
+    client = _EightfoldClient([alive, closed], {1: "x"})
+    assert [p.title for p in _fetch_eightfold("Acme", "jobs.acme.com:acme.com", client)] == ["Alive"]
+
+
+def test_eightfold_remote_flag_from_work_location_option():
+    remote = _ef_position(1, "Remote Role", "CH", option="remote")
+    client = _EightfoldClient([remote], {1: "x"})
+    (posting,) = _fetch_eightfold("Acme", "jobs.acme.com:acme.com", client)
+    assert posting.remote is True
+    assert posting.location == "Switzerland"
+
+
+def test_eightfold_empty_board():
+    client = _EightfoldClient([], {})
+    assert _fetch_eightfold("Acme", "jobs.acme.com:acme.com", client) == []
+    assert len(client.calls) == 1
+
+
+@pytest.mark.parametrize("slug", ["jobs.acme.com", ":acme.com", "jobs.acme.com:"])
+def test_eightfold_rejects_slug_without_host_and_domain(slug):
+    with pytest.raises(ValueError, match="host:domain"):
+        _fetch_eightfold("Acme", slug, _EightfoldClient([], {}))
+
+
+def test_eightfold_registered():
+    assert _FETCHERS["eightfold"] is _fetch_eightfold
 
 
 # --- Lever: workplaceType carries the remote flag the location text lacks ---
