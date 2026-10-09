@@ -4,6 +4,28 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.10.0 — Eightfold boards (2026-10-09)
+
+- **On is scanned again, on Eightfold.** On moved its careers site
+  (jobs.on.com) off Greenhouse. The old `onrunning` board still answers with
+  about 220 postings, so it looked healthy, but nothing new has appeared on it
+  since 2026-09-25. On 2026-10-09 it shared one title with the 41 roles on
+  jobs.on.com. Every On role posted in the last two weeks was missed, among
+  them 16 in Zurich. On is now `eightfold` / `jobs.on.com:on.com`. If you scan
+  On, expect up to 16 On postings in your first report after pulling, because
+  none of them has been scored yet.
+- **Eightfold boards can be scanned.** A new `eightfold` board type reads
+  careers sites run on Eightfold. The slug is `host:domain`, the site's host
+  and the company domain its API is keyed by; the header of
+  `config/boards.yaml` explains how to read both off the careers page. Only
+  Swiss postings are kept. Each new posting costs one extra request for its
+  description, and postings already seen skip it. Discovery does not probe
+  Eightfold, since its slugs can't be guessed.
+- **On's board count drops from about 225 to about 16** in
+  `reports/runs.jsonl` and the monthly board-health check. Only Swiss postings
+  are counted now, as for Workday and Google boards. The count has not gone
+  down because On is posting less.
+
 ## 1.9.0 — Track records count (2026-10-08)
 
 - **A track record you only partly have now lowers the skill score.**

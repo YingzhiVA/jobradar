@@ -34,7 +34,7 @@
 #   ats:  greenhouse | lever | ashby | smartrecruiters | personio | recruitee |
 #         workable | teamtailor | workday | join | bamboohr | avature |
 #         successfactors | icims | brassring | prospective | google | onlyfy |
-#         breezy
+#         breezy | eightfold
 #   slug: the board token used in that ATS's public job-board URL, e.g.
 #     greenhouse: https://boards-api.greenhouse.io/v1/boards/<slug>/jobs
 #     lever:      https://api.lever.co/v0/postings/<slug>
@@ -104,6 +104,13 @@
 #                   the country=ch filter and pauses a second between requests,
 #                   as the site's robots.txt asks, so a board of 25 postings
 #                   takes about 30 seconds.
+#   eightfold:      slug is "host:domain": the careers site's host and the
+#                   company domain its API calls are keyed by, e.g.
+#                   "jobs.on.com:on.com". Read both off the careers page's own
+#                   request to https://<host>/api/pcsx/search?domain=<domain>
+#                   (the browser's network tab shows it). The connector keeps
+#                   Swiss postings in code and makes one detail request per new
+#                   one for its description.
 #
 # join is the one to be careful with: join.com serves a company PROFILE page
 # for firms that were never its customers (Swisscom has one, with no ads,
@@ -517,12 +524,15 @@ boards:
   - name: SMG Swiss Marketplace Group
     ats: smartrecruiters
     slug: SMGSwissMarketplaceGroup
-  # On (On Running / On Holding AG), Zurich-based sportswear. A global board
-  # (~300 roles); the location pre-filter trims the non-Swiss ones before any
-  # LLM cost. NOTE: quote "On" — bare `on` is a YAML 1.1 boolean (parses as True).
+  # On (On Running / On Holding AG), Zurich-based sportswear. Moved its careers
+  # site (jobs.on.com) to Eightfold: its Greenhouse board `onrunning` still
+  # answers with ~220 postings but had none new after 2026-09-25, and shared
+  # one title with the 41 on jobs.on.com on 2026-10-09. A global board, kept
+  # to its Swiss roles (16 of 41 that day) in code. NOTE: quote "On" — bare
+  # `on` is a YAML 1.1 boolean (parses as True).
   - name: "On"
-    ats: greenhouse
-    slug: onrunning
+    ats: eightfold
+    slug: "jobs.on.com:on.com"
   # Online travel booking (lastminute.com group).
   - name: LastMinute.com
     ats: smartrecruiters
