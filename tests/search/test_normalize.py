@@ -152,8 +152,10 @@ class _StubExtractionResponse:
 class _StubMessages:
     def __init__(self, extracted):
         self._extracted = extracted
+        self.kwargs: dict = {}
 
     def parse(self, **kwargs):
+        self.kwargs = kwargs
         return _StubExtractionResponse(self._extracted)
 
 
@@ -173,6 +175,18 @@ _SWISS_HQ_BOILERPLATE = (
     "Switzerland, and offices in London and New York City, we share a vibrant "
     "culture. 100% full-time. 2 days a week in the office."
 )
+
+
+def test_fill_in_leaves_haiku_5_5_room_to_think():
+    """At the old 256-token cap a third of Haiku 5.5's answers ran out of room
+    and came back unusable, silently; low effort keeps its thinking short."""
+    client = _StubClient(canton="Vaud", canton_source="Nyon")
+    normalize(make_raw(_FULLY_RESOLVED_DESCRIPTION, location="Nyon, Switzerland"),
+              client, constraints=_CANTON_CONSTRAINTS)
+    sent = client.messages.kwargs
+    assert sent["model"] == "claude-haiku-5-5"
+    assert sent["max_tokens"] >= 4096
+    assert sent["output_config"] == {"effort": "low"}
 
 
 def test_llm_canton_rejected_when_not_traceable_to_location():

@@ -19,14 +19,13 @@ All prices in USD.
 
 ## Where the money goes
 
-The default models are Haiku 5.5 for scoring, web search, company discovery
-and reading job descriptions in the apply pipeline, Haiku 4.5 for filling in
-missing fields in the daily run, and Sonnet 4.6 for the few things that need
-to be well written. Prices
-as of October 2026: Haiku 5.5 $0.10 per million input tokens and $0.50 per
-million output (for prompts up to 100k tokens, which every scoring call is),
-cache reads at a tenth of input; Haiku 4.5 $1 / $5; Sonnet $3 / $15, cache
-reads at $0.30. Web search $10 per 1,000 searches, and what it retrieves is
+The default models are Haiku 5.5 for all the bulk work (filling in missing
+fields, scoring, web search, company discovery, reading job descriptions in
+the apply pipeline) and Sonnet 4.6 for the few things that need to be well
+written. Prices as of October 2026: Haiku 5.5 $0.10 per million input tokens
+and $0.50 per million output (for prompts up to 100k tokens, which every call
+here is), cache reads at a tenth of input; Sonnet $3 / $15, cache reads at
+$0.30. Haiku 4.5, which jobradar used before 1.11.0, is $1 / $5. Web search $10 per 1,000 searches, and what it retrieves is
 billed as input. Haiku 5.5 counts the same text as about 30% more tokens than
 Haiku 4.5, which the per-call figures below already include.
 
@@ -80,10 +79,10 @@ when more than fifteen are selected before your first run.
 
 ### A daily run
 
-About **$0.40 a day** for the author's setup of about 65 boards, estimated
-with scoring (1.11.0) and web search (1.12.0) on Haiku 5.5. Before that it was
-about $0.90, the average of four daily runs in late September 2026 as the
-Claude Console reported it; the new figure replaces those two lines with their
+About **$0.35 a day** for the author's setup of about 65 boards, estimated
+with the bulk work on Haiku 5.5 (1.11.0 to 1.14.0). Before that it was about
+$0.90, the average of four daily runs in late September 2026 as the Claude
+Console reported it; the new figure replaces the Haiku lines with their
 measured costs and is not yet a Console average. The day-to-day figure moves with how
 many postings reach the scorer. A typical
 weekday there fetches about a thousand new postings, most of them from one
@@ -92,11 +91,11 @@ about 80 reaching the scorer, 3 surfaced and 5 web searches:
 
 | Stage | Model | About |
 | --- | --- | --- |
-| Filling in missing fields (workload, canton) | Haiku, ~40 short calls | $0.07 |
+| Filling in missing fields (workload, canton) | Haiku 5.5, ~40 short calls | $0.01 |
 | Scoring about 80 postings | Haiku 5.5, profile cached | $0.19 |
 | Write-ups for 3 finalists | Sonnet | $0.09 |
 | Web search: 5 searches plus the pages read | Haiku 5.5 | $0.06 |
-| **Total** | | **about $0.41** |
+| **Total** | | **about $0.35** |
 
 Scoring returns a checklist, not a number: one entry per requirement the
 posting states, each with a verdict, which the skill score is then computed
@@ -147,7 +146,7 @@ test, and a few cents when it searches.
 
 ### A typical month
 
-22 weekday runs, 15 applications, one discovery: **$15–23**. Note that a
+22 weekday runs, 15 applications, one discovery: **$14–22**. Note that a
 fresh Anthropic account needs a payment method before it will serve
 requests beyond the trial credit.
 
@@ -164,5 +163,6 @@ requests beyond the trial credit.
 
 Prices change; the figures above were taken on 2026-09-17 (applications and
 write-ups, with `claude-haiku-4-5` and `claude-sonnet-4-6`) and 2026-10-12
-(scoring, web search and discovery, with `claude-haiku-5-5`). The Console is the source of
+(filling in fields, scoring, web search and discovery, with
+`claude-haiku-5-5`). The Console is the source of
 truth for what you actually spent.

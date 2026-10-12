@@ -4,6 +4,21 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.14.0 — Haiku 5.5 throughout (2026-10-12)
+
+- **Filling in a posting's missing details runs on Haiku 5.5, so jobradar no
+  longer uses Haiku 4.5 anywhere.** This is the step that works out a
+  posting's workload, office days and canton when the text rules can't. On 80
+  real postings it made the same keep-or-drop decisions as before, at about a
+  sixth of the cost. The author's daily run is now estimated at about $0.35.
+
+- **A workload the posting doesn't state stays unknown.** Haiku 4.5 often put
+  "100%" on postings that state no workload at all, and the workload filter
+  then judged them on a number the posting never gave. If your range excludes
+  full-time, for example 60–80%, that wrongly dropped postings: 18 extra out of
+  80 in testing. An unknown workload passes the filter, as it was always meant
+  to.
+
 ## 1.13.0 — Haiku 5.5 job descriptions (2026-10-12)
 
 - **The apply pipeline reads job descriptions with Haiku 5.5.** Turning a

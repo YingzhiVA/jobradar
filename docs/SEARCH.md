@@ -130,7 +130,7 @@ record shape and `jq` examples.
 3. **Dedup** — drop anything already in `data/seen_postings.json`.
 4. **Normalize** — fill in structured fields (workload %, office days, remote,
    sponsorship, Swiss canton) via cheap regex/dict heuristics first, falling
-   back to one small Haiku call per posting only when something
+   back to one small Haiku 5.5 call per posting only when something
    filter-relevant is still missing.
 5. **Hard filters** (`search/filters.py`) — pure code, no model: drop
    anything failing `config/constraints.yaml`.
