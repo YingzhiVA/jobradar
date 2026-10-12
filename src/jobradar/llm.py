@@ -18,9 +18,11 @@ MODEL_DEFAULTS: dict[str, str] = {
     # (dev/scoring-eval/NOTES.md, "Model A/B").
     "JOBRADAR_SCORING_MODEL": "claude-haiku-5-5",
     "JOBRADAR_WRITEUP_MODEL": "claude-sonnet-4-6",
-    "JOBRADAR_WEB_SEARCH_MODEL": "claude-haiku-4-5",
+    # Haiku 5.5 since 1.12.0, for web search and discovery alike: cheaper per
+    # run and more productive (dev/websearch-eval/NOTES.md).
+    "JOBRADAR_WEB_SEARCH_MODEL": "claude-haiku-5-5",
     # Monthly company discovery
-    "JOBRADAR_DISCOVERY_MODEL": "claude-haiku-4-5",
+    "JOBRADAR_DISCOVERY_MODEL": "claude-haiku-5-5",
     # The apply pipeline
     "JOBRADAR_APPLY_HELPER_MODEL": "claude-haiku-4-5",
     "JOBRADAR_APPLY_WRITER_MODEL": "claude-sonnet-4-6",
@@ -28,8 +30,10 @@ MODEL_DEFAULTS: dict[str, str] = {
 }
 
 # web_search_20260209 adds dynamic filtering (filters results before they hit
-# the context) but is only supported on these models; everything else (e.g.
-# Haiku) must use the basic web_search_20250305.
+# the context). Models not listed get the basic web_search_20250305.
+# claude-haiku-5-5 accepts the newer version, but is left out on purpose: in the
+# 2026-10-12 comparison the model chose to filter in 1 of 3 runs, with no
+# difference in what it found and slightly more time and cost.
 DYNAMIC_FILTER_MODELS = {
     "claude-sonnet-4-6",
     "claude-opus-4-8",

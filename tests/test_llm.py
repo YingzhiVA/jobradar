@@ -33,6 +33,12 @@ def test_web_search_tool_type_follows_the_model():
     assert web_search_tool_type("claude-sonnet-4-6") == "web_search_20260209"
 
 
+def test_haiku_5_5_stays_on_the_basic_search_tool():
+    """It accepts dynamic filtering, but the 2026-10-12 comparison found no gain
+    from it; switching is a measured decision, not a default to drift into."""
+    assert web_search_tool_type("claude-haiku-5-5") == "web_search_20250305"
+
+
 class _Messages:
     def __init__(self):
         self.calls = []

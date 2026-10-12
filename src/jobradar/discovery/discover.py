@@ -75,6 +75,10 @@ _TIMEOUT = 10.0
 
 # web_search-backed company-name discovery. Haiku + the basic web_search tool is
 # cheap and sufficient here (we only need names; the ATS probe verifies them).
+# On Haiku 5.5 the model often answers from its own knowledge without
+# searching; that is fine for the same reason (every name is probed), and in the
+# 2026-10-12 comparison it found twice as many live boards as Haiku 4.5's
+# searches did.
 # Resolved per call via jobradar.llm (so a value in .env is honoured); the
 # web_search tool version follows the model.
 _DISCOVERY_MODEL_VAR = "JOBRADAR_DISCOVERY_MODEL"
@@ -349,8 +353,10 @@ def search_company_names(
         ).messages.create(
             model=model,
             # Headroom for a long list of names; 1024 risked truncating the JSON
-            # into an unparseable (silently-empty) result.
-            max_tokens=2048,
+            # into an unparseable (silently-empty) result. Haiku 5.5's thinking
+            # counts against this too: it used 3,000-4,200 tokens per call in the
+            # 2026-10-12 comparison, past the old 2048.
+            max_tokens=16000,
             tools=[{"type": web_search_tool_type(model), "name": "web_search", "max_uses": max_searches}],
             messages=[
                 {

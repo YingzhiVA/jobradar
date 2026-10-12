@@ -159,8 +159,8 @@ record shape and `jq` examples.
 
 ## Models
 
-Bulk scoring runs on Haiku 5.5; the few finalist write-ups on Sonnet 4.6,
-where reasoning and writing quality matter more. The model split is about
+Bulk scoring and web search run on Haiku 5.5; the few finalist write-ups on
+Sonnet 4.6, where reasoning and writing quality matter more. The model split is about
 fit-to-task, not squeezing cost. Override per stage in `.env`
 (`JOBRADAR_SCORING_MODEL`, `JOBRADAR_WRITEUP_MODEL`, `JOBRADAR_WEB_SEARCH_MODEL`);
 the values are read when the stage runs, so `.env` is honoured. See
