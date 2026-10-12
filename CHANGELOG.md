@@ -4,6 +4,26 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.13.0 — Haiku 5.5 job descriptions (2026-10-12)
+
+- **The apply pipeline reads job descriptions with Haiku 5.5.** Turning a
+  posting page into the job description your CV is tailored against now costs
+  about a fifth as much and finishes sooner (about 8 seconds instead of 12 in
+  testing). It also copies more of the posting: on the author's test pages it
+  kept about 85% of the posting's text instead of 70%, including requirements
+  Haiku 4.5 had dropped, and it found a UBS posting behind a long cookie notice
+  that Haiku 4.5 gave up on, which would have meant pasting it yourself. The
+  progress bar now waits about 3 seconds before the description starts
+  appearing, while the model thinks.
+
+- **What you need to do: check your `.env`.** If it sets
+  `JOBRADAR_APPLY_HELPER_MODEL=claude-haiku-4-5`, job descriptions stay on Haiku
+  4.5 after you pull. Delete the line to follow the new default.
+
+- **`.env.example` no longer says the helper model does fresh scoring.** A
+  posting the daily run never saw is scored with `JOBRADAR_SCORING_MODEL`,
+  which has been Haiku 5.5 since 1.11.0.
+
 ## 1.12.0 — Haiku 5.5 web search and discovery (2026-10-12)
 
 - **Web search and company discovery run on Haiku 5.5 as well.** Web search

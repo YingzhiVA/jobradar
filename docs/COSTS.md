@@ -19,10 +19,10 @@ All prices in USD.
 
 ## Where the money goes
 
-The default models are Haiku 5.5 for scoring, web search and company
-discovery, Haiku 4.5 for the other bulk work (filling in missing fields, the
-apply pipeline's helper), and Sonnet 4.6 for the few things that need to be
-well written. Prices
+The default models are Haiku 5.5 for scoring, web search, company discovery
+and reading job descriptions in the apply pipeline, Haiku 4.5 for filling in
+missing fields in the daily run, and Sonnet 4.6 for the few things that need
+to be well written. Prices
 as of October 2026: Haiku 5.5 $0.10 per million input tokens and $0.50 per
 million output (for prompts up to 100k tokens, which every scoring call is),
 cache reads at a tenth of input; Haiku 4.5 $1 / $5; Sonnet $3 / $15, cache
@@ -134,7 +134,10 @@ single line.
 | `--upgrade` to full tier | one more writing call, as above |
 
 The writing call dominates: a tailored CV plus cover letter is about 12k
-output tokens on Sonnet, about $0.18 by itself.
+output tokens on Sonnet, about $0.18 by itself. These figures were measured in September 2026, when
+reading the job description and the fresh fit score ran on Haiku 4.5; on Haiku
+5.5 (1.11.0 and 1.13.0) the two together cost under a cent, so the totals now
+run a cent or two lower.
 
 ### Monthly discovery
 

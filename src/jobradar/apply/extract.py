@@ -98,7 +98,10 @@ def extract_jd(
     try:
         with client.messages.stream(
             model=model,
-            max_tokens=8192,
+            # Haiku 5.5 thinks before it answers, and thinking counts against
+            # this cap. A posting near the _MAX_PAGE_CHARS input cut reproduces
+            # to ~8k tokens on its own, so 8192 left no room for the thinking.
+            max_tokens=16000,
             messages=[
                 {
                     "role": "user",
