@@ -240,7 +240,11 @@ def _result_urls(response) -> set[str]:
 # web_search tool version follows the model automatically, so switching the
 # model is the only change needed to move between Haiku and Sonnet.
 _MODEL_VAR = "JOBRADAR_WEB_SEARCH_MODEL"
-_MAX_TOKENS = 4096
+# Haiku 5.5 thinks before it answers, and thinking counts against this cap: at
+# 4096 its first test run stopped mid-answer and the source returned nothing,
+# and its answers ran ~4,100-4,800 tokens in the 2026-10-12 comparison
+# (dev/websearch-eval/NOTES.md). The ceiling is not billed, only what is used.
+_MAX_TOKENS = 16000
 
 # Hard cap on web searches per run. web_search is billed at $10/1000 searches
 # AND every result is pulled into the model's context as input tokens, so an
@@ -257,7 +261,7 @@ _DEFAULT_MAX_SEARCHES = int(os.environ.get("JOBRADAR_WEB_SEARCH_MAX_USES", "5"))
 # 10-min-per-attempt × retries (which hung a run for 22+ min). max_retries=0 +
 # this timeout means one bounded attempt; on timeout the source raises,
 # _fetch_all catches it, and the run degrades to company_pages only rather than
-# stalling. Lower this if you switch to Haiku (it finishes in ~1-2 min).
+# stalling. Haiku finishes well under it: ~10 s on 4.5, ~20-25 s on 5.5.
 # Override via JOBRADAR_WEB_SEARCH_TIMEOUT.
 _TIMEOUT_SECONDS = float(os.environ.get("JOBRADAR_WEB_SEARCH_TIMEOUT", "900"))
 
@@ -292,10 +296,18 @@ the direction it represents — NOT by matching job-title keywords. Deliberately
 include strong-substance roles whose titles are unconventional or that a plain \
 title search would miss. When you're unsure whether a role *fits*, INCLUDE it: \
 a borderline-fit lead that a later stage discards is far cheaper than a good \
-role you never surfaced. Lean toward roles in or near the location preference \
-above but keep a borderline-location role rather than drop it (a later stage \
-checks location precisely). The only roles worth excluding on substance are \
-ones that plainly clash with what the candidate says they're moving away from.
+role you never surfaced. The only roles worth excluding on substance are ones \
+that plainly clash with what the candidate says they're moving away from.
+
+On LOCATION, be strict where fit is generous: check where each posting is \
+before you list it. Leave out a posting whose page places it outside the \
+location preference above — another country, or a remote role restricted to \
+somewhere else (e.g. "Remote (US)", "New York", "London", "Berlin"). A search \
+aimed at Zurich still returns such postings; listing them only wastes the \
+lead. Keep a posting that names the preferred area among several locations, \
+one that is remote with the preferred area allowed, and one whose location the \
+result doesn't state: a later stage checks those precisely. Put the location \
+exactly as the result states it in `location`.
 
 On COVERAGE, spend each of your searches on a DIFFERENT angle so they cover \
 distinct parts of the market rather than re-running near-duplicate queries. \

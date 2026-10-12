@@ -4,6 +4,41 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.12.0 — Haiku 5.5 web search and discovery (2026-10-12)
+
+- **Web search and company discovery run on Haiku 5.5 as well.** Web search
+  costs about $0.06 a run instead of $0.09, almost all of it the search fee,
+  and returns many more direct links to real postings. Discovery found about
+  twice as many companies with a live job board, at under a cent a run. With
+  scoring already moved in 1.11.0, the author's daily run is now estimated at
+  about $0.40. [docs/COSTS.md](docs/COSTS.md) has the figures.
+
+- **Discovery may now answer without searching.** In every test, Haiku 5.5
+  named companies from its own knowledge rather than running its searches,
+  and its names were more relevant than Haiku 4.5's searched ones. Every name
+  is still checked against the job boards before it is suggested, so a wrong
+  name costs nothing. A company newer than the model's knowledge can be
+  missed; add it to `config/seed_companies.txt`.
+
+- **Web search leaves out postings it can see are elsewhere.** It used to keep
+  a posting in New York or Berlin as "borderline" for the location filter to
+  drop later. It now leaves out postings placed outside your area, and keeps
+  those that list your area among several places, are remote with your area
+  allowed, or state no location. In testing this halved the out-of-area leads.
+  It did not raise the number of in-area ones: the search results for most
+  profiles hold few Swiss postings, so expect web search to add a lead only
+  occasionally.
+
+- **What you need to do: check your `.env`.** If it sets
+  `JOBRADAR_WEB_SEARCH_MODEL` or `JOBRADAR_DISCOVERY_MODEL` to
+  `claude-haiku-4-5`, those stages stay on Haiku 4.5 after you pull. Delete
+  the lines to follow the new defaults.
+
+- **Dynamic filtering stays off.** Haiku 5.5 accepts the web search tool
+  version that filters results with code, but in testing it used it in one run
+  of three, with no difference in what it found. The basic version stays the
+  default for Haiku 5.5.
+
 ## 1.11.0 — Haiku 5.5 scoring (2026-10-12)
 
 - **Scoring runs on Haiku 5.5, at about a quarter of the cost.** A scoring

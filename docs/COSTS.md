@@ -19,8 +19,10 @@ All prices in USD.
 
 ## Where the money goes
 
-The default models are Haiku 5.5 for scoring, Haiku 4.5 for the other bulk
-work, and Sonnet 4.6 for the few things that need to be well written. Prices
+The default models are Haiku 5.5 for scoring, web search and company
+discovery, Haiku 4.5 for the other bulk work (filling in missing fields, the
+apply pipeline's helper), and Sonnet 4.6 for the few things that need to be
+well written. Prices
 as of October 2026: Haiku 5.5 $0.10 per million input tokens and $0.50 per
 million output (for prompts up to 100k tokens, which every scoring call is),
 cache reads at a tenth of input; Haiku 4.5 $1 / $5; Sonnet $3 / $15, cache
@@ -78,11 +80,11 @@ when more than fifteen are selected before your first run.
 
 ### A daily run
 
-About **$0.55 a day** for the author's setup of about 65 boards, estimated
-with scoring on Haiku 5.5 (1.11.0). Before that it was about $0.90, the
-average of four daily runs in late September 2026 as the Claude Console
-reported it; the new figure replaces only the scoring line with its measured
-cost and is not yet a Console average. The day-to-day figure moves with how
+About **$0.40 a day** for the author's setup of about 65 boards, estimated
+with scoring (1.11.0) and web search (1.12.0) on Haiku 5.5. Before that it was
+about $0.90, the average of four daily runs in late September 2026 as the
+Claude Console reported it; the new figure replaces those two lines with their
+measured costs and is not yet a Console average. The day-to-day figure moves with how
 many postings reach the scorer. A typical
 weekday there fetches about a thousand new postings, most of them from one
 large international board and dropped for free by the location filter, with
@@ -93,8 +95,8 @@ about 80 reaching the scorer, 3 surfaced and 5 web searches:
 | Filling in missing fields (workload, canton) | Haiku, ~40 short calls | $0.07 |
 | Scoring about 80 postings | Haiku 5.5, profile cached | $0.19 |
 | Write-ups for 3 finalists | Sonnet | $0.09 |
-| Web search: 5 searches plus the pages read | Haiku | $0.22 |
-| **Total** | | **about $0.57** |
+| Web search: 5 searches plus the pages read | Haiku 5.5 | $0.06 |
+| **Total** | | **about $0.41** |
 
 Scoring returns a checklist, not a number: one entry per requirement the
 posting states, each with a verdict, which the skill score is then computed
@@ -104,6 +106,10 @@ costs about $0.0023, against $0.0081 on Haiku 4.5 with no thinking. The
 figure comes from the token counts of 210 scoring calls over 42 real
 postings on 12 October 2026. On Haiku 4.5 this line was $0.65; the earlier
 single-number scorer, before 1.4.0, cost about $0.28.
+
+Web search is mostly the search fee itself: $0.05 for five searches, plus
+about a cent of tokens on Haiku 5.5 (six runs measured on 12 October 2026;
+three on Haiku 4.5 the same day cost $0.09 each).
 
 About one scored posting in five lands just under the skill floor and is
 scored again on up to two later runs before being written off, since a single
@@ -132,11 +138,13 @@ output tokens on Sonnet, about $0.18 by itself.
 
 ### Monthly discovery
 
-One Haiku call with three searches, then plain HTTP probes: about $0.15.
+One Haiku 5.5 call that may run up to three searches, then plain HTTP probes:
+under a cent when the model answers without searching, as it did in every
+test, and a few cents when it searches.
 
 ### A typical month
 
-22 weekday runs, 15 applications, one discovery: **$18–26**. Note that a
+22 weekday runs, 15 applications, one discovery: **$15–23**. Note that a
 fresh Anthropic account needs a payment method before it will serve
 requests beyond the trial credit.
 
@@ -145,13 +153,13 @@ requests beyond the trial credit.
 | To spend less | Where |
 | --- | --- |
 | Select fewer boards, and add them a few at a time | `config/companies.yaml` |
-| Skip web search (the biggest single cost) | `--no-web-search`, or `JOBRADAR_WEB_SEARCH_MAX_USES` in `.env` |
+| Skip web search (about $0.06 a run) | `--no-web-search`, or `JOBRADAR_WEB_SEARCH_MAX_USES` in `.env` |
 | Search less often | `schedule.frequency` in `config/search.yaml` |
 | Surface fewer finalists (fewer Sonnet write-ups) | `output.max_best`, `output.max_okay` |
 | Score fewer postings | prune `config/companies.yaml`; tighten `config/constraints.yaml` |
 | Change a stage's model | `JOBRADAR_SCORING_MODEL`, `JOBRADAR_WRITEUP_MODEL`, `JOBRADAR_APPLY_WRITER_MODEL` … in `.env` |
 
-Prices change; the figures above were taken on 2026-09-17 (applications,
-discovery, web search, write-ups, with `claude-haiku-4-5` and
-`claude-sonnet-4-6`) and 2026-10-12 (scoring, with `claude-haiku-5-5`). The Console is the source of
+Prices change; the figures above were taken on 2026-09-17 (applications and
+write-ups, with `claude-haiku-4-5` and `claude-sonnet-4-6`) and 2026-10-12
+(scoring, web search and discovery, with `claude-haiku-5-5`). The Console is the source of
 truth for what you actually spent.
