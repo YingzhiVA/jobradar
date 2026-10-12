@@ -102,6 +102,54 @@ def test_softened_wording_downgrades_to_preferred():
         assert effective_strength(req(quote, "technology")) == "preferred"
 
 
+def test_a_bare_softener_in_parentheses_softens_the_line():
+    for quote in [
+        "Experience in Tableau (preferred)",
+        "Ideally, you have worked in insurance",
+        "idealerweise im Versicherungs-, Vorsorge- oder Finanzdienstleistungsumfeld",
+        "Von Vorteil sind Kenntnisse in SAP",
+    ]:
+        assert _looks_optional(quote), quote
+
+
+def test_a_softened_qualifier_leaves_the_requirement_hard():
+    """Verbatim from runs up to 2026-10-08, where the old any-word check
+    downgraded every one of these from the model's must-have.
+    """
+    for quote in [
+        "3–6 years of experience at a leading strategy consultancy or an in-house "
+        "strategy or corporate development function, ideally in financial services",
+        "A top tier University education, preferably focused on corporate strategy, "
+        "finance or structured problem solving",
+        "Minimum of 10 years of experience in industrial automation, ideally within a "
+        "manufacturing environment",
+        "2–3 Jahre Erfahrung im Projektmanagement, idealerweise in einem digitalen Umfeld",
+        "Experience with ERP systems (SAP preferred), reporting tools, and business "
+        "analytics platforms such as Power BI",
+        "Erfolgreich abgeschlossene Ausbildung in der Versicherungsbranche "
+        "(VBV-Zertifizierung von Vorteil)",
+        "Pursuing a MSc or preferably PhD degree in an engineering or computer science "
+        "related discipline",
+        "Basic knowledge in electrical engineering is a desirable must",
+    ]:
+        assert not _looks_optional(quote), quote
+        assert effective_strength(req(quote, "experience")) == "must_have", quote
+
+
+def test_a_hard_clause_keeps_the_line_hard():
+    for quote in [
+        "Fluent in English; German is a plus.",
+        "MD required; MD/PhD preferred.",
+        "Sehr gute Deutschkenntnisse in Wort und Schrift; Englischkenntnisse von Vorteil",
+        "Exceptional Python programming skills; experience with C++ and parallel "
+        "programming, such as CUDA, is a plus.",
+        "Business fluent in English, German is beneficial",
+        "fluent in English, German is a plus but not required",
+        "Bachelor's degree, advanced degree preferred",
+    ]:
+        assert not _looks_optional(quote), quote
+
+
 def test_plain_requirement_is_not_softened():
     for quote in [
         "Minimum 2 years of relevant experience in banking",
@@ -381,6 +429,22 @@ def test_degree_gap_barely_moves_the_score():
     assert score == 80
 
 
+def test_qualities_and_duties_are_ignored_entirely():
+    """Generic qualities were judged met 93% of the time and only inflated the
+    score; the role's duties are not demands on the candidate at all.
+    """
+    alone, _ = compute_skill_score([req("5 years of Databricks", "technology", verdict="partial")])
+    padded, gates = compute_skill_score([
+        req("5 years of Databricks", "technology", verdict="partial"),
+        met("Excellent communication skills", "personal_quality"),
+        met("Hohe Eigeninitiative, Lernbereitschaft", "personal_quality"),
+        req("Translate the portfolio strategy into a tactical plan", "responsibility"),
+        req("Lead and develop the transformation team", "responsibility"),
+    ])
+    assert gates == []
+    assert padded == alone == 50
+
+
 def test_other_category_is_ignored_entirely():
     """Travel, commute and on-call are the candidate's call, not the scorer's."""
     score, _ = compute_skill_score([
@@ -411,17 +475,21 @@ def test_experience_weighs_like_the_other_fit_categories():
 
 
 def test_abb_transformation_manager_lands_on_the_floor():
-    """The whole posting: two partial track records plus a team the role runs."""
+    """The whole posting: a partial track record, people leadership asked for in
+    the qualifications, and the role's own duties carrying no weight.
+    """
+    people = "Demonstrated people leadership, stakeholder management, and communication skills"
     score, gates = compute_skill_score([
         met("Bachelor's or Master's degree in Business, Engineering, Finance", "degree"),
         met("10+ years of experience in business transformation", "years_of_experience"),
         req("Proven track record of leading large-scale, cross-functional transformation programs",
             "experience", verdict="partial"),
         met("Experience working with senior executives", "experience"),
-        req("Lead and develop the transformation team", "seniority_mismatch"),
+        req(people, "seniority_mismatch"),
+        req("Lead and develop the transformation team", "responsibility"),
         met("working model is hybrid", "other"),
     ])
-    assert gates == ["Lead and develop the transformation team"]
+    assert gates == [people]
     assert score == DEFAULT_MIN_SKILL
 
 

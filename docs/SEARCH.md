@@ -143,7 +143,11 @@ record shape and `jq` examples.
    it can be traced back to the lines that set it; `reports/runs.jsonl`
    records the checklist for every scored posting. An unmet requirement for a
    work permit, a licence, a working language, or line management caps the
-   score at the floor rather than just lowering it.
+   score at the floor rather than just lowering it; line management counts only
+   when the posting asks for it as a qualification, not when it lists it among
+   the role's duties. An unmet required number of years, industry or
+   technology caps it at 70. Generic qualities ("strong communication skills")
+   and the role's own duties are recorded but carry no weight.
 7. **Rank & select** (`search/ranking.py`) — the best match (if any clears the
    high bar) plus a few "okay" ones (lower bar); zero is a valid result. All
    four dials come from `config/search.yaml`.
@@ -155,7 +159,7 @@ record shape and `jq` examples.
 
 ## Models
 
-Bulk scoring runs on Haiku 4.5; the few finalist write-ups on Sonnet 4.6,
+Bulk scoring runs on Haiku 5.5; the few finalist write-ups on Sonnet 4.6,
 where reasoning and writing quality matter more. The model split is about
 fit-to-task, not squeezing cost. Override per stage in `.env`
 (`JOBRADAR_SCORING_MODEL`, `JOBRADAR_WRITEUP_MODEL`, `JOBRADAR_WEB_SEARCH_MODEL`);

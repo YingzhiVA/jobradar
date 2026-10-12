@@ -9,10 +9,10 @@ see build_profile_block(). Two caveats worth knowing if you're staring at
 1. Caching is model-scoped — this stage uses Haiku, writeup.py uses Sonnet,
    so they write to separate caches. That's fine; each still gets reused
    across its own multiple calls within a run.
-2. Haiku 4.5's minimum cacheable prefix is 4096 tokens. A short CV +
-   identity statement may simply not clear that bar, in which case caching
-   silently doesn't kick in (cache_creation_input_tokens stays 0) — at the
-   volume this tool runs at, that's a non-issue either way.
+2. The minimum cacheable prefix is model-dependent (up to 4096 tokens). A
+   short CV + identity statement may simply not clear that bar, in which case
+   caching silently doesn't kick in (cache_creation_input_tokens stays 0) — at
+   the volume this tool runs at, that's a non-issue either way.
 """
 
 from __future__ import annotations
@@ -191,6 +191,16 @@ def build_profile_block(
 # requirements, and 16 of the 23 postings scoring 95 or more had an unmet or
 # partial must-have in it. ABB's Transformation Manager scored 100 on a degree
 # and a years line while two partials sat there unweighted.
+#
+# `personal_quality` and `responsibility` were then split out of `experience`,
+# which had become the new catch-all. In a hand-labelled sample of 120
+# `experience` quotes (dev/scoring-eval/data/experience_labels.json), 26% were
+# generic qualities ("Hohe Eigeninitiative") and 18% were the role's own duties
+# ("Translate the portfolio strategy into a tactical plan"). Qualities were
+# judged met 93% of the time, so they inflated every score they touched;
+# duties were noise both ways. The prompt had told the model to leave generic
+# qualities out all along, and it listed them anyway, so they get a category
+# that weighs nothing instead of an instruction it ignores.
 RequirementCategory = Literal[
     "work_eligibility",
     "licence_or_certification",
@@ -201,6 +211,8 @@ RequirementCategory = Literal[
     "domain_or_industry",
     "experience",
     "technology",
+    "personal_quality",
+    "responsibility",
     "other",
 ]
 
@@ -241,6 +253,8 @@ _CATEGORY_WEIGHT: dict[str, float] = {
     "experience": 1.0,
     "technology": 1.0,
     "degree": 0.25,
+    "personal_quality": 0.0,
+    "responsibility": 0.0,
     "other": 0.0,
 }
 
@@ -325,6 +339,67 @@ _SOFTENER_RE = re.compile(
 _SOFTENER_LIST = ", ".join(f'"{label}"' for label, _ in _SOFTENERS)
 
 
+# Softeners that qualify what FOLLOWS them ("…, ideally in financial services")
+# rather than the subject before them ("German is a plus"). Only the second kind
+# can soften a requirement from the end of its line.
+_ADVERBIAL_SOFTENERS = frozenset({"preferably", "ideally", "idealerweise"})
+
+# A segment after a comma that continues a list rather than starting a new
+# requirement: "Clinical trials, drug development, or health data experience is
+# a strong plus" is soft as a whole; "Fluent in English, German is a plus" is not.
+_LIST_CONTINUATION_RE = re.compile(r"\s*(?:and|or|und|oder|et|ou|sowie)\b", re.IGNORECASE)
+
+
+def _strip_qualifier_parens(text: str) -> str:
+    """Drops parenthetical qualifiers, keeps a bare softener in parentheses.
+
+    "(SAP preferred)" and "(preferably PhD)" qualify part of the requirement and
+    go; "Experience in Tableau (preferred)" softens the whole line, so a group
+    holding nothing but a softener stays, as plain text.
+    """
+    def keep_bare_softener(match: re.Match) -> str:
+        inner = match.group(1).strip()
+        return f" {inner} " if _SOFTENER_RE.fullmatch(inner) else " "
+
+    return re.sub(r"\(([^()]*)\)", keep_bare_softener, text)
+
+
+def _clause_is_soft(clause: str) -> bool:
+    text = _strip_qualifier_parens(clause).strip(" .,:;!-–")
+    matches = list(_SOFTENER_RE.finditer(text))
+    if not matches:
+        return False
+
+    # At the start, a softener scopes over everything after it: "Ideally you
+    # have worked in insurance", "Nice to have: Palantir Foundry", "You'd
+    # ideally bring…". Two words of lead-in at most, and no comma before it.
+    first = matches[0]
+    lead = text[: first.start()]
+    if "," not in lead and len(lead.split()) <= 2:
+        return True
+
+    # At the end, a predicative softener scopes over its subject: "Databricks
+    # knowledge preferred", "…is a strong plus", "…von Vorteil". The subject is
+    # the whole clause unless a comma starts a new requirement before it.
+    last = matches[-1]
+    if last.group(0).lower() in _ADVERBIAL_SOFTENERS:
+        return False
+    if text[last.end():].strip(" .!"):
+        return False
+    # "German is a plus but not required" ends in a chain of softeners; the
+    # subject comes before the first of them.
+    chain = last
+    for match in reversed(matches[:-1]):
+        gap = text[match.end() : chain.start()]
+        if "," in gap or len(gap.split()) > 2:
+            break
+        chain = match
+    subject_start = text.rfind(",", 0, chain.start())
+    if subject_start == -1:
+        return True
+    return bool(_LIST_CONTINUATION_RE.match(text[subject_start + 1 :]))
+
+
 def _looks_optional(quote: str) -> bool:
     """Whether a requirement's own wording marks it optional.
 
@@ -336,16 +411,28 @@ def _looks_optional(quote: str) -> bool:
     anyway. It cannot see a softener that lives in a section heading rather than
     the line itself — that stays the model's job, since only it sees the
     heading.
+
+    The softener has to scope over the whole requirement, in every clause. Any
+    softener word anywhere used to be enough, and of the 111 distinct quotes it
+    downgraded from a model must-have up to 2026-10-08, nearly all were a hard
+    requirement with a softened qualifier: "3–6 years at a leading strategy
+    consultancy…, ideally in financial services" (Julius Baer, listed under Key
+    qualifications), "Fluent in English; German is a plus", "MD required;
+    MD/PhD preferred".
     """
-    return bool(_SOFTENER_RE.search(quote))
+    clauses = [clause for clause in quote.split(";") if clause.strip()]
+    return bool(clauses) and all(_clause_is_soft(clause) for clause in clauses)
 
 
 class _Requirement(BaseModel):
     quote: str
     category: RequirementCategory
     strength: Literal["must_have", "preferred"]
-    verdict: Literal["met", "partial", "unmet"]
+    # Before the verdict on purpose: the response is generated in field order,
+    # so the model names what in the profile meets the requirement and then
+    # judges it, rather than judging first and justifying after.
     evidence: str = ""
+    verdict: Literal["met", "partial", "unmet"]
 
 
 def effective_strength(requirement: _Requirement) -> str:
@@ -608,7 +695,11 @@ DESCRIPTION_LIMIT = 12000
 # answer, is what hits it. The ceiling is not billed, only the tokens actually
 # produced (a well-behaved response runs about 900), and the prompt caps quote
 # and evidence length to keep it there.
-_MAX_OUTPUT_TOKENS = 8000
+#
+# Haiku 5.5 thinks before it answers, and thinking counts against this cap: over
+# 210 rescore draws its output ran at a median of ~3,100 tokens and a maximum of
+# ~5,800, so 8000 no longer left a runaway's margin above a normal answer.
+_MAX_OUTPUT_TOKENS = 16000
 
 _SCORING_PROMPT = """\
 Screen this posting the way an experienced hiring manager or technical \
@@ -631,13 +722,21 @@ qualities** — communication, analytical thinking, problem-solving, teamwork, \
 stakeholder management, being proactive or curious — unless the posting ties \
 one to something specific and checkable. Nearly every posting asks for these, \
 nearly every candidate claims them, and listing them buries the requirements \
-that actually decide the screen. **People leadership is not one of these \
-generic qualities**: a demand for people leadership or for developing a team \
-the role runs is a seniority_mismatch requirement, even when it shares a \
-bullet with generic ones ("Demonstrated people leadership, stakeholder \
-management, and communication skills") — list it as its own entry. At most 10 \
-entries, and fewer when the posting states fewer. Skip boilerplate about \
-company values and benefits.
+that actually decide the screen. Any you do list must be tagged \
+personal_quality. **People leadership is not one of these generic \
+qualities**: when the candidate's qualifications ask for people leadership, \
+that is a seniority_mismatch requirement, even when it shares a bullet with \
+generic ones ("Demonstrated people leadership, stakeholder management, and \
+communication skills") — list it as its own entry.
+
+Requirements are what the candidate must already bring. What the role will DO \
+— its responsibilities, tasks and day-to-day work — is not a requirement, \
+even where a candidate could be judged against it. Leave those out too; any \
+you do list must be tagged responsibility.
+
+At most 10 entries, not counting personal_quality and responsibility entries, \
+and fewer when the posting states fewer. Skip boilerplate about company values \
+and benefits.
 
 For each requirement give:
 
@@ -666,7 +765,12 @@ a years requirement. The test is whether people would report to this person. \
 Leading a project, an engagement or a workstream is NOT this, and neither is \
 mentoring, coaching, guiding a squad, or "leading cross-functional teams" \
 without authority over them — those are ordinary senior-IC work. If the \
-posting does not say the role manages people, do not use this category.
+posting does not say the role manages people, do not use this category. It is \
+a qualification the candidate must already have ("Demonstrated experience \
+managing at least 1–3 direct reports"). A duty of the role ("Lead and develop \
+the transformation team", "Du führst ein Team von fünf Personen") is \
+responsibility, not this: an employer can hire someone to manage people for \
+the first time.
    - language_requirement — working fluency in a named human language.
    - degree — an academic qualification of any kind.
    - years_of_experience — a stated minimum number of years.
@@ -677,8 +781,17 @@ large-scale transformation programs", "experience working with senior \
 executives", "hands-on experience building data pipelines". Use it when the \
 requirement names WHAT the work was, rather than the sector \
 (domain_or_industry), the tool (technology) or the duration \
-(years_of_experience).
+(years_of_experience). A trait is personal_quality and a duty of the role is \
+responsibility, not this.
    - technology — a named tool, platform, language, framework, or stack.
+   - personal_quality — a trait or general skill rather than a kind of work \
+done: communication, analytical or problem-solving skills, ownership, \
+initiative, curiosity, resilience, comfort with ambiguity, stakeholder \
+management, "Hohe Eigeninitiative".
+   - responsibility — something the role will do, from the description of the \
+job or its list of tasks, rather than something the candidate must already \
+have: "Translate the portfolio strategy into a clear commercial tactical \
+plan", "Lead and develop the transformation team".
    - other — the terms of the job, not a qualification: location, working \
 model, travel, workload, contract length, start date, the hiring process. Do \
 NOT put a demand about the candidate's past work here; that is experience.
@@ -699,16 +812,29 @@ requirement is a must-have unless the posting says otherwise. Downgrade to \
 "don't worry if you don't meet all the criteria". That language downgrades the \
 qualifications it refers to, but it never downgrades a legal right-to-work \
 gate, a required licence, or a mandatory working language: a posting cannot \
-encourage its way out of those.
+encourage its way out of those. Nor does it downgrade a stated number of years, \
+an industry or domain, or a named technology: "meets several of the following" \
+in a consulting firm's posting does not make its years of consulting optional. \
+Those stay must_have unless their own wording or their heading softens them.
    Most postings do not separate required from preferred at all. A plain \
 bullet under "Your Profile", "What You'll Bring" or "Deine Skills", with no \
 softening word, is a must_have.
 
-4. `verdict` — `met`, `partial`, or `unmet`, judging the candidate against it. \
+4. `evidence` — what in the profile meets it, or what is missing. **At most 12 \
+words.** A pointer, not an argument: "12 years product management", "no \
+PySpark anywhere in profile". Write it before deciding the verdict, and point \
+at something concrete: a role, a project, a CV line.
+
+5. `verdict` — `met`, `partial`, or `unmet`, judging the candidate against it. \
 Credit transferable experience and the candidate's stated skills, degrees and \
-languages generously. Use `partial` when there is real adjacent evidence that \
-falls short of what is asked — the right kind of work at a smaller scale, or \
-the skill without the years. Use `unmet` when there is nothing to point to.
+languages, but decide from the evidence you just named:
+   - `met` — the profile shows this kind of work or skill directly, at the \
+level, scope or duration stated.
+   - `partial` — the profile shows something adjacent: the same kind of work in \
+a different setting, at a smaller scale or for fewer years, or a closely \
+related tool in place of the named one.
+   - `unmet` — nothing in the profile points to it, or only a personal quality \
+does ("strong communicator" does not meet "experience presenting to boards").
    **Judge the requirement whole.** Most are compound: a duration AND a \
 setting ("5-10 years in a leading management consultancy"), a skill AND a \
 scale ("MLOps at enterprise scale"), a field AND a seniority. It is `met` only \
@@ -718,10 +844,15 @@ requirement — a candidate with twelve years of product management and none of 
 it in consulting does not meet "5-10 years in a leading management \
 consultancy", however many years they have. Read the whole phrase before \
 deciding, not the first half of it.
-
-5. `evidence` — what in the profile meets it, or what is missing. **At most 12 \
-words.** A pointer, not an argument: "12 years product management", "no \
-PySpark anywhere in profile".
+   **Years in a field count only in that field.** For "N years of X", count the \
+years the profile spends doing X, not the candidate's total career. Where the \
+posting offers alternatives ("…in consulting or a similar role", "or \
+equivalent experience"), judge against the closest alternative it names.
+   **Line management is met only by people who reported to the candidate.** \
+For a seniority_mismatch requirement, leading cross-functional teams, \
+projects or squads without authority over them, mentoring, and coaching are \
+`unmet`, not `partial`: they are the ordinary senior-IC work the category \
+excludes, so they cannot be partial credit towards it.
 
 Then give:
 
