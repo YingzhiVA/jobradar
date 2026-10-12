@@ -3,7 +3,7 @@
 Cheap regex/keyword heuristics run first and cost nothing. Only when the
 fields that actually drive hard filtering (employment_pct,
 office_days_per_week) are still unknown after that does this fall back to
-one small Haiku extraction call per posting — and only if an Anthropic
+one small Haiku 5.5 extraction call per posting — and only if an Anthropic
 client was supplied (callers that don't have/want to spend API calls, e.g.
 tests or a quick dry run, can pass client=None and just get the heuristic
 result).
@@ -23,7 +23,24 @@ from .sources.base import RawPosting
 
 logger = logging.getLogger(__name__)
 
-_EXTRACTION_MODEL = "claude-haiku-4-5"
+# Haiku 5.5 since 1.14.0 (dev/fill-eval/NOTES.md): on 80 real postings it made
+# the same filter decisions as Haiku 4.5 at about a sixth of the cost, and it
+# leaves a workload the posting never states as unknown instead of guessing
+# 100%, which dropped part-time searchers' postings. Hardcoded rather than read
+# from .env because the request options below are Haiku 5.5's: Haiku 4.5
+# rejects `effort`.
+_EXTRACTION_MODEL = "claude-haiku-5-5"
+# Haiku 5.5 thinks before it answers and thinking counts against max_tokens: at
+# the old 256, 29 of 80 test calls ran out of room and came back unusable, with
+# no error, so the posting kept its gaps (one in-range posting was dropped on
+# location that way). Low effort keeps the thinking short; the largest answer
+# in testing was 492 tokens, and the cap itself is not billed.
+#
+# Thinking is NOT disabled: that variant placed a posting in Tampere, Finland
+# in canton Vaud, citing "Tampere" as its source, which the traceability guard
+# below cannot catch.
+_EXTRACTION_MAX_TOKENS = 4096
+_EXTRACTION_EFFORT = "low"
 
 _PCT_RANGE_RE = re.compile(r"(\d{1,3})\s*(?:%|\bpercent\b)?\s*(?:-|to|–)\s*(\d{1,3})\s*%")
 _PCT_SINGLE_RE = re.compile(r"(\d{1,3})\s*%")
@@ -261,7 +278,8 @@ def llm_fill_gaps(posting: Posting, client: anthropic.Anthropic) -> Posting:
     try:
         response = client.messages.parse(
             model=_EXTRACTION_MODEL,
-            max_tokens=256,
+            max_tokens=_EXTRACTION_MAX_TOKENS,
+            output_config={"effort": _EXTRACTION_EFFORT},
             messages=[
                 {
                     "role": "user",
