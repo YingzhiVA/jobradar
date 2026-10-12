@@ -9,7 +9,7 @@ from jobradar.models import Posting
 
 def test_default_when_unset(monkeypatch):
     monkeypatch.delenv("JOBRADAR_SCORING_MODEL", raising=False)
-    assert model_for("JOBRADAR_SCORING_MODEL") == "claude-haiku-4-5"
+    assert model_for("JOBRADAR_SCORING_MODEL") == "claude-haiku-5-5"
 
 
 def test_override_when_set(monkeypatch):
@@ -61,4 +61,4 @@ def test_scoring_reads_the_override_at_call_time(monkeypatch):
     # CALL resolved to, not how many attempts a call is allowed.
     models = [c["model"] for c in client.messages.calls]
     distinct = [m for i, m in enumerate(models) if i == 0 or m != models[i - 1]]
-    assert distinct == ["claude-sonnet-4-6", "claude-haiku-4-5"]
+    assert distinct == ["claude-sonnet-4-6", "claude-haiku-5-5"]

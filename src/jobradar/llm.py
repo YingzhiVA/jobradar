@@ -13,7 +13,10 @@ import os
 
 MODEL_DEFAULTS: dict[str, str] = {
     # The daily search
-    "JOBRADAR_SCORING_MODEL": "claude-haiku-4-5",
+    # Haiku 5.5 since 1.11.0: on the same prompt it flipped fewer verdicts
+    # between draws and cost about a quarter per call, thinking included
+    # (dev/scoring-eval/NOTES.md, "Model A/B").
+    "JOBRADAR_SCORING_MODEL": "claude-haiku-5-5",
     "JOBRADAR_WRITEUP_MODEL": "claude-sonnet-4-6",
     "JOBRADAR_WEB_SEARCH_MODEL": "claude-haiku-4-5",
     # Monthly company discovery

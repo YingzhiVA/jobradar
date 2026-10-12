@@ -4,6 +4,64 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.11.0 — Haiku 5.5 scoring (2026-10-12)
+
+- **Scoring runs on Haiku 5.5, at about a quarter of the cost.** A scoring
+  call costs about $0.0023 instead of $0.0081, so the author's daily run
+  drops from about $0.90 to about $0.55. The new model also thinks before it
+  answers and follows the scoring rules more closely: across 42 real postings
+  scored five times each, a posting's skill score varied less from one
+  scoring to the next. [docs/COSTS.md](docs/COSTS.md) has the new figures.
+
+- **What you need to do: check `JOBRADAR_SCORING_MODEL` in your `.env`.**
+  `.env.example` used to set it to `claude-haiku-4-5`, uncommented. If you
+  copied that line, it keeps scoring on Haiku 4.5 after you pull. Delete the
+  line to follow the new default. Your `.env` is never changed by a pull.
+
+- **A requirement with a softened detail is no longer treated as optional.**
+  "10 years in industrial automation, *ideally* within manufacturing" used to
+  count as a nice-to-have because the line contained "ideally". So did
+  "Fluent in English; German is *a plus*", and "MD required; MD/PhD
+  *preferred*". A line now counts as optional only when the softener covers
+  the whole requirement, as in "Experience with R is a plus". About a hundred
+  real requirements had been wrongly softened this way, raising scores.
+
+- **"Don't worry if you don't meet every criterion" no longer makes core
+  requirements optional.** That kind of wording still softens the rest of the
+  list, but a required number of years, an industry, or a technology stays
+  required. A consulting firm saying "the ideal candidate meets several of the
+  following" has not made its years of consulting optional.
+
+- **Personal qualities and the role's duties no longer count.** Lines like
+  "Excellent communication skills" or "Hohe Eigeninitiative" were nearly
+  always judged met, and so raised every score they appeared in. Duties such
+  as "Translate the portfolio strategy into a tactical plan" describe the job,
+  not you. Both are still listed in `reports/runs.jsonl`, under the new
+  categories `personal_quality` and `responsibility`, but carry no weight.
+
+- **Managing people only caps the score when the posting asks for it as a
+  qualification.** "Demonstrated experience managing 1–3 direct reports"
+  still caps it at the floor. "Lead and develop the transformation team" in
+  the role's duties no longer does: an employer can hire someone to manage
+  people for the first time. This reverses part of 1.9.0. Leading
+  cross-functional teams or projects without direct reports now counts as not
+  meeting a people-management requirement, rather than as partly meeting it.
+
+- **Clearer rules for whether you meet a requirement.** "N years of X" counts
+  only the years spent doing X, not your whole career, and where a posting
+  offers alternatives ("or business analyst roles"), the closest one is used.
+  The model now names the evidence from your profile before it decides.
+
+- **Expect your scores to move again, mostly down.** Rescoring the author's 41
+  applied postings against 1.10.0: those scoring 90 or more fell from 16 to 9,
+  the typical score from 81 to 77, and those landing below the default floor
+  of 60 rose from 1 to 7. A posting that lands just under the floor is still
+  scored again on later runs before it is dropped. Look at a week of reports
+  before retuning `min_skill` or `best_threshold`.
+
+- **`reports/runs.jsonl` gains two category values,** `personal_quality` and
+  `responsibility`. The schema version stays at 5.
+
 ## 1.10.0 — Eightfold boards (2026-10-09)
 
 - **On is scanned again, on Eightfold.** On moved its careers site
