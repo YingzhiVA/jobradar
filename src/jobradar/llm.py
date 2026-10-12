@@ -24,7 +24,9 @@ MODEL_DEFAULTS: dict[str, str] = {
     # Monthly company discovery
     "JOBRADAR_DISCOVERY_MODEL": "claude-haiku-5-5",
     # The apply pipeline
-    "JOBRADAR_APPLY_HELPER_MODEL": "claude-haiku-4-5",
+    # JD extraction. Haiku 5.5 since 1.13.0: a fifth of the cost, faster, and a
+    # more complete copy of the posting (dev/apply-eval/NOTES.md).
+    "JOBRADAR_APPLY_HELPER_MODEL": "claude-haiku-5-5",
     "JOBRADAR_APPLY_WRITER_MODEL": "claude-sonnet-4-6",
     "JOBRADAR_APPLY_PREP_MODEL": "claude-sonnet-4-6",
 }
