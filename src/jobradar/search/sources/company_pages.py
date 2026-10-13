@@ -1005,7 +1005,7 @@ def _fetch_avature(
     return postings
 
 
-# --- SAP SuccessFactors Career Site Builder (EY, Swiss Re) ---
+# --- SAP SuccessFactors Career Site Builder (EY, Swiss Re, Allianz) ---
 
 # Baked-in server-side location filter, for the same reason as
 # _WORKDAY_TARGET_COUNTRIES: these boards are global (EY lists thousands of
@@ -1015,7 +1015,7 @@ def _fetch_avature(
 _SF_LOCATION_SEARCH = "Switzerland"
 
 _SF_ROW_RE = re.compile(r'<tr class="data-row.*?</tr>', re.S)
-_SF_ANCHOR_RE = re.compile(r'<a\s([^>]*class="jobTitle-link"[^>]*)>(.*?)</a>', re.S)
+_SF_ANCHOR_RE = re.compile(r'<a\s([^>]*class="jobTitle-link\b[^"]*"[^>]*)>(.*?)</a>', re.S)
 _SF_HREF_RE = re.compile(r'href="([^"]+)"')
 _SF_LOCATION_RE = re.compile(r'class="jobLocation">(.*?)</span>', re.S)
 # "Results 1 – 25 of 49": the board's own count of the location-filtered
@@ -1023,26 +1023,43 @@ _SF_LOCATION_RE = re.compile(r'class="jobLocation">(.*?)</span>', re.S)
 # a page of UNFILTERED postings rather than the last page again — new rows,
 # so "nothing new" alone would keep going and pull foreign roles in.
 _SF_TOTAL_RE = re.compile(r"of\s*<b>\s*(\d+)\s*</b>")
+# Tile-layout boards (Allianz) render each job as an <li class="job-tile ...">
+# card instead of a table row, and carry the count in the results script
+# ("jobRecordsFound: parseInt("33")") instead of the pagination label.
+_SF_TILE_START_RE = re.compile(r'<li class="job-tile\b')
+_SF_TILE_LOCATION_RE = re.compile(r'-desktop-section-location-value">(.*?)</div>', re.S)
+_SF_TILE_TOTAL_RE = re.compile(r'jobRecordsFound:\s*parseInt\("(\d+)"\)')
 
 
 def _sf_parse_rows(page_html: str) -> list[tuple[str, str, str | None]]:
-    """(href, title, location) per job row of a search-results page.
+    """(href, title, location) per job row (or tile) of a search-results page.
 
-    Each row renders the title link twice (desktop table cell + phone card);
-    taking the first anchor per row keeps one entry per job.
+    Each row/tile renders the title link more than once (desktop + tablet/phone
+    variants); taking the first anchor per row keeps one entry per job.
     """
+    blocks = _SF_ROW_RE.findall(page_html)
+    location_re = _SF_LOCATION_RE
+    if not blocks:
+        starts = [m.start() for m in _SF_TILE_START_RE.finditer(page_html)]
+        blocks = [page_html[a:b] for a, b in zip(starts, starts[1:] + [len(page_html)])]
+        location_re = _SF_TILE_LOCATION_RE
     rows: list[tuple[str, str, str | None]] = []
-    for row in _SF_ROW_RE.findall(page_html):
+    for row in blocks:
         anchor = _SF_ANCHOR_RE.search(row)
         if not anchor:
             continue
         href = _SF_HREF_RE.search(anchor.group(1))
         if not href:
             continue
-        location_match = _SF_LOCATION_RE.search(row)
+        location_match = location_re.search(row)
         location = strip_html(location_match.group(1)) if location_match else ""
         rows.append((html.unescape(href.group(1)), strip_html(anchor.group(2)), location or None))
     return rows
+
+
+def _sf_total(page_html: str) -> int | None:
+    match = _SF_TOTAL_RE.search(page_html) or _SF_TILE_TOTAL_RE.search(page_html)
+    return int(match.group(1)) if match else None
 
 
 def _sf_description(page_html: str) -> str:
@@ -1084,8 +1101,7 @@ def _fetch_successfactors(
         )
         resp.raise_for_status()
         if total is None:
-            total_match = _SF_TOTAL_RE.search(resp.text)
-            total = int(total_match.group(1)) if total_match else None
+            total = _sf_total(resp.text)
         rows = [(h, t, loc) for h, t, loc in _sf_parse_rows(resp.text) if h not in seen]
         # An out-of-range startrow serves the last page again rather than an
         # empty one, so "nothing new" is the stop condition, not "no rows".

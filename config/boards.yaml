@@ -275,6 +275,16 @@ boards:
   - name: Zurich Insurance
     ats: successfactors
     slug: www.careers.zurich.com
+  # Allianz Suisse. careers.allianz.com is a Phenom front-end over the group's
+  # SuccessFactors tenant (AZGROUPPROD); the Career Site Builder search page
+  # behind it is internal-careers.allianz.com, which despite its name is
+  # public, lists the same Swiss postings as the Phenom site and applies
+  # through the external talent-community flow. Tile layout, not the table one.
+  # The Switzerland search covers every Allianz unit in CH (Allianz Suisse,
+  # Allianz Trade, Medi24/Allianz Partners, CAP Rechtsschutz), not only Suisse.
+  - name: Allianz Suisse
+    ats: successfactors
+    slug: internal-careers.allianz.com
   # AXA Switzerland. axa.ch's "Offene Stellen" page hands off to AXA Group's
   # careers.axa.com, an iCIMS board fronted by Jibe, whose JSON API the icims
   # connector reads with a Switzerland country facet. The bulk are agency,
@@ -345,10 +355,12 @@ boards:
   - name: Sophia Genetics
     ats: workable
     slug: sophia-genetics
-  # RetinAI Medical: AI/ML for ophthalmology imaging.
+  # RetinAI Medical (now Ikerian AG): AI/ML for ophthalmology imaging. Moved
+  # off Personio (retinai.jobs.personio.de now 404s) to Workable.
   - name: Retinai
-    ats: personio
+    ats: workable
     slug: retinai
+    # API reports company_name: 'RetinAI Medical'
   - name: Kyan Health
     ats: ashby
     slug: kyanhealth

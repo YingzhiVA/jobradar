@@ -8,7 +8,7 @@ are filtered out before any of that. What reaches you is at most one "best"
 match a day plus a few "okay" ones, and a day with nothing is a normal day.
 
 It finds postings itself: from the company career pages you choose (a
-catalogue of 79 Swiss boards across nineteen applicant-tracking systems ships
+catalogue of 80 Swiss boards across twenty applicant-tracking systems ships
 with it, grouped by industry, and none is scanned until you pick it), and from
 Claude's web search. It never scrapes or automates LinkedIn. When you decide
 to apply, it drafts a tailored CV and cover letter in the posting's language,
@@ -128,7 +128,7 @@ Three phases, each its own module, sharing the profile you set up once:
 
 1. **Company discovery** (`jobradar.discovery`), occasional: find companies
    worth scanning and feed them into `config/companies.yaml`. Optional; the
-   shipped catalogue in `config/boards.yaml` already covers 79 Swiss boards.
+   shipped catalogue in `config/boards.yaml` already covers 80 Swiss boards.
 2. **Search** (`jobradar.search`), the daily run: fetch postings, filter,
    score, report the few worth your time.
 3. **Apply** (`jobradar.apply`), on demand: turn chosen postings into
