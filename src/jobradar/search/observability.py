@@ -24,6 +24,10 @@ Example queries::
     # Outcome counts across all history:
     jq -s 'map(.outcomes[].outcome) | group_by(.) | map({(.[0]): length}) | add' \\
       reports/runs.jsonl
+
+    # Why each posting that never reached scoring was dropped, latest run:
+    tail -1 reports/runs.jsonl \\
+      | jq -c '.filtered_out[] | {company, title, stage, failed_checks, values, llm_filled}'
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ from pathlib import Path
 
 from ..config import DEFAULT_MIN_INTEREST, DEFAULT_MIN_SKILL
 from ..models import ScoredPosting
+from .filters import FilterResult
 from .ranking import classify_outcome
 from .sources.base import FetchResult, RawPosting
 
@@ -54,7 +59,12 @@ from .sources.base import FetchResult, RawPosting
 #    own call, before the code-side checks rewrote it. `category` and `strength`
 #    remain the effective values the score was computed from; without the model's
 #    originals, a correction that was itself wrong would be invisible.
-SCHEMA_VERSION = 5
+# 6: added `filtered_out` — every new posting dropped before scoring, with the
+#    stage, the failed checks, the values that failed them, and which of those
+#    values the LLM gap-fill supplied. Before this only the funnel counts were
+#    kept, so a wrongly dropped posting (2026-10-08: an on-site role that Haiku
+#    read as 5 office days) could only be explained by replaying the run.
+SCHEMA_VERSION = 6
 RUNS_FILENAME = "runs.jsonl"
 
 
@@ -104,6 +114,29 @@ def _posting_outcome(
     }
 
 
+def _filter_drop(result: FilterResult) -> dict:
+    """One posting dropped before scoring, with what dropped it.
+
+    Only the values the failed checks read are kept, which is what keeps this
+    affordable: a run drops dozens of new postings, most of them foreign roles
+    out at the location prefilter. `llm_filled` is narrowed to those same values,
+    so it answers one question: was the deciding value stated by the posting or
+    inferred by the gap-fill model?
+    """
+    values = result.failed_values()
+    return {
+        "id": result.posting.id,
+        "title": result.posting.title,
+        "company": result.posting.company,
+        "url": result.posting.url,
+        "source": result.posting.source,
+        "stage": result.stage,
+        "failed_checks": list(result.failed_checks),
+        "values": values,
+        "llm_filled": [name for name in result.posting.llm_filled if name in values],
+    }
+
+
 def build_run_record(
     run_date: date,
     fetch_results: list[FetchResult],
@@ -115,6 +148,7 @@ def build_run_record(
     failed_sources: list[str],
     corroboration: dict[str, int] | None = None,
     uncorroborated: list[RawPosting] | None = None,
+    filtered_out: list[FilterResult] | None = None,
     min_skill: int = DEFAULT_MIN_SKILL,
     min_interest: int = DEFAULT_MIN_INTEREST,
 ) -> dict:
@@ -124,6 +158,9 @@ def build_run_record(
     search/corroborate.py). The dropped postings are listed in full rather than
     counted, because a false drop there costs a real match and is invisible
     everywhere else — the run log is the only place it can be caught.
+
+    `filtered_out` is the same idea for the new postings dropped between dedup
+    and scoring (see filters.STAGE_*): one entry each, with its reason.
 
     `min_skill` / `min_interest` are the floors this run selected with; they are
     recorded under `settings` and used to label each outcome, so a log line can
@@ -164,6 +201,7 @@ def build_run_record(
             }
             for p in (uncorroborated or [])
         ],
+        "filtered_out": [_filter_drop(r) for r in (filtered_out or [])],
         "outcomes": [
             _posting_outcome(s, tier_by_id.get(s.posting.id), min_skill, min_interest)
             for s in scored

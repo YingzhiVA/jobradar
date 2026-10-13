@@ -9,6 +9,7 @@ from jobradar.search.observability import (
     dump_scoring_corpus,
 )
 from pathlib import Path
+from jobradar.search.filters import STAGE_HARD_FILTERS, STAGE_LOCATION_PREFILTER, FilterResult
 from jobradar.search.sources.base import FetchResult
 
 RUN_DATE = date(2026, 6, 17)
@@ -100,6 +101,56 @@ def test_outcomes_are_labelled_with_the_configured_floors():
     )
     assert default["outcomes"][0]["outcome"] == "deferred-capped"
     assert raised["outcomes"][0]["outcome"] == "below-floor"
+
+
+def _posting(label, **fields):
+    return Posting(
+        id=label, source="ashby", url=f"https://x/{label}",
+        title=label, company="Co", description="desc", **fields,
+    )
+
+
+def test_filtered_out_records_why_each_posting_was_dropped():
+    on_site = _posting(
+        "on-site", location_text="Zurich HQ", canton="Zurich",
+        employment_pct_min=100, employment_pct_max=100, office_days_per_week=5,
+        llm_filled=["employment_pct_min", "employment_pct_max", "office_days_per_week"],
+    )
+    foreign = _posting("foreign", location_text="San Francisco, CA")
+    rec = build_run_record(
+        RUN_DATE, [], {}, [], {}, degraded=False, failed_sources=[],
+        filtered_out=[
+            FilterResult(foreign, False, ["location"], stage=STAGE_LOCATION_PREFILTER),
+            FilterResult(on_site, False, ["office_days"]),
+        ],
+    )
+    prefilter, hard = rec["filtered_out"]
+    assert prefilter["stage"] == STAGE_LOCATION_PREFILTER
+    assert prefilter["values"] == {
+        "location_text": "San Francisco, CA", "canton": None, "remote": None,
+    }
+    assert prefilter["llm_filled"] == []
+    assert hard["stage"] == STAGE_HARD_FILTERS
+    assert hard["failed_checks"] == ["office_days"]
+    assert hard["values"] == {"office_days_per_week": 5}
+    # Narrowed to the deciding values: the workload was LLM-filled too, but it
+    # didn't drop the posting.
+    assert hard["llm_filled"] == ["office_days_per_week"]
+    assert hard["url"] == "https://x/on-site"
+
+
+def test_filtered_out_is_empty_when_nothing_was_dropped():
+    assert _record()["filtered_out"] == []
+
+
+def test_filtered_out_record_is_json_serialisable(tmp_path):
+    rec = build_run_record(
+        RUN_DATE, [], {}, [], {}, degraded=False, failed_sources=[],
+        filtered_out=[FilterResult(_posting("a", remote=False), False, ["location"])],
+    )
+    append_run_record(rec, tmp_path)
+    line = (tmp_path / "runs.jsonl").read_text(encoding="utf-8")
+    assert json.loads(line)["filtered_out"][0]["values"]["remote"] is False
 
 
 # --- the opt-in scoring corpus -------------------------------------------

@@ -17,12 +17,37 @@ from dataclasses import dataclass
 
 from ..models import Constraints, Posting
 
+# Where in the pipeline a posting fell out, before it could be scored. The first
+# two are cheap gates main.py applies ahead of the LLM gap-fill; the last is
+# evaluate() on the gap-filled posting.
+STAGE_COMPANY = "company_named"
+STAGE_LOCATION_PREFILTER = "location_prefilter"
+STAGE_HARD_FILTERS = "hard_filters"
+
+# The Posting fields each check reads, so a drop can be recorded with the
+# values that caused it rather than just the check's name.
+CHECK_FIELDS = {
+    "company": ("company",),
+    "location": ("location_text", "canton", "remote"),
+    "employment_pct": ("employment_pct_min", "employment_pct_max"),
+    "office_days": ("office_days_per_week",),
+}
+
 
 @dataclass
 class FilterResult:
     posting: Posting
     passed: bool
     failed_checks: list[str]
+    stage: str = STAGE_HARD_FILTERS
+
+    def failed_values(self) -> dict:
+        """The posting's values for the fields its failed checks read."""
+        return {
+            name: getattr(self.posting, name)
+            for check in self.failed_checks
+            for name in CHECK_FIELDS[check]
+        }
 
 
 def _canton_key(name: str) -> str:
