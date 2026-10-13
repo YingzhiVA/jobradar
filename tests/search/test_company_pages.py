@@ -1411,6 +1411,47 @@ def test_successfactors_stops_at_the_boards_count_not_at_new_rows():
     assert [p.title for p in postings] == ["A", "B"]
 
 
+def _sf_tile(href, title, location, job_id):
+    # Allianz's tile layout: the title anchor and fields repeat per viewport
+    # (desktop, tablet, mobile); only the desktop location is read.
+    variant = (
+        f'<a class="jobTitle-link fontcolor1" data-focus-tile=".job-id-{job_id}" href="{href}">{title}</a>'
+        f'<div id="job-{job_id}-VIEW-section-location-value">{location}</div>'
+    )
+    return (
+        f'<li class="job-tile job-id-{job_id}" data-url="{href}"><div class="job-tile-cell">'
+        + variant.replace("VIEW", "desktop")
+        + variant.replace("VIEW", "tablet")
+        + "</div></li>"
+    )
+
+
+def test_successfactors_tile_layout_and_its_count():
+    # Like Sonova, the tile board serves unfiltered foreign postings past the
+    # end of the Switzerland search; its count lives in the results script.
+    count = '<script>Results.init({ jobRecordsFound: parseInt("2") });</script>'
+    page_1 = count + "<ul>{}{}</ul>".format(
+        _sf_tile("/job/Wallisellen-Actuary-8304/11/", "Actuary", "Wallisellen, CH, 8304", 11),
+        _sf_tile("/job/Bern-Jurist-3012/22/", "Jurist:in", "Bern, CH, 3012", 22),
+    )
+    overflow = count + _sf_tile("/job/Singapore-Intern/33/", "Intern", "Singapore, SG", 33)
+    client = _AvatureClient(
+        {
+            _sf_key(0): page_1,
+            _sf_key(2): overflow,
+            "https://careers.example.com/job/Wallisellen-Actuary-8304/11/": _SF_DETAIL,
+            "https://careers.example.com/job/Bern-Jurist-3012/22/": _SF_DETAIL,
+            "https://careers.example.com/job/Singapore-Intern/33/": _SF_DETAIL,
+        }
+    )
+
+    postings = _fetch_successfactors("Allianz Suisse", "careers.example.com/ey", client)
+
+    assert [p.title for p in postings] == ["Actuary", "Jurist:in"]
+    assert [p.location for p in postings] == ["Wallisellen, CH, 8304", "Bern, CH, 3012"]
+    assert "Own the roadmap end to end" in postings[0].description
+
+
 def test_successfactors_site_mounted_at_host_root():
     page = _sf_row("/job/Analyst/9/", "Analyst", "Zurich, CH")
     client = _AvatureClient(

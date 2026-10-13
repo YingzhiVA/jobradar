@@ -4,6 +4,32 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.15.0 — Allianz and RetinAI boards (2026-10-13)
+
+- **Allianz Suisse can be scanned.** Its board is the group's SAP
+  SuccessFactors site, `successfactors` / `internal-careers.allianz.com`.
+  Despite the name it is public, it lists the same Swiss postings as
+  careers.allianz.com, and you apply through the normal external form. On
+  2026-10-13 it listed 33 Swiss roles, mostly in Wallisellen, Bern, Basel,
+  Lausanne and Geneva. These include every Allianz company in Switzerland,
+  not only Allianz Suisse: Allianz Trade, Medi24 and CAP Rechtsschutz roles
+  are reported under "Allianz Suisse" too. Add `- Allianz Suisse` to your
+  `config/companies.yaml` to scan it. Your first run after adding it scores
+  up to 33 postings.
+- **SuccessFactors boards that show jobs as cards can be read.** Until now
+  the connector only read the table layout that EY, Swiss Re, Zurich and
+  Sonova use, and it found nothing on Allianz's card layout. Both layouts
+  now work, with the same Switzerland filter and the same stop at the
+  board's own job count.
+- **RetinAI is scanned again, on Workable.** RetinAI Medical, now Ikerian AG,
+  moved off Personio, and its Personio board now returns 404, so it found
+  nothing. It is now `workable` / `retinai`. If your `config/companies.yaml`
+  lists it as `- Retinai`, pulling is enough. If your entry gives its own
+  `ats: personio`, change it to `workable`; `python -m jobradar.doctor` points
+  that entry out. Expect its current openings in your next report, since
+  their Workable links are new to jobradar.
+- **The catalogue now holds 80 Swiss boards.**
+
 ## 1.14.0 — Haiku 5.5 throughout (2026-10-12)
 
 - **Filling in a posting's missing details runs on Haiku 5.5, so jobradar no
