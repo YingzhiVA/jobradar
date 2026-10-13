@@ -30,7 +30,14 @@ from ..boards import load_companies
 from ..config import ConfigError, Sources, load_search_settings
 from .corroborate import corroborate
 from .dedup import SeenStore
-from .filters import company_is_named, could_pass_location, filter_postings
+from .filters import (
+    STAGE_COMPANY,
+    STAGE_LOCATION_PREFILTER,
+    FilterResult,
+    company_is_named,
+    could_pass_location,
+    filter_postings,
+)
 from ..matching import build_profile_block, load_profile, score_postings
 from ..models import Constraints
 from .normalize import fill_gaps, heuristic_normalize
@@ -373,19 +380,49 @@ def run(
         named = [p for p in unseen if company_is_named(p)]
         if len(named) < len(unseen):
             logger.info("%d/%d new postings dropped (undisclosed company)", len(unseen) - len(named), len(unseen))
+        # Every new posting dropped before scoring, with its reason, for the
+        # run record — the funnel counts alone can't say which posting went where.
+        filtered_out = [
+            FilterResult(p, False, ["company"], stage=STAGE_COMPANY)
+            for p in unseen
+            if not company_is_named(p)
+        ]
 
         # Cheap location pre-filter: skip the LLM gap-fill for postings that
         # can't pass the location filter even after canton resolution (e.g. a
         # board's many foreign roles). Avoids an LLM call per clearly-foreign
         # posting that would just be dropped anyway.
-        candidates = [p for p in named if could_pass_location(p, constraints)]
+        candidates = []
+        for p in named:
+            if could_pass_location(p, constraints):
+                candidates.append(p)
+            else:
+                filtered_out.append(
+                    FilterResult(p, False, ["location"], stage=STAGE_LOCATION_PREFILTER)
+                )
         logger.info("%d/%d new postings could be in range (worth LLM gap-fill)", len(candidates), len(unseen))
 
         # Now pay for the LLM gap-fill, but only on those candidates.
         candidates = [fill_gaps(p, client, constraints=constraints) for p in candidates]
 
-        kept, _filter_results = filter_postings(candidates, constraints)
+        kept, filter_results = filter_postings(candidates, constraints)
         logger.info("%d/%d new postings pass hard constraints", len(kept), len(unseen))
+        # Logged one by one: these got past the location prefilter, so each is
+        # plausibly in range and a wrong drop here costs a real match.
+        for result in filter_results:
+            if result.passed:
+                continue
+            filtered_out.append(result)
+            p = result.posting
+            logger.info(
+                "Hard constraints dropped %s — %s (%s): %s %s%s",
+                p.company,
+                p.title,
+                p.url,
+                ", ".join(result.failed_checks),
+                result.failed_values(),
+                f" — LLM-filled: {', '.join(p.llm_filled)}" if p.llm_filled else "",
+            )
 
         scored = score_postings(kept, profile_block, client) if kept else []
         ranked = select_with_settings(scored, thresholds, output)
@@ -454,6 +491,7 @@ def run(
             failed_sources=failed_sources,
             corroboration=corroboration_counts,
             uncorroborated=uncorroborated,
+            filtered_out=filtered_out,
             min_skill=thresholds.min_skill,
             min_interest=thresholds.min_interest,
         )

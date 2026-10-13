@@ -345,3 +345,22 @@ def test_lines_with_a_town_name_a_place():
         "WINTERTHUR, Switzerland",
     ]:
         assert names_a_place(line, _REMOTE_CH_CONSTRAINTS), line
+
+
+def test_failed_values_carry_the_fields_behind_each_failed_check():
+    _, results = filter_postings(
+        [make_posting(office_days_per_week=5, employment_pct_min=50, employment_pct_max=60)],
+        CONSTRAINTS,
+    )
+    result = results[0]
+    assert result.failed_checks == ["employment_pct", "office_days"]
+    assert result.failed_values() == {
+        "employment_pct_min": 50,
+        "employment_pct_max": 60,
+        "office_days_per_week": 5,
+    }
+
+
+def test_failed_values_empty_for_a_passing_posting():
+    _, results = filter_postings([make_posting()], CONSTRAINTS)
+    assert results[0].failed_values() == {}

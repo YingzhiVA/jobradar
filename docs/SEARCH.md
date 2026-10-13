@@ -107,8 +107,10 @@ that old scores would look different now).
 Each run also appends one JSON line to `reports/runs.jsonl`, an
 operator-facing trail for auditing how a run behaved: the query strings
 `web_search` chose (otherwise unobservable, since the search runs
-server-side), each source's health and funnel, the stage-by-stage counts, and
-the outcome of every scored posting. See `search/observability.py` for the
+server-side), each source's health and funnel, the stage-by-stage counts, the
+outcome of every scored posting, and why each new posting that never reached
+scoring was dropped (`filtered_out`: the stage, the failed checks, the values
+that failed them, and whether the gap-fill model supplied those values). See `search/observability.py` for the
 record shape and `jq` examples.
 
 ## How a run works

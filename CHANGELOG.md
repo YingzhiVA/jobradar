@@ -4,6 +4,22 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.16.0 — Filter drop reasons in the run log (2026-10-13)
+
+- **The run log now says why each new posting was dropped before scoring.**
+  `reports/runs.jsonl` has a new `filtered_out` list, with one entry for
+  every new posting that never reached scoring. Each entry gives the stage it
+  fell out at (no named employer, the location prefilter, or the hard
+  filters), the checks it failed, and the values that failed them. It also
+  says which of those values the model guessed rather than read from the
+  posting, for example an "on-site role" taken to mean five office days.
+  Until now the log kept only how many postings each stage dropped, so the
+  only way to find out why one went missing was to run it again. The
+  record's `schema_version` is now 6, and each dropped posting adds a few
+  hundred bytes to the day's line.
+- **The run's console output names each posting the hard filters drop**,
+  with the check it failed and the value behind it.
+
 ## 1.15.0 — Allianz and RetinAI boards (2026-10-13)
 
 - **Allianz Suisse can be scanned.** Its board is the group's SAP

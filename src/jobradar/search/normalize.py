@@ -269,6 +269,17 @@ def _canton_from_location(extracted: _ExtractedFields, posting: Posting) -> str 
     return None
 
 
+# Copied from the extraction only where the heuristics left them unknown. canton
+# is handled separately, since it must first pass _canton_from_location.
+_GAP_FIELDS = (
+    "employment_pct_min",
+    "employment_pct_max",
+    "office_days_per_week",
+    "remote",
+    "sponsorship_mentioned",
+)
+
+
 def llm_fill_gaps(posting: Posting, client: anthropic.Anthropic) -> Posting:
     """Fills employment_pct_min/max, office_days_per_week, and canton (and
     remote/sponsorship if still unknown) via one small structured-output
@@ -303,16 +314,13 @@ def llm_fill_gaps(posting: Posting, client: anthropic.Anthropic) -> Posting:
 
     if posting.canton is None:
         posting.canton = _canton_from_location(extracted, posting)
-    if posting.employment_pct_min is None:
-        posting.employment_pct_min = extracted.employment_pct_min
-    if posting.employment_pct_max is None:
-        posting.employment_pct_max = extracted.employment_pct_max
-    if posting.office_days_per_week is None:
-        posting.office_days_per_week = extracted.office_days_per_week
-    if posting.remote is None:
-        posting.remote = extracted.remote
-    if posting.sponsorship_mentioned is None:
-        posting.sponsorship_mentioned = extracted.sponsorship_mentioned
+        if posting.canton is not None:
+            posting.llm_filled.append("canton")
+    for name in _GAP_FIELDS:
+        value = getattr(extracted, name)
+        if getattr(posting, name) is None and value is not None:
+            setattr(posting, name, value)
+            posting.llm_filled.append(name)
     return posting
 
 

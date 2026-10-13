@@ -458,3 +458,37 @@ def test_a_remote_posting_that_names_a_town_still_gets_its_canton():
     client = _StubClient(canton="Ticino", canton_source="Chiasso")
     posting = normalize(raw, client, constraints=constraints)
     assert posting.canton == "Ticino"
+
+
+def test_llm_filled_names_only_the_fields_the_llm_supplied():
+    """The 2026-10-08 drop: the posting states only that the role is
+    on-site, so 5 office days was the model's inference, and the run record
+    needs to say so."""
+    client = _StubClient(office_days_per_week=5, employment_pct_min=100, employment_pct_max=100)
+    posting = normalize(
+        make_raw("This is an on-site role based in Zurich.", location="Zurich HQ"),
+        client,
+        constraints=_CANTON_CONSTRAINTS,
+    )
+    assert posting.office_days_per_week == 5
+    # Canton came from the heuristic, and remote/sponsorship stayed unknown.
+    assert posting.canton == "Zurich"
+    assert sorted(posting.llm_filled) == [
+        "employment_pct_max", "employment_pct_min", "office_days_per_week",
+    ]
+
+
+def test_llm_filled_does_not_claim_values_the_heuristics_found():
+    client = _StubClient(office_days_per_week=5, canton="Vaud", canton_source="Nyon")
+    posting = normalize(
+        make_raw(_FULLY_RESOLVED_DESCRIPTION, location="Nyon, Switzerland"),
+        client,
+        constraints=_CANTON_CONSTRAINTS,
+    )
+    assert posting.office_days_per_week == 2
+    assert posting.llm_filled == ["canton"]
+
+
+def test_llm_filled_is_empty_without_the_llm():
+    posting = normalize(make_raw("No details."), None)
+    assert posting.llm_filled == []

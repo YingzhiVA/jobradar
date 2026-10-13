@@ -47,6 +47,13 @@ class Posting:
     # so the report can flag a link nothing actually confirmed; see
     # search/liveness.py. Defaults to the benign state, matching RawPosting.
     liveness: str = "listed"
+    # Which of the fields above the LLM gap-fill supplied, as opposed to the
+    # text heuristics or the source. A hard-filter drop on an LLM-supplied value
+    # is a judgment call, not a fact the posting states: on 2026-10-08 Haiku 4.5
+    # read "an on-site role" as 5 office days and dropped a posting that states
+    # no office days at all, which nothing in the run record could show
+    # afterwards.
+    llm_filled: list[str] = field(default_factory=list)
 
 
 @dataclass

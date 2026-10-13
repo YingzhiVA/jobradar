@@ -56,7 +56,7 @@ lookups (`exact`, `by_segment`, `by_leading_id`).
 `reports/runs.jsonl` has one JSON line per run. `search/observability.py`
 documents the record shape and carries `jq` one-liners for the questions it
 was built to answer: which queries web search chose, how the funnel narrowed,
-what happened to each scored posting.
+what happened to each scored posting, and why each unscored one was dropped.
 
 ## Contributing
 
