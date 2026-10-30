@@ -4,7 +4,7 @@ Companies you've genuinely chosen to apply to before are good evidence
 they're worth actively scanning, not just scoring opportunistically. This
 phase builds candidate lists and probes which ones have a supported career
 page. It's a setup-time or occasional step, not part of the daily run, and
-optional: `config/boards.yaml` already ships a catalogue of 80 Swiss boards,
+optional: `config/boards.yaml` already ships a catalogue of 81 Swiss boards,
 grouped by industry, that you select by name in `config/companies.yaml`.
 Discovery skips companies the catalogue already has.
 

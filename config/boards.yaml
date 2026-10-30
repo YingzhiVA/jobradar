@@ -202,6 +202,11 @@ boards:
   - name: Ledgy
     ats: greenhouse
     slug: ledgy
+  # Developer-security SaaS, with a Zurich office. A global board (wd103,
+  # site "External"), scoped to its Swiss postings server-side.
+  - name: Snyk
+    ats: workday
+    slug: snyk:wd103:External
   # Swiss-only board (no country facet, lists cities); exposes workload %
   # (Work_Shift facet: "80-100%" etc.) in postings.
   - name: Swisscom
