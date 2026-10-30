@@ -66,7 +66,7 @@ international-board example above.
 
 Adding Jobgether's 80, the whole catalogue comes to roughly **$4–10** in model
 calls at the per-call rates above (it was $8–15 before scoring moved to Haiku
-5.5), against about $0.55 for a normal day — once, and then back to normal. The
+5.5), against about $0.20 for a normal day — once, and then back to normal. The
 Swiss boards dominate: AXA alone put 167 postings through, EY 99, Deloitte
 86. With five or ten boards a first run is usually one to two dollars, though
 it depends on which: a large Swiss-only board costs more on its own than most.
@@ -79,23 +79,22 @@ when more than fifteen are selected before your first run.
 
 ### A daily run
 
-About **$0.35 a day** for the author's setup of about 65 boards, estimated
-with the bulk work on Haiku 5.5 (1.11.0 to 1.14.0). Before that it was about
-$0.90, the average of four daily runs in late September 2026 as the Claude
-Console reported it; the new figure replaces the Haiku lines with their
-measured costs and is not yet a Console average. The day-to-day figure moves with how
-many postings reach the scorer. A typical
-weekday there fetches about a thousand new postings, most of them from one
-large international board and dropped for free by the location filter, with
-about 80 reaching the scorer, 3 surfaced and 5 web searches:
+About **$0.20 a day** for the author's setup of about 80 boards in October
+2026, with the bulk work on Haiku 5.5. Before that move it was about $0.90,
+the average of four daily runs in late September 2026 as the Claude Console
+reported it. The day-to-day figure moves with how many postings reach the
+scorer. An average weekday there, over the 14 daily runs from 13 to 30 October
+2026, fetches about 4,000 open postings, of which about a hundred are new, with
+about 40 reaching the scorer, 2 surfaced and 5 web searches. At the per-call
+rates below that comes to:
 
 | Stage | Model | About |
 | --- | --- | --- |
-| Filling in missing fields (workload, canton) | Haiku 5.5, ~40 short calls | $0.01 |
-| Scoring about 80 postings | Haiku 5.5, profile cached | $0.19 |
-| Write-ups for 3 finalists | Sonnet | $0.09 |
+| Filling in missing fields (workload, canton) | Haiku 5.5, short calls | $0.01 |
+| Scoring about 40 postings | Haiku 5.5, profile cached | $0.09 |
+| Write-ups for 2 finalists | Sonnet | $0.06 |
 | Web search: 5 searches plus the pages read | Haiku 5.5 | $0.06 |
-| **Total** | | **about $0.35** |
+| **Total** | | **about $0.22** |
 
 Scoring returns a checklist, not a number: one entry per requirement the
 posting states, each with a verdict, which the skill score is then computed
@@ -103,8 +102,9 @@ from. On Haiku 5.5 the model also thinks before it answers, so a posting
 produces about 3,400 output tokens, thinking included; even so a scoring call
 costs about $0.0023, against $0.0081 on Haiku 4.5 with no thinking. The
 figure comes from the token counts of 210 scoring calls over 42 real
-postings on 12 October 2026. On Haiku 4.5 this line was $0.65; the earlier
-single-number scorer, before 1.4.0, cost about $0.28.
+postings on 12 October 2026. At the 80 postings a day of September, this line
+was $0.65 on Haiku 4.5; the earlier single-number scorer, before 1.4.0, cost
+about $0.28.
 
 Web search is mostly the search fee itself: $0.05 for five searches, plus
 about a cent of tokens on Haiku 5.5 (six runs measured on 12 October 2026;
@@ -119,8 +119,8 @@ With fewer boards selected the scoring line shrinks; with none, only web
 search remains.
 
 Each additional posting scored adds about a quarter of a cent. A first run
-over a large backlog scales with that; `--no-web-search` removes the largest
-single line.
+over a large backlog scales with that; `--no-web-search` takes about $0.06 off
+every run.
 
 ### One application
 
@@ -146,7 +146,7 @@ test, and a few cents when it searches.
 
 ### A typical month
 
-22 weekday runs, 15 applications, one discovery: **$14–22**. Note that a
+22 weekday runs, 15 applications, one discovery: **$8–12**. Note that a
 fresh Anthropic account needs a payment method before it will serve
 requests beyond the trial credit.
 

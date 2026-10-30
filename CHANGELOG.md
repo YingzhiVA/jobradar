@@ -4,6 +4,21 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.17.0 — Snyk board and lower daily cost (2026-10-30)
+
+- **Snyk can be scanned.** The developer-security company has a Zurich office,
+  and its board is on Workday, `snyk:wd103:External`, scoped to its Swiss
+  postings. Add `- Snyk` to your `config/companies.yaml` to scan it. Your
+  first run after adding it scores up to about 17 postings.
+- **The cost figures now match October 2026.** A daily run on the author's
+  setup of about 80 boards costs about $0.20, down from the $0.90 that
+  README.md still showed and the $0.35 estimated in docs/COSTS.md. The
+  breakdown there now uses the average day from the run log, about 40
+  postings scored rather than 80. A daily run with no boards selected is
+  $0.05–0.10, a typical month $8–12, and the first run over the whole
+  catalogue $4–10, which is what docs/COSTS.md already said. Nothing changes
+  in what the tool does or what you pay.
+
 ## 1.16.0 — Filter drop reasons in the run log (2026-10-13)
 
 - **The run log now says why each new posting was dropped before scoring.**

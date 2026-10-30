@@ -8,7 +8,7 @@ are filtered out before any of that. What reaches you is at most one "best"
 match a day plus a few "okay" ones, and a day with nothing is a normal day.
 
 It finds postings itself: from the company career pages you choose (a
-catalogue of 80 Swiss boards across twenty applicant-tracking systems ships
+catalogue of 81 Swiss boards across twenty applicant-tracking systems ships
 with it, grouped by industry, and none is scanned until you pick it), and from
 Claude's web search. It never scrapes or automates LinkedIn. When you decide
 to apply, it drafts a tailored CV and cover letter in the posting's language,
@@ -37,18 +37,18 @@ your submission log. Off by default.
 
 You pay Anthropic for what the tool reads and writes; the tool itself is
 free (MIT). What a run costs depends mostly on how many company boards you
-select. Rough figures with the default models, from September 2026:
+select. Rough figures with the default models, from October 2026:
 
 | Activity | About |
 | --- | --- |
-| A daily run with no boards selected (web search only) | $0.25–0.30 |
-| A daily run on the author's setup of about 65 boards | $0.90 |
+| A daily run with no boards selected (web search only) | $0.05–0.10 |
+| A daily run on the author's setup of about 80 boards | $0.20 |
 | One drafted application (CV + cover letter) | $0.25–0.45 |
 
 **Your first run is the exception.** It treats every posting currently open
 on the boards you chose as new, and scores all of those that pass your
 constraints in one go. With every board in the catalogue selected that is
-roughly $8–15, eight to fifteen times a normal day; with five or ten boards,
+roughly $4–10, twenty to fifty times a normal day; with five or ten boards,
 usually one to two dollars. That is why no board is selected out of the box:
 start with five or ten, and add more a few at a time. [docs/COSTS.md](docs/COSTS.md) has the details and how to check your
 own spend.
@@ -128,7 +128,7 @@ Three phases, each its own module, sharing the profile you set up once:
 
 1. **Company discovery** (`jobradar.discovery`), occasional: find companies
    worth scanning and feed them into `config/companies.yaml`. Optional; the
-   shipped catalogue in `config/boards.yaml` already covers 80 Swiss boards.
+   shipped catalogue in `config/boards.yaml` already covers 81 Swiss boards.
 2. **Search** (`jobradar.search`), the daily run: fetch postings, filter,
    score, report the few worth your time.
 3. **Apply** (`jobradar.apply`), on demand: turn chosen postings into
