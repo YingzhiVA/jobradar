@@ -15,6 +15,57 @@ to apply, it drafts a tailored CV and cover letter in the posting's language,
 keeps a submission log, and can prepare an interview sheet from your own
 stories.
 
+## What it produces
+
+One real run, from 2 October 2026. The selected boards and the web search
+returned 4,094 open postings. 74 were new since the day before, 54 were in
+the right place, and 44 cleared the hard requirements and were read in full.
+Four reached the report. This is the top of it, with the employer's name
+replaced; the wording is otherwise unchanged:
+
+> **[BEST] Product Owner Generative AI & Data — [a Swiss digital agency]**
+>
+> - Location: Zurich, ZH, Switzerland
+> - Skill score: 100/100, Interest score: 88/100
+> - Best-fit CV: CV_AI_GenAI_Product
+>
+> This role is a strong match on every axis that matters most. [The company]
+> is asking for a hands-on Product Owner who straddles GenAI and data —
+> exactly the primary track in the career identity, not a stretch or a
+> partial fit. The 80–100% engagement and direct involvement with
+> engineering teams matches the working style: staying close enough to the
+> technology to validate outputs, define technical requirements, and
+> prototype rather than delegate the hard parts.
+
+Each match continues with what to lead with from your CV, and the concerns
+to expect in a screen — here, that a digital agency means client delivery
+rather than owning a product, which none of the candidate's previous roles
+had been.
+
+Then there is everything that did **not** reach the report. One from the
+same run, which a keyword alert would have been delighted with:
+
+> **Internship: Data Analytics Intern, Product Control — [a Swiss private bank]**
+>
+> Skill score: 95/100, Interest score: 22/100 — not surfaced
+>
+> The candidate's technical depth — Python, SQL, data strategy, analytics,
+> dashboards — is genuine and overqualified for the role. However, this is
+> explicitly a 6–12-month internship programme for current students; the
+> candidate is a 12-year veteran product manager. No amount of skill match
+> resolves the structural mismatch: she would be radically overqualified
+> and unsuitable for a student-track programme, and the role offers no
+> scope for the hands-on AI/data leadership or 0-to-1 product building she
+> is moving toward.
+
+That is what the second score is for. On skill alone this posting scored 95
+and would have sat near the top of the day. The interest score, read off
+your own page about what you want next, is what keeps it out — and the
+reason it was dropped is written down, so you can tell a bad call from a
+correct one and move your floors (`min_skill`, `min_interest`) accordingly.
+Every posting scored on a run is kept with its reasoning in
+`reports/runs.jsonl`, matched or not.
+
 ## Who it is for
 
 Anyone looking for a job in Switzerland who would rather read four good
