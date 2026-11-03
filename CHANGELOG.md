@@ -4,6 +4,20 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.18.0 — EthonAI on Ashby and four new boards (2026-11-03)
+
+- **EthonAI is found again.** Its board moved from Recruitee to Ashby, under
+  the slug `ethon`. The old Recruitee board still answers but lists nothing,
+  so `company_health.md` reported it as dry. If you scan EthonAI by name,
+  the pull fixes it; nothing to edit.
+- **Proton, Netcetera, Flyability and OpenAI can be scanned.** All four have
+  Swiss offices: Proton in Geneva and Zurich (Greenhouse), Netcetera in
+  Zurich and Winterthur (Workable), Flyability in Paudex VD (Workable) and
+  OpenAI in Zurich (Ashby; a global board of about 800 postings, of which
+  the location gate keeps the Swiss few). Add any of them to your
+  `config/companies.yaml` to scan it. Your first run after adding all four
+  scores up to about 16 postings. The catalogue now lists 85 boards.
+
 ## 1.17.0 — Snyk board and lower daily cost (2026-10-30)
 
 - **Snyk can be scanned.** The developer-security company has a Zurich office,

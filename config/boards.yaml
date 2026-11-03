@@ -16,14 +16,14 @@
 # scoring against your profile, not by job titles.
 #
 # Sections, in this order (boards in each):
-#   Big tech & AI labs (5) — global names with Swiss offices, mostly Zurich
+#   Big tech & AI labs (6) — global names with Swiss offices, mostly Zurich
 #   AI & data products (9) — Swiss start-ups and scale-ups selling AI or data
-#   Software, SaaS & telecom (7)
-#   Consulting & IT services (7)
-#   Banking, insurance & finance data (6)
+#   Software, SaaS & telecom (9)
+#   Consulting & IT services (8)
+#   Banking, insurance & finance data (7)
 #   Pharma & biotech (5)
 #   Medtech & digital health (8)
-#   Robotics, drones & aerospace (12)
+#   Robotics, drones & aerospace (13)
 #   Industry, hardware & quantum (10)
 #   Property & climate (6)
 #   Consumer, marketplaces & travel (3)
@@ -139,6 +139,11 @@ boards:
   - name: Databricks
     ats: greenhouse
     slug: databricks
+  # Zurich office (opened 2025); a global board of 800+ postings, trimmed by
+  # the location gate to its handful of Swiss ones.
+  - name: OpenAI
+    ats: ashby
+    slug: openai
   # Huawei's Zurich Research Center: fundamental research in ML/AI, computer
   # vision, HPC. API reports company_name: 'Huawei Switzerland'.
   - name: Huawei (Zurich)
@@ -164,9 +169,11 @@ boards:
   - name: Legartis
     ats: personio
     slug: legartis
+  # EthonAI: moved off Recruitee (ethonai.recruitee.com still answers but
+  # lists no offers) to Ashby under the shorter slug.
   - name: EthonAI
-    ats: recruitee
-    slug: ethonai
+    ats: ashby
+    slug: ethon
   - name: LatticeFlow
     ats: workable
     slug: latticeflow
@@ -202,6 +209,11 @@ boards:
   - name: Ledgy
     ats: greenhouse
     slug: ledgy
+  # Proton Mail/VPN/Drive: Geneva HQ, with a Zurich data-centre team; most
+  # Swiss postings are shared with Paris or Barcelona.
+  - name: Proton
+    ats: greenhouse
+    slug: proton
   # Developer-security SaaS, with a Zurich office. A global board (wd103,
   # site "External"), scoped to its Swiss postings server-side.
   - name: Snyk
@@ -245,6 +257,12 @@ boards:
   - name: Trifork
     ats: teamtailor
     slug: trifork
+  # Zurich-HQ software engineering firm (G+D group), with Winterthur and
+  # Balkan/German offices on the same board.
+  - name: Netcetera
+    ats: workable
+    slug: netcetera
+    # API reports company_name: 'G+D Netcetera'
 
   # ── Banking, insurance & finance data ──────────────────────────────────────
   # UBS. jobs.ubs.com is an Infinite BrassRing Talent Gateway (ex-IBM Kenexa;
@@ -426,6 +444,11 @@ boards:
   - name: Voliro
     ats: bamboohr
     slug: voliroar
+  # Indoor-inspection drones (Elios), Paudex VD near Lausanne; its US
+  # office's roles share the board.
+  - name: Flyability
+    ats: workable
+    slug: flyability
   # Autonomous construction machinery (ETH spin-off), Zürich, with field teams
   # in the US and UK.
   - name: Gravis Robotics
