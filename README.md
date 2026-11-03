@@ -17,54 +17,52 @@ stories.
 
 ## What it produces
 
-One real run, from 2 October 2026. The selected boards and the web search
-returned 4,094 open postings. 74 were new since the day before, 54 were in
-the right place, and 44 cleared the hard requirements and were read in full.
-Four reached the report. This is the top of it, with the employer's name
-replaced; the wording is otherwise unchanged:
+One real run, from 20 October 2026. The selected boards and the web search
+returned 4,028 open postings. 101 were new since the day before, 52 were in
+the right place, 33 cleared the hard requirements and 30 were read in full.
+Two reached the report, which arrives as an email:
 
-> **[BEST] Product Owner Generative AI & Data — [a Swiss digital agency]**
->
-> - Location: Zurich, ZH, Switzerland
-> - Skill score: 100/100, Interest score: 88/100
-> - Best-fit CV: CV_AI_GenAI_Product
->
-> This role is a strong match on every axis that matters most. [The company]
-> is asking for a hands-on Product Owner who straddles GenAI and data —
-> exactly the primary track in the career identity, not a stretch or a
-> partial fit. The 80–100% engagement and direct involvement with
-> engineering teams matches the working style: staying close enough to the
-> technology to validate outputs, define technical requirements, and
-> prototype rather than delegate the hard parts.
+![The morning email: one strong match and one okay match, each with its two scores and the reasoning behind them](docs/assets/report-email.png)
 
-Each match continues with what to lead with from your CV, and the concerns
-to expect in a screen — here, that a digital agency means client delivery
-rather than owning a product, which none of the candidate's previous roles
-had been.
+Employers are replaced with a description, here and in the quotes below; the
+wording is otherwise unchanged. Each match continues past the fold with what
+to lead with from your CV and the concerns to expect in a screen — for the
+one above, that its 0-to-1 track record is in wealthtech and PropTech rather
+than the developer tooling the posting asks for.
 
-Then there is everything that did **not** reach the report. One from the
-same run, which a keyword alert would have been delighted with:
+What keeps the list to two is the pair of floors, `min_skill` and
+`min_interest`. That morning they threw out two postings for opposite
+reasons:
 
-> **Internship: Data Analytics Intern, Product Control — [a Swiss private bank]**
->
-> Skill score: 95/100, Interest score: 22/100 — not surfaced
->
-> The candidate's technical depth — Python, SQL, data strategy, analytics,
-> dashboards — is genuine and overqualified for the role. However, this is
-> explicitly a 6–12-month internship programme for current students; the
-> candidate is a 12-year veteran product manager. No amount of skill match
-> resolves the structural mismatch: she would be radically overqualified
-> and unsuitable for a student-track programme, and the role offers no
-> scope for the hands-on AI/data leadership or 0-to-1 product building she
-> is moving toward.
+| Posting | Skill | Interest | |
+| --- | ---: | ---: | --- |
+| Staff Product Manager — a developer-security company | 87 | 80 | surfaced |
+| Data Scientist P&C — a Swiss insurer | 70 | 40 | surfaced |
+| Consultant, Forensic Technology — a Big Four firm | 92 | 15 | dropped |
+| Lead AI Engineer, Agentic — a Swiss insurer | 52 | 72 | dropped |
 
-That is what the second score is for. On skill alone this posting scored 95
-and would have sat near the top of the day. The interest score, read off
-your own page about what you want next, is what keeps it out — and the
-reason it was dropped is written down, so you can tell a bad call from a
-correct one and move your floors (`min_skill`, `min_interest`) accordingly.
-Every posting scored on a run is kept with its reasoning in
-`reports/runs.jsonl`, matched or not.
+The third scored higher on skill than anything that reached the report, and
+a keyword alert would have led with it:
+
+> Degree and English are met, but there is no eDiscovery tooling experience
+> (Relativity, Nuix) in the profile. The role is forensic consulting and
+> investigation support, not the hands-on data and AI product work the
+> candidate is moving toward.
+
+The fourth fails the other way — the kind of work the interest page asks
+for, turned down because the skill side does not hold up:
+
+> Strong fit on hands-on GenAI and product ownership, but the profile has no
+> insurance or P&C underwriting background, and production
+> agentic/LangChain/GCP experience is only partly evidenced. The role is a
+> technical AI lead at an insurer, which suits the AI-layer interest, though
+> insurance is not an aspiration.
+
+Neither is a keyword problem, and one score could not have separated them.
+The okay match above cleared `min_interest` by exactly nothing — 40 against
+a floor of 40. Every posting a run scores is kept with its reasoning in
+`reports/runs.jsonl`, matched or not, so you can tell a bad call from a
+correct one and move the floors when they are wrong.
 
 ## Who it is for
 
