@@ -4,6 +4,18 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.22.0 — Oracle connector, ELCA found again (2026-11-09)
+
+- **A connector for Oracle Recruiting Cloud** (`ats: oracle`, slug
+  `host:site`), the careers sites at `*.oraclecloud.com/hcmUI/
+  CandidateExperience/...`. It keeps postings with any site in the
+  market's country and fetches descriptions only for new ones.
+  `config/boards/README.md` shows how to read the slug off a careers URL.
+- **ELCA is found again.** Its Recruitee board answers 404; it moved to
+  Oracle Recruiting Cloud. If you scan ELCA by name, the pull fixes it;
+  nothing to edit. Its postings have new addresses, so your next run
+  treats ELCA's open roles (about 55) as new, once.
+
 ## 1.21.0 — Board health check (2026-11-09)
 
 - **A new board health check: `python -m jobradar.board_health`.** It reads

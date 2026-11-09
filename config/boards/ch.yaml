@@ -128,9 +128,12 @@ boards:
   - name: Visium
     ats: workable
     slug: visium
+  # Moved from Recruitee (404 since about November 2026, found by the board
+  # health check) to Oracle Recruiting Cloud. Mostly Pully and Geneva; the
+  # site also lists Italian and US roles, which the connector drops.
   - name: ELCA
-    ats: recruitee
-    slug: elca
+    ats: oracle
+    slug: "iaaras.fa.ocs.oraclecloud.com:CX_1"
   # Danish-HQ with a Zurich office.
   - name: Trifork
     ats: teamtailor
