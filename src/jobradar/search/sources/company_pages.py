@@ -2045,6 +2045,121 @@ def _fetch_eightfold(
     )
 
 
+# --- Oracle Recruiting Cloud (ELCA) -------------------------------------------
+
+
+# Oracle HCM's Candidate Experience site (https://<host>/hcmUI/CandidateExperience/
+# en/sites/<site>/jobs) is a single-page app over a public REST API, which is
+# what it calls itself: a requisition search with title and locations, then a
+# per-posting detail call carrying the description. The host serves no
+# robots.txt. Verified on ELCA's site, 2026-11-09.
+_ORACLE_API = "https://{host}/hcmRestApi/resources/latest"
+# The search answers up to this many requisitions a call (ELCA's 60 came in one).
+_ORACLE_PAGE_SIZE = 100
+# A tenant this many pages deep is not one company's careers site but a misread
+# slug.
+_ORACLE_MAX_PAGES = 50
+
+
+def _oracle_in_scope(req: dict, market: Market) -> bool:
+    """Whether any of the requisition's sites is in the market's country. A
+    tenant can be global (ELCA lists Swiss, Italian and US roles), and every new
+    posting costs a detail request, so foreign ones are dropped before it."""
+    countries = {req.get("PrimaryLocationCountry")}
+    countries |= {loc.get("CountryCode") for loc in req.get("secondaryLocations") or []}
+    return market.country_code in countries
+
+
+def _oracle_location(req: dict) -> str | None:
+    """Every site a requisition is open in, ";"-joined, as for Workday: the
+    primary ("Pully, Switzerland") and its secondary sites ("Geneva, Switzerland")."""
+    names = [req.get("PrimaryLocation"), *(loc.get("Name") for loc in req.get("secondaryLocations") or [])]
+    return "; ".join(dict.fromkeys(n.strip() for n in names if n and n.strip())) or None
+
+
+def _fetch_oracle(
+    company_name: str,
+    slug: str,
+    client: httpx.Client,
+    known: KnownPostings = _NOTHING_KNOWN,
+    market: Market = CH,
+) -> list[RawPosting]:
+    # The slug is "host:site", read off the careers URL: ELCA's
+    # https://iaaras.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    # gives "iaaras.fa.ocs.oraclecloud.com:CX_1".
+    host, _, site = slug.partition(":")
+    if not host or not site or "/" in host:
+        raise ValueError(f"Oracle slug must be 'host:site', got {slug!r}")
+    api = _ORACLE_API.format(host=host)
+    headers = {"Accept": "application/json"}
+
+    listed: list[dict] = []
+    offset = 0
+    for _ in range(_ORACLE_MAX_PAGES):
+        resp = client.get(
+            f"{api}/recruitingCEJobRequisitions",
+            params={
+                "onlyData": "true",
+                "expand": "requisitionList.secondaryLocations",
+                "finder": f"findReqs;siteNumber={site},limit={_ORACLE_PAGE_SIZE},"
+                f"offset={offset},sortBy=POSTING_DATES_DESC",
+            },
+            headers=headers,
+        )
+        resp.raise_for_status()
+        items = resp.json().get("items") or []
+        search = items[0] if items else {}
+        page = search.get("requisitionList") or []
+        listed += page
+        offset += len(page)
+        if not page or offset >= search.get("TotalJobsCount", 0):
+            break
+    else:
+        raise ValueError(f"Oracle site {slug!r} has more than {_ORACLE_MAX_PAGES} pages; check the slug")
+
+    postings: list[RawPosting] = []
+    for req in listed:
+        req_id = str(req.get("Id") or "")
+        if not req_id or not _oracle_in_scope(req, market):
+            continue
+        url = f"https://{host}/hcmUI/CandidateExperience/en/sites/{site}/job/{req_id}"
+        title = req.get("Title", "")
+        location = _oracle_location(req)
+        if known.exact(url):
+            postings.append(_listing_only("oracle", url, title, company_name, location))
+            continue
+        detail = client.get(
+            f"{api}/recruitingCEJobRequisitionDetails",
+            params={"expand": "all", "onlyData": "true", "finder": f'ById;Id="{req_id}",siteNumber={site}'},
+            headers=headers,
+        )
+        detail.raise_for_status()
+        jobs = detail.json().get("items") or []
+        if not jobs:
+            # Closed between the search call and this one.
+            logger.info("Skipping unavailable %s requisition %s", company_name, req_id)
+            continue
+        job = jobs[0]
+        description = "\n\n".join(
+            strip_html(job.get(key) or "")
+            for key in ("ExternalDescriptionStr", "ExternalResponsibilitiesStr", "ExternalQualificationsStr")
+            if job.get(key)
+        )
+        postings.append(
+            RawPosting(
+                source="oracle",
+                url=url,
+                title=title or job.get("Title", ""),
+                company=company_name,
+                description=description,
+                location=location,
+                remote=parse_workplace_type(req.get("WorkplaceType")),
+                raw={"id": req_id, "postedDate": req.get("PostedDate")},
+            )
+        )
+    return postings
+
+
 _FETCHERS = {
     "greenhouse": _fetch_greenhouse,
     "lever": _fetch_lever,
@@ -2066,6 +2181,7 @@ _FETCHERS = {
     "onlyfy": _fetch_onlyfy,
     "breezy": _fetch_breezy,
     "eightfold": _fetch_eightfold,
+    "oracle": _fetch_oracle,
 }
 
 
@@ -2076,14 +2192,14 @@ _SKIPS_KNOWN = frozenset(
     {
         "smartrecruiters", "workday", "bamboohr", "join", "avature",
         "successfactors", "brassring", "prospective", "onlyfy", "breezy",
-        "eightfold",
+        "eightfold", "oracle",
     }
 )
 
 # The connectors for global boards that filter to the market's country before
 # fetching, and so take the Market.
 _SCOPED_TO_MARKET = frozenset(
-    {"workday", "successfactors", "icims", "onlyfy", "google", "eightfold"}
+    {"workday", "successfactors", "icims", "onlyfy", "google", "eightfold", "oracle"}
 )
 
 

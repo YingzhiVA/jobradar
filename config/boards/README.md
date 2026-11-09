@@ -39,7 +39,7 @@ name: how the company appears in reports
 ats:  greenhouse | lever | ashby | smartrecruiters | personio | recruitee |
       workable | teamtailor | workday | join | bamboohr | avature |
       successfactors | icims | brassring | prospective | google | onlyfy |
-      breezy | eightfold
+      breezy | eightfold | oracle
 slug: the board token used in that ATS's public job-board URL, e.g.
   greenhouse: https://boards-api.greenhouse.io/v1/boards/<slug>/jobs
   lever:      https://api.lever.co/v0/postings/<slug>
@@ -124,6 +124,12 @@ eightfold:      slug is "host:domain": the careers site's host and the
                 (the browser's network tab shows it). The connector keeps
                 the market's postings in code and makes one detail request
                 per new one for its description.
+oracle:         slug is "host:site", read off the Oracle Recruiting Cloud
+                careers URL: https://iaaras.fa.ocs.oraclecloud.com/hcmUI/
+                CandidateExperience/en/sites/CX_1/jobs gives
+                "iaaras.fa.ocs.oraclecloud.com:CX_1". The connector keeps
+                the market's postings in code (any site in the country) and
+                makes one detail request per new one for its description.
 ```
 
 join is the one to be careful with: join.com serves a company PROFILE page

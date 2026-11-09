@@ -31,6 +31,8 @@ from jobradar.search.sources.company_pages import (
     _fetch_workable,
     _fetch_workday,
     parse_join_company,
+    _fetch_oracle,
+    LISTING_ROWS_ONLY,
 )
 
 
@@ -2616,3 +2618,94 @@ def test_source_passes_market_only_to_country_scoped_connectors(monkeypatch):
     ).fetch()
 
     assert received["icims"] is market
+
+
+# --- Oracle Recruiting Cloud ---
+
+
+def _oracle_req(req_id, primary="Pully, Switzerland", country="CH", secondary=()):
+    return {
+        "Id": req_id, "Title": f"Role {req_id}", "PrimaryLocation": primary,
+        "PrimaryLocationCountry": country, "WorkplaceType": "", "PostedDate": "2026-11-04",
+        "secondaryLocations": [{"Name": name, "CountryCode": code} for name, code in secondary],
+    }
+
+
+class _OracleClient:
+    """Fake for the requisition search (paged by offset) and the per-posting
+    detail call, keyed by requisition id; a missing id answers with no items,
+    as a closed posting does."""
+
+    def __init__(self, reqs, details, page_size=100):
+        self._reqs, self._details, self._page_size = reqs, details, page_size
+        self.detail_calls = 0
+        self.search_calls = 0
+
+    def get(self, url, params=None, headers=None):
+        if url.endswith("/recruitingCEJobRequisitions"):
+            self.search_calls += 1
+            offset = int(params["finder"].split("offset=")[1].split(",")[0])
+            page = self._reqs[offset:offset + self._page_size]
+            return _Resp({"items": [{"TotalJobsCount": len(self._reqs), "requisitionList": page}]})
+        self.detail_calls += 1
+        req_id = params["finder"].split('Id="')[1].split('"')[0]
+        detail = self._details.get(req_id)
+        return _Resp({"items": [detail] if detail else []})
+
+
+_ORACLE_SLUG = "tenant.fa.ocs.oraclecloud.com:CX_1"
+
+
+def test_oracle_keeps_postings_with_any_site_in_the_market_and_reads_details():
+    reqs = [
+        _oracle_req("1", secondary=[("Geneva, Switzerland", "CH")]),
+        _oracle_req("2", primary="Milan, Italy", country="IT", secondary=[("Lugano, Switzerland", "CH")]),
+        _oracle_req("3", primary="Austin, TX", country="US"),
+    ]
+    details = {
+        "1": {"ExternalDescriptionStr": "<p>About us</p>", "ExternalQualificationsStr": "<ul><li>Python</li></ul>"},
+        "2": {"ExternalDescriptionStr": "<p>Ciao</p>"},
+        "3": {"ExternalDescriptionStr": "<p>never fetched</p>"},
+    }
+    client = _OracleClient(reqs, details)
+    postings = _fetch_oracle("ELCA", _ORACLE_SLUG, client)
+    assert [p.location for p in postings] == [
+        "Pully, Switzerland; Geneva, Switzerland",
+        "Milan, Italy; Lugano, Switzerland",
+    ]
+    assert postings[0].url == "https://tenant.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/1"
+    assert postings[0].description == "About us\n\nPython"
+    assert client.detail_calls == 2  # the US role costs nothing
+
+
+def test_oracle_scopes_to_the_market_it_is_given():
+    reqs = [_oracle_req("1"), _oracle_req("2", primary="London", country="GB")]
+    client = _OracleClient(reqs, {"2": {"ExternalDescriptionStr": "x"}})
+    uk = replace(CH, code="uk", country="United Kingdom", country_code="GB")
+    assert [p.url[-1] for p in _fetch_oracle("Acme", _ORACLE_SLUG, client, market=uk)] == ["2"]
+
+
+def test_oracle_skips_the_detail_request_of_a_known_posting():
+    known_url = "https://tenant.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/1"
+    client = _OracleClient([_oracle_req("1")], {"1": {"ExternalDescriptionStr": "x"}})
+    postings = _fetch_oracle("ELCA", _ORACLE_SLUG, client, known=KnownPostings([known_url]))
+    assert client.detail_calls == 0
+    assert postings[0].raw.get(LISTING_ONLY) and postings[0].title == "Role 1"
+
+
+def test_oracle_skips_a_posting_closed_before_its_detail_call():
+    client = _OracleClient([_oracle_req("1"), _oracle_req("2")], {"2": {"ExternalDescriptionStr": "x"}})
+    assert [p.raw["id"] for p in _fetch_oracle("ELCA", _ORACLE_SLUG, client)] == ["2"]
+
+
+def test_oracle_pages_until_the_total():
+    reqs = [_oracle_req(str(i)) for i in range(5)]
+    client = _OracleClient(reqs, {}, page_size=2)
+    postings = _fetch_oracle("ELCA", _ORACLE_SLUG, client, known=LISTING_ROWS_ONLY)
+    assert len(postings) == 5 and client.search_calls == 3
+
+
+def test_oracle_rejects_a_malformed_slug():
+    with pytest.raises(ValueError, match="host:site"):
+        _fetch_oracle("ELCA", "tenant.fa.ocs.oraclecloud.com", _OracleClient([], {}))
+
