@@ -30,6 +30,7 @@ from jobradar.search.sources.company_pages import (
     _fetch_teamtailor,
     _fetch_workable,
     _fetch_workday,
+    parse_join_company,
 )
 
 
@@ -685,7 +686,7 @@ def test_workday_bare_country_named_location_does_not_scope_the_board():
     # carrying one req, not the board's Swiss dimension. Scoping to it would have
     # cut a 1172-posting board to that single posting and silently dropped the
     # other 125 Swiss ones — and a board still returning 1/day looks alive to
-    # company_health. With no country to read, an oversized board must instead
+    # board_health. With no country to read, an oversized board must instead
     # fail loudly so someone configures its locations explicitly.
     client = _WorkdayClient(_WD_FACETS_BARE_MIXED_LOCATIONS, {}, {}, board_total=1172)
 
@@ -835,9 +836,13 @@ def test_workday_skips_non_applyable_posting():
 # --- join ---
 
 
-def _join_page_html(company: dict) -> str:
-    payload = {"props": {"pageProps": {"initialState": {"company": company}}}}
-    return f'<html><script id="__NEXT_DATA__" type="application/json">{json.dumps(payload)}</script></html>'
+def _join_page_html(company: dict, container: str = "pageData") -> str:
+    payload = {"props": {"pageProps": {container: {"company": company}}}}
+    # The nonce/crossorigin attributes are what join.com serves today.
+    return (
+        '<html><script id="__NEXT_DATA__" type="application/json" nonce="abc" '
+        f'crossorigin="anonymous">{json.dumps(payload)}</script></html>'
+    )
 
 
 class _HtmlResp:
@@ -951,6 +956,18 @@ def test_join_empty_board():
 
     assert _fetch_join("Acme", "acme", client) == []
     assert client.detail_calls == 0
+
+
+def test_join_company_is_read_from_either_page_layout():
+    # pageData is the current layout (Optiml's board read as "no company data"
+    # until the parser learned it, 2026-11-09); initialState the older one.
+    company = {"id": 87049, "name": "Optiml", "domain": "optiml"}
+    for container in ("pageData", "initialState"):
+        assert parse_join_company(_join_page_html(company, container)) == company
+
+
+def test_join_page_without_a_company_id_is_no_company():
+    assert parse_join_company(_join_page_html({"name": "x"})) is None
 
 
 def test_join_missing_next_data_raises():

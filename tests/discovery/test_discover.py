@@ -6,18 +6,13 @@ import httpx
 import jobradar.discovery.discover as discover_mod
 from jobradar.discovery.discover import (
     CompanyMatch,
-    HealthFinding,
     _slug_candidates,
-    diagnose_stale,
     discover,
     load_seed_companies,
     probe_company,
-    render_health_report,
     render_suggestions_yaml,
-    run_health_check,
     search_company_names,
 )
-from jobradar.search.company_health import StaleFinding
 
 
 class _FakeResponse:
@@ -636,156 +631,3 @@ def test_render_suggestions_yaml_with_matches():
     assert "company_name: 'Stripe'" in text
     assert "name: Acme Co" in text
     assert "ats: lever" in text
-
-
-# --- Board health diagnosis (Part 3) ---
-
-
-def _fake_fetcher(result):
-    """Build a (name, slug, client) fetcher that returns `result` or raises it."""
-    def fetch(name, slug, client):
-        if isinstance(result, Exception):
-            raise result
-        return result
-    return fetch
-
-
-def _stale(name, dry=60):
-    return StaleFinding(name=name, dry_days=dry, last_active=None, last_count=0)
-
-
-def test_diagnose_stale_classifies_empty_gone_and_has_ads(monkeypatch):
-    monkeypatch.setitem(discover_mod._FETCHERS, "empty_ats", _fake_fetcher([]))
-    monkeypatch.setitem(discover_mod._FETCHERS, "gone_ats",
-                        _fake_fetcher(httpx.ConnectError("boom")))
-    monkeypatch.setitem(discover_mod._FETCHERS, "live_ats", _fake_fetcher(["ad"]))
-    monkeypatch.setattr(discover_mod, "probe_company", lambda *a, **k: None)
-
-    companies = [
-        {"name": "Empty", "ats": "empty_ats", "slug": "e"},
-        {"name": "Gone", "ats": "gone_ats", "slug": "g"},
-        {"name": "Live", "ats": "live_ats", "slug": "l"},
-    ]
-    stale = [_stale("Empty"), _stale("Gone"), _stale("Live")]
-
-    out = {f.name: f.status for f in diagnose_stale(stale, companies, client=object())}
-    assert out == {"Empty": "empty", "Gone": "gone", "Live": "has_ads"}
-
-
-def test_diagnose_stale_reports_a_migration(monkeypatch):
-    monkeypatch.setitem(discover_mod._FETCHERS, "empty_ats", _fake_fetcher([]))
-    moved = CompanyMatch(name="Squirro", ats="bamboohr", slug="squirro")
-    calls = {}
-
-    def fake_probe(name, client, skip=None):
-        calls["skip"] = skip
-        return moved
-
-    monkeypatch.setattr(discover_mod, "probe_company", fake_probe)
-
-    companies = [{"name": "Squirro", "ats": "empty_ats", "slug": "squirro"}]
-    findings = diagnose_stale([_stale("Squirro")], companies, client=object())
-
-    assert findings[0].moved_to == moved
-    assert calls["skip"] == {("empty_ats", "squirro")}  # its own board is skipped
-
-
-def test_diagnose_stale_migration_search_skips_ledger_rejections(monkeypatch):
-    from jobradar.discovery import discovery_ledger
-
-    monkeypatch.setitem(discover_mod._FETCHERS, "empty_ats", _fake_fetcher([]))
-    calls = {}
-
-    def fake_probe(name, client, skip=None):
-        calls["skip"] = skip
-        return None
-
-    monkeypatch.setattr(discover_mod, "probe_company", fake_probe)
-
-    ledger = {}
-    discovery_ledger.reject_board(ledger, "Squirro", "ashby", "squirro")  # a known collision
-
-    companies = [{"name": "Squirro", "ats": "empty_ats", "slug": "squirro"}]
-    diagnose_stale([_stale("Squirro")], companies, client=object(), ledger=ledger)
-
-    # The migration search avoids both the configured board and the rejection.
-    assert calls["skip"] == {("empty_ats", "squirro"), ("ashby", "squirro")}
-
-
-def test_diagnose_stale_flags_unsupported_ats(monkeypatch):
-    monkeypatch.setattr(discover_mod, "probe_company", lambda *a, **k: None)
-    companies = [{"name": "Old", "ats": "deadats", "slug": "old"}]
-    findings = diagnose_stale([_stale("Old")], companies, client=object())
-    assert findings[0].status == "unsupported"
-
-
-def test_render_health_report_groups_by_status():
-    findings = [
-        HealthFinding(name="G", ats="lever", slug="g", dry_days=90, status="gone",
-                      note="board unreachable: 404"),
-        HealthFinding(name="E", ats="greenhouse", slug="e", dry_days=60, status="empty",
-                      moved_to=CompanyMatch(name="E", ats="bamboohr", slug="e")),
-    ]
-    text = render_health_report(findings, date(2026, 7, 1))
-    assert "Board gone" in text and "Empty — verify" in text
-    assert "Possibly moved to bamboohr/e" in text
-    assert "dry 90 days" in text
-
-
-
-def test_render_health_report_names_the_file_to_fix():
-    findings = [
-        HealthFinding(name="Shared", ats="lever", slug="s", dry_days=40, status="empty", origin="catalog"),
-        HealthFinding(name="Mine", ats="lever", slug="m", dry_days=40, status="empty", origin="local"),
-        HealthFinding(name="Bare", ats="lever", slug="b", dry_days=40, status="empty"),
-    ]
-    text = render_health_report(findings, date(2026, 7, 1))
-    assert "**Shared** (lever/s, from config/boards/)" in text
-    assert "**Mine** (lever/m, from your companies.yaml)" in text
-    assert "**Bare** (lever/b)" in text
-
-def test_render_health_report_empty_is_reassuring():
-    text = render_health_report([], date(2026, 7, 1))
-    assert "No configured board" in text
-
-
-def test_run_health_check_writes_report_for_a_dry_board(tmp_path, monkeypatch):
-    runs = tmp_path / "runs.jsonl"
-    runs.write_text(
-        json.dumps({
-            "date": "2026-05-01",
-            "sources": [{"name": "company_pages", "meta": {"company_counts": {"Dry": 0}}}],
-        }) + "\n",
-        encoding="utf-8",
-    )
-    report = tmp_path / "company_health.md"
-    monkeypatch.setitem(discover_mod._FETCHERS, "empty_ats", _fake_fetcher([]))
-    monkeypatch.setattr(discover_mod, "probe_company", lambda *a, **k: None)
-
-    findings = run_health_check(
-        [{"name": "Dry", "ats": "empty_ats", "slug": "d"}],
-        runs_path=runs, report_path=report,
-        today=date(2026, 7, 1), stale_days=45,
-    )
-
-    assert [f.name for f in findings] == ["Dry"]
-    assert "Dry" in report.read_text(encoding="utf-8")
-
-
-def test_run_health_check_writes_clean_report_when_all_healthy(tmp_path):
-    runs = tmp_path / "runs.jsonl"
-    runs.write_text(
-        json.dumps({
-            "date": "2026-06-28",
-            "sources": [{"name": "company_pages", "meta": {"company_counts": {"Ok": 5}}}],
-        }) + "\n",
-        encoding="utf-8",
-    )
-    report = tmp_path / "company_health.md"
-    findings = run_health_check(
-        [{"name": "Ok", "ats": "greenhouse", "slug": "ok"}],
-        runs_path=runs, report_path=report,
-        today=date(2026, 7, 1), stale_days=45,
-    )
-    assert findings == []
-    assert "No configured board" in report.read_text(encoding="utf-8")

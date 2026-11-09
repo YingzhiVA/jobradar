@@ -43,6 +43,9 @@ CANTON_BY_CITY = {
     "glarus": "Glarus",
     "schwyz": "Schwyz",
     "geneva": "Geneva", "genève": "Geneva", "geneve": "Geneva",
+    # Lausanne: the board health check found Neural Concept and Corintis read
+    # as posting nowhere in Switzerland without it (2026-11-09).
+    "lausanne": "Vaud",
     "neuchâtel": "Neuchâtel", "neuchatel": "Neuchâtel",
     "fribourg": "Fribourg", "freiburg": "Fribourg",
     "st. gallen": "St. Gallen", "st gallen": "St. Gallen", "saint gallen": "St. Gallen",

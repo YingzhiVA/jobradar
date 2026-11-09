@@ -94,6 +94,26 @@ class KnownPostings:
 _NOTHING_KNOWN = KnownPostings()
 
 
+class _EverythingKnown(KnownPostings):
+    """Every posting counts as settled, so the per-posting connectors stop at
+    their listing and make no detail request: what board_health needs to count
+    a board's postings cheaply. The URLs the indexed lookups hand back are
+    made up, which is fine for counting and never reaches the seen store."""
+
+    def exact(self, url: str) -> str | None:
+        return url
+
+    def by_segment(self, host: str, segment: str) -> str | None:
+        return f"https://{host}/{segment}"
+
+    def by_leading_id(self, host: str, posting_id: str) -> str | None:
+        return f"https://{host}/{posting_id}"
+
+
+# Pass as `known` to fetch a board's listing rows only (see _EverythingKnown).
+LISTING_ROWS_ONLY = _EverythingKnown()
+
+
 def _listing_only(
     source: str, url: str, title: str, company: str, location: str | None = None
 ) -> RawPosting:
@@ -471,7 +491,7 @@ def _workday_location_in_target_country(descriptor: str | None, market: Market =
     "Switzerland" is one location among 208 carrying a single posting, not the
     board's Swiss dimension. Matching it would have scoped a 1172-posting board
     to that one req and silently dropped the other 125 Swiss ones (a board still
-    answering 1/day reads as healthy to company_health). Requiring the suffix
+    answering 1/day reads as healthy to board_health). Requiring the suffix
     makes such a board fall through to the unscopable-size guard, which fails
     loudly, or to an explicit `locations=` allowlist in its slug.
     """
@@ -543,7 +563,7 @@ def _workday_location_facets(
         # A configured name that matches nothing is drift, not a typo to ignore:
         # the board renamed or retired that site, and the run would quietly cover
         # less than the config claims. Say so — an empty result then also skips
-        # the company, which company_health picks up as a board gone dry.
+        # the company, which board_health reports as an empty board.
         for key in sorted(set(wanted) - set(by_descriptor)):
             logger.warning(
                 "Workday location %r is not on this board's location facet", wanted[key]
@@ -711,10 +731,17 @@ def parse_join_company(page_html: str) -> dict | None:
     if not match:
         return None
     try:
-        next_data = json.loads(match.group(1))
-        return next_data["props"]["pageProps"]["initialState"]["company"]
+        page_props = json.loads(match.group(1))["props"]["pageProps"]
     except (ValueError, KeyError, TypeError):
         return None
+    # pageData is where join.com has kept it since some time before 2026-11-09,
+    # when the board health check found Optiml's board unreadable although it
+    # was live; initialState is the older layout, read in case it comes back.
+    for container in ("pageData", "initialState"):
+        company = (page_props.get(container) or {}).get("company") if isinstance(page_props, dict) else None
+        if isinstance(company, dict) and company.get("id"):
+            return company
+    return None
 
 
 # join.com's public jobs API rejects any pageSize above 5 with HTTP 422
@@ -2060,6 +2087,33 @@ _SCOPED_TO_MARKET = frozenset(
 )
 
 
+def is_scoped_to_market(ats: str) -> bool:
+    """Whether this ATS's connector keeps only postings in the market's country,
+    so everything it returns is in the market whatever its location says."""
+    return ats.lower() in _SCOPED_TO_MARKET
+
+
+def fetch_board(
+    name: str,
+    ats: str,
+    slug: str,
+    client: httpx.Client,
+    known: KnownPostings = _NOTHING_KNOWN,
+    market: Market = CH,
+) -> list[RawPosting]:
+    """One board's postings. Raises KeyError for an ATS with no connector, and
+    whatever the connector raises (httpx.HTTPError, ValueError for a malformed
+    slug) when the board can't be read."""
+    ats = ats.lower()
+    fetcher = _FETCHERS[ats]
+    kwargs: dict = {}
+    if ats in _SKIPS_KNOWN:
+        kwargs["known"] = known
+    if ats in _SCOPED_TO_MARKET:
+        kwargs["market"] = market
+    return fetcher(name, slug, client, **kwargs)
+
+
 class CompanyPagesSource:
     """Fetches postings for every board selected in config/companies.yaml, as
     resolved against config/boards/ by jobradar.boards."""
@@ -2126,12 +2180,10 @@ class CompanyPagesSource:
                     company_counts[name] = 0
                     continue
                 try:
-                    kwargs: dict = {}
-                    if ats in _SKIPS_KNOWN:
-                        kwargs["known"] = self.known
-                    if ats in _SCOPED_TO_MARKET:
-                        kwargs["market"] = self.market
-                    found = fetcher(company["name"], company["slug"], client, **kwargs)
+                    found = fetch_board(
+                        company["name"], ats, company["slug"], client,
+                        known=self.known, market=self.market,
+                    )
                 except (httpx.HTTPError, ValueError) as exc:
                     # ValueError covers a malformed connector-specific slug (e.g.
                     # a Workday "tenant:host:site") — skip that one company, don't

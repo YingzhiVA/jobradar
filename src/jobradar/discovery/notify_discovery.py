@@ -1,8 +1,10 @@
 """Email a summary of the companies a discovery run surfaced.
 
 The monthly discovery workflow runs `jobradar.discover` (which writes
-data/discovered_companies.yaml) and then this, so you get a proactive
-"here are N new companies to review" email rather than having to watch the repo.
+data/discovered_companies.yaml) and `jobradar.board_health` (which writes
+reports/board_health.md), then this, so you get a proactive "here are N new
+companies to review, M boards to fix" email rather than having to watch the
+repo.
 Reuses notify.py's SMTP config/sender. Degrades gracefully (exit 0) when there's
 nothing to send or SMTP isn't configured.
 """
@@ -31,9 +33,9 @@ def load_suggestions(path: Path) -> list[dict]:
 def load_health_report(path: Path) -> str:
     """The board-health report body when it flagged something, else "".
 
-    discover.py always writes the report (so the artifact reflects the current
-    state in git), rendering "## <group>" sections only when a board is flagged;
-    a clean run has none, so their presence is the has-findings signal.
+    board_health always writes the report (so the artifact reflects the current
+    state in git), rendering "## <group>" sections only for boards that call for
+    action; a clean run has none, so their presence is the has-findings signal.
     """
     if not path.exists():
         return ""
@@ -75,7 +77,7 @@ def build_message(suggestions: list[dict], health_report: str = "") -> tuple[str
 
 def main() -> None:
     suggestions = load_suggestions(ROOT / "data" / "discovered_companies.yaml")
-    health_report = load_health_report(ROOT / "reports" / "company_health.md")
+    health_report = load_health_report(ROOT / "reports" / "board_health.md")
     if not suggestions and not health_report:
         logger.info("Nothing to email (no new companies, no board-health flags).")
         return

@@ -56,10 +56,36 @@ opening the URL. A discovery ledger (`data/discovery_ledger.json`) remembers
 everything probed so re-runs don't re-suggest or re-probe the same companies
 (dropped ones are re-checked after a while).
 
+## Board health
+
+Boards move: a company switches applicant-tracking system, closes its local
+office, or stops hiring. A board that broke would otherwise just go quiet in
+the daily run.
+
+```bash
+./.venv/bin/python -m jobradar.board_health                  # the boards you selected
+./.venv/bin/python -m jobradar.board_health --catalog ch     # plus a market's whole shared list
+./.venv/bin/python -m jobradar.board_health --only Squirro   # re-check one board after a fix
+```
+
+It reads each board's listing once (no detail pages, no model calls) and
+labels it **broken** (gone or misconfigured; jobradar then looks for the
+company on the other systems and suggests where it moved), **unreachable**
+(timed out or a server error), **off-market** (postings, but none in the
+country), **empty** (no postings) or healthy. Broken boards are reported at
+once. The others only once the previous check agrees, since a careers site
+can be slow and a small company quiet on the day. The report is
+`reports/board_health.md`; the history behind "the previous check" is
+`data/board_health.jsonl`. The report says which file to fix: the shared
+list in `config/boards/`, or your own `companies.yaml` entry.
+
+To check another market's boards than the one in `config/search.yaml`,
+`--catalog` takes its code. Discovery takes `--market` for the same reason.
+
 ## Scheduling
 
 Discovery can run in the cloud too: the monthly workflow refreshes the watch
-list on the 1st of each month, emails a summary, and commits the suggestions
-and ledger back. It reuses the daily workflow's credentials and secrets, so
+list on the 1st of each month, runs the board health check, emails a summary,
+and commits the suggestions, ledger and health history back. It reuses the daily workflow's credentials and secrets, so
 there's nothing extra to set up; the review step stays manual. See
 [CLOUD.md](CLOUD.md).
