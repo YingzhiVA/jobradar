@@ -1,4 +1,5 @@
-# The company job boards to scan: your selection from the shared list in config/boards/ (global.ymal, plus ch.yaml for Switzerland).
+# The company job boards to scan: your selection from the shared list in 
+# config/boards/ (global.yaml, plus ch.yaml for Switzerland).
 #
 # NOTHING IS SCANNED UNTIL YOU CHOOSE. Add one line per board, with the
 # company's name as config/boards spells it (case doesn't matter):
