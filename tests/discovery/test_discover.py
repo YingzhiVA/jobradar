@@ -453,7 +453,7 @@ def test_search_company_names_degrades_on_exception():
 
 def test_discover_merges_and_dedupes_both_sources(monkeypatch):
     monkeypatch.setattr(
-        discover_mod, "search_company_names", lambda c, intent, exclude=None: ["beta", "Gamma"]
+        discover_mod, "search_company_names", lambda c, intent, exclude=None, market=None: ["beta", "Gamma"]
     )
     probed = []
 
@@ -507,7 +507,7 @@ def test_discover_probes_seed_names(monkeypatch):
 def test_discover_skips_web_search_when_disabled(monkeypatch):
     called = {"search": False}
 
-    def fake_search(c, intent, exclude=None):
+    def fake_search(c, intent, exclude=None, market=None):
         called["search"] = True
         return ["ShouldNotAppear"]
 
@@ -525,7 +525,7 @@ def test_discover_treats_catalogue_companies_as_known(monkeypatch):
     # told not to spend its answer on it.
     captured = {}
 
-    def fake_search(c, intent, exclude=None):
+    def fake_search(c, intent, exclude=None, market=None):
         captured["exclude"] = exclude
         return ["frontify", "NewCo"]
 
@@ -547,7 +547,7 @@ def test_discover_skips_ledger_known_and_records_outcomes(monkeypatch):
     monkeypatch.setattr(
         discover_mod,
         "search_company_names",
-        lambda c, intent, exclude=None: ["Matched Co", "FreshDrop", "StaleDrop", "NewCo"],
+        lambda c, intent, exclude=None, market=None: ["Matched Co", "FreshDrop", "StaleDrop", "NewCo"],
     )
 
     probed = []
@@ -579,7 +579,7 @@ def test_discover_skips_ledger_known_and_records_outcomes(monkeypatch):
 def test_discover_passes_known_set_as_exclusion(monkeypatch):
     captured = {}
 
-    def fake_search(c, intent, exclude=None):
+    def fake_search(c, intent, exclude=None, market=None):
         captured["exclude"] = exclude
         return []
 
@@ -608,7 +608,7 @@ def test_discover_reprobes_drops_from_an_older_ats_set(monkeypatch):
     from jobradar.discovery import discovery_ledger
 
     now = datetime(2026, 6, 17, tzinfo=timezone.utc)
-    monkeypatch.setattr(discover_mod, "search_company_names", lambda c, intent, exclude=None: ["OldDrop"])
+    monkeypatch.setattr(discover_mod, "search_company_names", lambda c, intent, exclude=None, market=None: ["OldDrop"])
     probed = []
     monkeypatch.setattr(discover_mod, "probe_company", lambda n, c, skip=None: probed.append(n) or None)
 

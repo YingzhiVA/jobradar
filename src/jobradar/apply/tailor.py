@@ -37,6 +37,7 @@ from pydantic import BaseModel, Field
 
 from .. import usage
 from ..llm import MODEL_DEFAULTS, model_for
+from ..markets import CH, Market
 from .util import drain_stream
 
 logger = logging.getLogger(__name__)
@@ -60,55 +61,6 @@ LANGUAGE_NAMES = {
 
 def language_name(code: str) -> str:
     return LANGUAGE_NAMES.get((code or "").lower(), code or "the posting's language")
-
-
-# Swiss German and Swiss French are not the German of Germany and the French
-# of France, and every posting this pipeline sees is Swiss. A reviewer in
-# Zurich reads a stray ß-rule violation the way a reviewer in Berlin would
-# read "colour": not wrong exactly, just written by someone from elsewhere.
-_SWISS_CONVENTIONS = {
-    "de": """\
-Write Swiss Standard German (Schweizer Hochdeutsch), not the German of
-Germany:
-- The letter ß does not exist in Swiss orthography. Always write ss:
-  Strasse, grösste, Mass, dass. Never use it, not even in quotations.
-- Quote with guillemets «so», not with German quotation marks.
-- Group thousands with an apostrophe: CHF 120'000, not 120.000.
-- Swiss business vocabulary where it differs: Lohn (not Gehalt),
-  Stelleninserat (not Stellenanzeige), Mitarbeitende. Dates as 06.08.2026.""",
-    "fr": """\
-Write Swiss French (français de Suisse romande), not the French of France:
-- septante for 70 and nonante for 90, never soixante-dix or quatre-vingt-dix.
-  Leave 80 as quatre-vingts unless the posting itself writes huitante.
-- Quote with guillemets « so », a space inside each mark.
-- Group thousands with an apostrophe: CHF 120'000.
-- Swiss vocabulary where it differs: place de travail, formation continue.
-  Dates as 06.08.2026.""",
-}
-
-# Used when the language is only known to the model, not to the caller.
-SWISS_CONVENTIONS_ANY = """\
-Every posting here is Swiss. If that language is German or French, write the
-Swiss variety: Swiss Standard German has no ß (write ss - Strasse, grösste,
-dass), Swiss French uses septante and nonante, and both quote with guillemets
-and group thousands with an apostrophe (CHF 120'000)."""
-
-
-def swiss_conventions(code: str) -> str:
-    """Prompt text for writing the Swiss variety of `code`'s language, or ""
-    for a language with no Swiss variety to get wrong (English included)."""
-    return _SWISS_CONVENTIONS.get((code or "").lower(), "")
-
-
-def swiss_spelling(text: str, code: str) -> str:
-    """Deterministic backstop for the one Swiss rule a model trained mostly on
-    German German keeps breaking. The prompt makes it likely; this makes it
-    certain. It also Swiss-ifies a German name carrying an ß, which is the
-    trade Swiss usage itself makes (Swiss papers write Straßburg as
-    Strassburg)."""
-    if not (code or "").lower().startswith("de"):
-        return text
-    return text.replace("ß", "ss").replace("ẞ", "SS")
 
 
 def _system_blocks(profile_block: str, jd_block: str) -> list[dict]:
@@ -275,6 +227,7 @@ def write_application_docs(
     model: str | None = None,
     usage_acc: dict | None = None,
     on_delta: Callable[[str], None] | None = None,
+    market: Market = CH,
 ) -> ApplicationDocs | None:
     model = model or model_for("JOBRADAR_APPLY_WRITER_MODEL")
     cover_letter_instruction = (
@@ -282,7 +235,7 @@ def write_application_docs(
             part
             for part in (
                 _COVER_LETTER_INSTRUCTION.format(language=language_name(language)),
-                swiss_conventions(language),
+                market.writing_rules(language),
             )
             if part
         )
@@ -326,7 +279,7 @@ def write_application_docs(
         return None
     # The cover letter is the only half written in the posting's language; the
     # tailored CV here is still the English original.
-    docs.cover_letter_markdown = swiss_spelling(docs.cover_letter_markdown, language)
+    docs.cover_letter_markdown = market.respell(docs.cover_letter_markdown, language)
     return docs
 
 
@@ -340,7 +293,7 @@ job posting in the system prompt. (The cover letter, if any, was already
 written in {language_name}; only the CV needs translating.)
 
 {style_rules}
-{swiss_conventions}
+{writing_rules}
 Translation rules:
 - Preserve the markdown structure exactly: the same headings, bullets,
   ordering, and layout. Only the language of the prose changes.
@@ -367,6 +320,7 @@ def translate_cv(
     model: str | None = None,
     usage_acc: dict | None = None,
     on_delta: Callable[[str], None] | None = None,
+    market: Market = CH,
 ) -> str | None:
     """Translate an already-tailored CV into `language` (an ISO 639-1 code or a
     readable name). Reuses the posting's cached system prefix so the call is a
@@ -384,7 +338,7 @@ def translate_cv(
                     "content": _TRANSLATE_CV_PROMPT.format(
                         language_name=language_name(language),
                         style_rules=_STYLE_RULES,
-                        swiss_conventions=swiss_conventions(language),
+                        writing_rules=market.writing_rules(language),
                         cv_markdown=cv_markdown,
                     ),
                 }
@@ -402,4 +356,4 @@ def translate_cv(
         logger.warning("CV translation hit max_tokens; output may be truncated")
     if response.parsed_output is None:
         return None
-    return swiss_spelling(response.parsed_output.translated_cv_markdown, language)
+    return market.respell(response.parsed_output.translated_cv_markdown, language)

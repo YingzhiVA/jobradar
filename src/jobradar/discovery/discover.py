@@ -60,7 +60,9 @@ from pydantic import BaseModel, ValidationError
 
 from . import discovery_ledger
 from ..boards import BOARDS_FILE, load_companies, read_catalog
+from ..config import load_search_settings
 from ..llm import model_for, web_search_tool_type
+from ..markets import CH, Market
 from ..matching import load_profile
 from ..search import company_health
 from ..search.sources.company_pages import _FETCHERS, join_jobs_page, parse_join_company
@@ -306,8 +308,8 @@ class _DiscoveredNames(BaseModel):
 
 
 _COMPANY_SEARCH_PROMPT = """\
-Find real companies that operate in Switzerland (headquartered here, or with a \
-Swiss office) worth scanning for roles that would fit this candidate:
+Find real companies that operate in {country} (headquartered here, or with a \
+{adjective} office) worth scanning for roles that would fit this candidate:
 
 {intent}
 
@@ -340,9 +342,10 @@ def search_company_names(
     intent: str,
     max_searches: int = _DISCOVERY_MAX_SEARCHES,
     exclude: list[str] | None = None,
+    market: Market = CH,
 ) -> list[str]:
-    """Use web search to surface Swiss-operating company NAMES that fit the
-    candidate. `exclude` lists companies already known/checked so the model
+    """Use web search to surface NAMES of companies operating in the market's
+    country that fit the candidate. `exclude` lists companies already known/checked so the model
     spends its budget on new ones. Degrades to [] on any failure — discovery
     should never crash the run, and the seed-list path still works without it.
     """
@@ -362,6 +365,8 @@ def search_company_names(
                 {
                     "role": "user",
                     "content": _COMPANY_SEARCH_PROMPT.format(
+                        country=market.country,
+                        adjective=market.adjective,
                         intent=intent or "(no specific profile provided)",
                         exclusion=_exclusion_clause(exclude),
                     ),
@@ -414,6 +419,7 @@ def discover(
     now: datetime | None = None,
     ttl_days: int = _DROP_TTL_DAYS,
     match_ttl_days: int = _MATCH_TTL_DAYS,
+    market: Market = CH,
 ) -> list[CompanyMatch]:
     """catalog_names: the companies config/boards.yaml already has a board for.
     They count as known even when not selected: suggesting one would only
@@ -432,7 +438,7 @@ def discover(
             exclude += discovery_ledger.active_names(
                 ledger, now, ttl_days, _PROBE_VERSION, match_ttl_days
             )
-        web_names = search_company_names(client, web_intent, exclude=exclude)
+        web_names = search_company_names(client, web_intent, exclude=exclude, market=market)
         logger.info(
             "web search suggested %d candidate compan%s",
             len(web_names),
@@ -728,6 +734,7 @@ def main(argv: list[str] | None = None) -> None:
         _reject_collisions(args.reject)
         return
 
+    market = load_search_settings(ROOT).market
     client = anthropic.Anthropic()
 
     existing_companies = load_companies(ROOT).boards
@@ -753,6 +760,7 @@ def main(argv: list[str] | None = None) -> None:
         seed_names=seed_names,
         catalog_names=catalog_names,
         ledger=ledger,
+        market=market,
     )
     discovery_ledger.save_ledger(_LEDGER_PATH, ledger)
 

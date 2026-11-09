@@ -32,13 +32,8 @@ from pydantic import BaseModel, Field
 
 from .. import usage
 from ..llm import MODEL_DEFAULTS, model_for
-from .tailor import (
-    SWISS_CONVENTIONS_ANY,
-    _system_blocks,
-    language_name,
-    swiss_conventions,
-    swiss_spelling,
-)
+from ..markets import CH, Market
+from .tailor import _system_blocks, language_name
 from .util import drain_stream
 
 logger = logging.getLogger(__name__)
@@ -145,6 +140,7 @@ def generate_prep(
     usage_acc: dict | None = None,
     language: str | None = None,
     on_delta: Callable[[str], None] | None = None,
+    market: Market = CH,
 ) -> PrepSheet | None:
     """language is the posting's ISO 639-1 code when the tracker recorded one
     at drafting time; None lets the model read it off the posting, which is
@@ -160,7 +156,7 @@ def generate_prep(
             ),
             # The specific conventions when the caller knows the language; the
             # catch-all when only the model will know it.
-            swiss_conventions(language) if language else SWISS_CONVENTIONS_ANY,
+            market.writing_rules(language) if language else market.writing_rules_any,
         )
         if part
     )
@@ -255,7 +251,9 @@ _HEADINGS: dict[str, dict[str, str]] = {
 }
 
 
-def render_prep_md(sheet: PrepSheet, title: str, company: str = "", url: str = "") -> str:
+def render_prep_md(
+    sheet: PrepSheet, title: str, company: str = "", url: str = "", market: Market = CH
+) -> str:
     h = _HEADINGS.get((sheet.language or "en").lower(), _HEADINGS["en"])
     header = (
         h["header_with_company"].format(title=title, company=company)
@@ -289,6 +287,7 @@ def render_prep_md(sheet: PrepSheet, title: str, company: str = "", url: str = "
     lines += ["", f"## {h['ask']}", ""]
     lines += [f"- {q}" for q in sheet.questions_to_ask]
     lines.append("")
-    # Swiss orthography over the whole sheet, headings included: the model
-    # writes the prose, this guarantees the one rule it keeps breaking.
-    return swiss_spelling("\n".join(lines), sheet.language)
+    # The market's spelling fixes over the whole sheet, headings included (for
+    # Swiss German, no ß): the model writes the prose, this guarantees the one
+    # rule it keeps breaking.
+    return market.respell("\n".join(lines), sheet.language)
