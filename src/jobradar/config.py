@@ -10,9 +10,10 @@ from its neighbours in ``config/``:
   catalogue in ``boards.yaml``.
 - ``retention.yaml`` holds how long output is kept around afterwards.
 - ``search.yaml`` (this module) holds how the search itself is steered, plus
-  two situation switches the phases read: ``rav`` (Swiss unemployment-office
-  reporting, for registered job seekers only) and ``sources`` (optional
-  sources that need no per-company config).
+  the situation switches the phases read: ``market`` (the country searched,
+  see ``jobradar.markets``), ``rav`` (Swiss unemployment-office reporting, for
+  registered job seekers only) and ``sources`` (optional sources that need no
+  per-company config).
 
 Values were previously module constants spread across ``search/ranking.py``
 and a cron line in ``.github/workflows/daily.yml``, i.e. editable only by
@@ -39,6 +40,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
+
+from .markets import DEFAULT_MARKET, MARKETS, Market
 
 logger = logging.getLogger(__name__)
 
@@ -376,8 +379,18 @@ class Sources:
         return cls(eth_jobs=EthSource.from_dict(data.get("eth_jobs")))
 
 
+def _market(value: object) -> Market:
+    code = str(value).strip().lower()
+    if code not in MARKETS:
+        raise ConfigError(
+            f"market: {value!r} is not a known market (known: {', '.join(sorted(MARKETS))})"
+        )
+    return MARKETS[code]
+
+
 @dataclass(frozen=True)
 class SearchSettings:
+    market: Market = DEFAULT_MARKET
     thresholds: Thresholds = Thresholds()
     output: Output = Output()
     schedule: Schedule = Schedule()
@@ -389,14 +402,22 @@ class SearchSettings:
         data = data or {}
         _unknown_keys(
             data,
-            {"thresholds", "output", "schedule", "rav", "sources"},
+            {"market", "thresholds", "output", "schedule", "rav", "sources"},
             section="the top level",
         )
+        market = _market(data.get("market", DEFAULT_MARKET.code))
+        rav = Rav.from_dict(data.get("rav"))
+        if rav.enabled and not market.rav:
+            raise ConfigError(
+                f"rav.enabled: RAV reporting is for Swiss unemployment offices, and "
+                f"market {market.code!r} ({market.country}) has none; set it to false"
+            )
         return cls(
+            market=market,
             thresholds=Thresholds.from_dict(data.get("thresholds")),
             output=Output.from_dict(data.get("output")),
             schedule=Schedule.from_dict(data.get("schedule")),
-            rav=Rav.from_dict(data.get("rav")),
+            rav=rav,
             sources=Sources.from_dict(data.get("sources")),
         )
 
@@ -410,6 +431,7 @@ class SearchSettings:
         eth = self.sources.eth_jobs
         return "\n".join(
             [
+                f"market:            {self.market.code} ({self.market.country})",
                 "thresholds:",
                 f"  min_skill:       {self.thresholds.min_skill}",
                 f"  min_interest:    {self.thresholds.min_interest}"

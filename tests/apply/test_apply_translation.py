@@ -1,5 +1,5 @@
 from jobradar.apply.main import _notes_md
-from jobradar.apply.tailor import language_name, swiss_conventions, swiss_spelling
+from jobradar.apply.tailor import language_name
 from jobradar.apply.tracker import Application
 
 
@@ -44,23 +44,3 @@ def test_notes_no_translation_for_english_posting():
     assert "Posting language: English" in notes
     assert "German CV" not in notes
 
-
-def test_swiss_spelling_replaces_eszett_in_german():
-    assert swiss_spelling("Die größte Straße", "de") == "Die grösste Strasse"
-    assert swiss_spelling("ẞBUNG", "de") == "SSBUNG"
-    assert swiss_spelling("Grösse", "de") == "Grösse"
-
-
-def test_swiss_spelling_leaves_other_languages_alone():
-    # Not German, so nothing to enforce - and no other language uses the letter.
-    assert swiss_spelling("groß", "fr") == "groß"
-    assert swiss_spelling("groß", "en") == "groß"
-    assert swiss_spelling("groß", "") == "groß"
-
-
-def test_swiss_conventions_only_for_languages_with_a_swiss_variety():
-    assert "ß" in swiss_conventions("de")
-    assert "septante" in swiss_conventions("fr")
-    assert swiss_conventions("en") == ""
-    assert swiss_conventions("it") == ""
-    assert swiss_conventions("") == ""

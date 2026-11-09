@@ -16,9 +16,10 @@ same input. Model calls are faked where a test needs one.
 
 ```
 src/jobradar/
-  config.py        config/search.yaml: dials and the rav / sources switches
+  config.py        config/search.yaml: dials and the market / rav / sources switches
   doctor.py        python -m jobradar.doctor — setup checks
   llm.py           which model each stage uses (env overrides)
+  markets/         the country searched: its regions, prompt wording, writing rules
   matching.py      profile loading, the scoring call
   models.py        Posting / Constraints / ScoredPosting
   search/          the daily run: main, sources/, filters, ranking, writeup, report, notify
@@ -50,6 +51,21 @@ skips this still works and passes its tests; it just re-downloads every
 posting it has ever seen on every run, which is how a run once took an hour.
 The existing per-posting connectors in `company_pages.py` show the three
 lookups (`exact`, `by_segment`, `by_leading_id`).
+
+A board that lists postings from many countries should ask for the market's
+country only, before any per-posting request: accept a `market: Market`
+argument, add the ATS to `_SCOPED_TO_MARKET`, and pass `market.country` (or
+`market.country_code`) to the board's own location filter. Workday,
+SuccessFactors and iCIMS do this.
+
+## Country-specific code
+
+Anything that depends on the country searched belongs in `src/jobradar/markets/`,
+not in the pipeline: the country's names, its regions (Swiss cantons) and the
+towns that name one, the gap-fill prompt's region instructions, the writing
+rules for application documents, and whether the RAV report applies. The
+pipeline takes a `Market` and reads these off it. `config/search.yaml` selects
+one with `market:` (default `ch`, the only one so far).
 
 ## Reading the run log
 

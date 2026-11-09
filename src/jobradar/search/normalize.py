@@ -17,6 +17,7 @@ import re
 import anthropic
 from pydantic import BaseModel
 
+from ..markets import CH, Market
 from ..models import Constraints, Posting, posting_id
 from .filters import names_a_place, remote_country_ok
 from .sources.base import RawPosting
@@ -53,60 +54,6 @@ _SPONSOR_NEGATIVE_RE = re.compile(
     r"(?:cannot|can't|unable to|do not|don't|no)\s+(?:provide\s+)?(?:visa\s+)?sponsor", re.I
 )
 _SPONSOR_POSITIVE_RE = re.compile(r"(?:visa\s+)?sponsor(?:ship)?\s+(?:is\s+)?available|we\s+sponsor", re.I)
-
-# The 26 Swiss cantons, canonical English names — used both as the
-# heuristic dict's output vocabulary and as guidance for the LLM fallback,
-# so posting.canton is always one of these regardless of which path filled it.
-CANTONS = [
-    "Zurich", "Bern", "Lucerne", "Uri", "Schwyz", "Obwalden", "Nidwalden",
-    "Glarus", "Zug", "Fribourg", "Solothurn", "Basel-Stadt", "Basel-Landschaft",
-    "Schaffhausen", "Appenzell Ausserrhoden", "Appenzell Innerrhoden",
-    "St. Gallen", "Graubünden", "Aargau", "Thurgau", "Ticino", "Vaud",
-    "Valais", "Neuchâtel", "Geneva", "Jura",
-]
-
-# Only the unambiguous cases: a major city/town whose name we're confident
-# identifies its canton without needing the LLM. Deliberately not
-# exhaustive — anything not in here (most towns, e.g. within Vaud, Aargau,
-# Ticino, Basel-Landschaft) falls through to the LLM fallback in
-# llm_fill_gaps(), which has reliable general knowledge of Swiss geography
-# without this module having to hand-maintain ~2000 municipality mappings.
-_CANTON_BY_CITY = {
-    "zurich": "Zurich", "zürich": "Zurich", "winterthur": "Zurich",
-    "bern": "Bern", "berne": "Bern",
-    "lucerne": "Lucerne", "luzern": "Lucerne",
-    "zug": "Zug",
-    # Risch-Rotkreuz: not a major town, but it's Roche Diagnostics' site and the
-    # only place the Roche board is scoped to, so it recurs daily — worth the
-    # entry to skip an LLM call per posting. Unambiguous: one municipality.
-    "rotkreuz": "Zug",
-    # Kaiseraugst: same reasoning — Roche's second Swiss site, ~20 postings a
-    # day since the board was widened to it (2026-09-07). One municipality.
-    "kaiseraugst": "Aargau",
-    # Stäfa: Sonova's headquarters and the site of nearly all its Swiss
-    # postings (~18 a day since 2026-09-07), which its board spells "Staefa".
-    # One municipality.
-    "stäfa": "Zurich", "staefa": "Zurich",
-    "schaffhausen": "Schaffhausen",
-    "solothurn": "Solothurn",
-    "glarus": "Glarus",
-    "schwyz": "Schwyz",
-    "geneva": "Geneva", "genève": "Geneva", "geneve": "Geneva",
-    "neuchâtel": "Neuchâtel", "neuchatel": "Neuchâtel",
-    "fribourg": "Fribourg", "freiburg": "Fribourg",
-    "st. gallen": "St. Gallen", "st gallen": "St. Gallen", "saint gallen": "St. Gallen",
-    "sankt gallen": "St. Gallen",
-    "basel": "Basel-Stadt",
-}
-
-
-def _heuristic_canton(text: str) -> str | None:
-    haystack = text.lower()
-    for city, canton in _CANTON_BY_CITY.items():
-        if re.search(rf"\b{re.escape(city)}\b", haystack):
-            return canton
-    return None
-
 
 def _heuristic_remote(location_text: str, description: str) -> bool | None:
     haystack = f"{location_text} ".lower()
@@ -163,7 +110,7 @@ def _heuristic_sponsorship(text: str) -> bool | None:
     return None
 
 
-def heuristic_normalize(raw: RawPosting) -> Posting:
+def heuristic_normalize(raw: RawPosting, market: Market = CH) -> Posting:
     full_text = f"{raw.location or ''} {raw.description}"
     pct_range = _heuristic_employment_pct(full_text)
     return Posting(
@@ -179,7 +126,7 @@ def heuristic_normalize(raw: RawPosting) -> Posting:
         # passing (company HQ, other office locations — e.g. "headquarters
         # in St. Gallen... offices in London and New York"), which would
         # otherwise misattribute a non-Swiss posting's canton.
-        canton=_heuristic_canton(raw.location or ""),
+        canton=market.region_in(raw.location or ""),
         remote=_resolve_remote(raw),
         employment_pct_min=pct_range[0] if pct_range else None,
         employment_pct_max=pct_range[1] if pct_range else None,
@@ -213,21 +160,7 @@ the posting offers, e.g. "80-100%" -> min 80, max 100. A single figure or \
 explicitly on-site/hybrid-only, null if unclear.
 - sponsorship_mentioned: true if visa/work-permit sponsorship is explicitly \
 offered, false if explicitly NOT offered, null if not mentioned.
-- canton: which Swiss canton THIS JOB is in, worked out from the town/city on \
-the Location line and from that line alone (e.g. Lausanne -> Vaud, Lugano -> \
-Ticino). Descriptions routinely name other places in passing — the company's \
-headquarters, its other offices, where its customers are — and none of those \
-say anything about where this job is, so never read the canton off the \
-description. A Location line outside Switzerland is null even when the \
-description says the company is Swiss: Location "London Area" is null, no \
-matter how prominently the description mentions a Swiss head office. Only \
-when no Location line is given at all, fall back to a job location the \
-description states explicitly. Use exactly one of these names: {cantons}. \
-Null if the job isn't in Switzerland or the location is too vague to place.
-- canton_source: the exact substring of the Location line you read the canton \
-off, copied verbatim (Location "Cham, Switzerland" -> "Cham"). Null when \
-canton is null, and null when you fell back to the description because no \
-Location line was given.
+{region_fields}
 
 Title: {title}
 Location: {location}
@@ -280,7 +213,9 @@ _GAP_FIELDS = (
 )
 
 
-def llm_fill_gaps(posting: Posting, client: anthropic.Anthropic) -> Posting:
+def llm_fill_gaps(
+    posting: Posting, client: anthropic.Anthropic, market: Market = CH
+) -> Posting:
     """Fills employment_pct_min/max, office_days_per_week, and canton (and
     remote/sponsorship if still unknown) via one small structured-output
     call. Only call this when heuristic_normalize() left something
@@ -298,7 +233,9 @@ def llm_fill_gaps(posting: Posting, client: anthropic.Anthropic) -> Posting:
                         title=posting.title,
                         location=posting.location_text or "(not given)",
                         description=posting.description[:4000],
-                        cantons=", ".join(CANTONS),
+                        region_fields=market.region_prompt.format(
+                            regions=", ".join(market.regions)
+                        ),
                     ),
                 }
             ],
@@ -357,7 +294,11 @@ def _needs_canton(posting: Posting, constraints: Constraints | None) -> bool:
 
 
 def fill_gaps(
-    posting: Posting, client: anthropic.Anthropic | None, *, constraints: Constraints | None = None
+    posting: Posting,
+    client: anthropic.Anthropic | None,
+    *,
+    constraints: Constraints | None = None,
+    market: Market = CH,
 ) -> Posting:
     """Run the (paid) LLM gap-fill on an already heuristic-normalized posting,
     but only when something filter-relevant is still missing. Split out from
@@ -370,16 +311,22 @@ def fill_gaps(
         or _needs_canton(posting, constraints)
     )
     if needs_llm and client is not None:
-        posting = llm_fill_gaps(posting, client)
+        posting = llm_fill_gaps(posting, client, market)
     return posting
 
 
 def normalize(
-    raw: RawPosting, client: anthropic.Anthropic | None, *, constraints: Constraints | None = None
+    raw: RawPosting,
+    client: anthropic.Anthropic | None,
+    *,
+    constraints: Constraints | None = None,
+    market: Market = CH,
 ) -> Posting:
     """constraints: pass the run's Constraints so canton resolution can be
     skipped when filters.py wouldn't need it anyway (see _needs_canton).
     Pass None (the default) to never trigger canton resolution — e.g. in
     tests, or callers that don't filter by canton at all.
     """
-    return fill_gaps(heuristic_normalize(raw), client, constraints=constraints)
+    return fill_gaps(
+        heuristic_normalize(raw, market), client, constraints=constraints, market=market
+    )

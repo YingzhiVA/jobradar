@@ -38,6 +38,7 @@ from .filters import (
     could_pass_location,
     filter_postings,
 )
+from ..markets import CH, Market
 from ..matching import build_profile_block, load_profile, score_postings
 from ..models import Constraints
 from .normalize import fill_gaps, heuristic_normalize
@@ -120,16 +121,16 @@ def _build_search_intent(identity: str) -> str:
     return identity.strip() or "(no profile information provided)"
 
 
-def _build_location_desc(constraints: Constraints) -> str:
+def _build_location_desc(constraints: Constraints, market: Market = CH) -> str:
     """A human-readable statement of the location requirements for the
     web_search prompt. Mirrors filters._location_ok()'s OR semantics.
     """
     clauses: list[str] = []
     if constraints.allowed_cantons:
         clauses.append(
-            "in Switzerland, specifically the cantons of "
+            f"in {market.country}, specifically the {market.regions_word} of "
             + ", ".join(constraints.allowed_cantons)
-            + " (including towns within those cantons)"
+            + f" (including towns within those {market.regions_word})"
         )
     if constraints.allowed_cities:
         clauses.append("in " + ", ".join(constraints.allowed_cities))
@@ -156,13 +157,14 @@ def _build_sources(
     use_web_search: bool,
     sources_settings: Sources | None = None,
     known: KnownPostings | None = None,
+    market: Market = CH,
 ) -> list:
     # Note: the Arbeitnow connector (sources/job_apis.py) is intentionally not
     # wired in — its feed is effectively German-only, so it contributes ~zero
     # postings to a Switzerland-focused search while still costing a normalize
     # pass each. Re-add it here if/when the search broadens to EU-remote roles.
     optional = sources_settings or Sources()
-    sources: list = [CompanyPagesSource(companies, known=known)]
+    sources: list = [CompanyPagesSource(companies, known=known, market=market)]
     # ETH's own job board, per job-type category — which categories are worth
     # scanning depends on the user's role, so it is a config switch.
     if optional.eth_jobs.enabled:
@@ -172,7 +174,7 @@ def _build_sources(
             WebSearchSource(
                 client,
                 _build_search_intent(identity),
-                _build_location_desc(constraints),
+                _build_location_desc(constraints, market),
             )
         )
     return sources
@@ -283,10 +285,11 @@ def run(
     # — read before anything is spent, so a typo'd value fails on the spot
     # rather than after a full fetch+score pass. See jobradar.config.
     settings = load_search_settings(ROOT)
-    thresholds, output = settings.thresholds, settings.output
+    thresholds, output, market = settings.thresholds, settings.output, settings.market
     logger.info(
-        "Settings: skill floor %d, interest floor %d, best bar %d, cap %d best + %d okay, "
-        "eth_jobs %s",
+        "Settings: market %s, skill floor %d, interest floor %d, best bar %d, "
+        "cap %d best + %d okay, eth_jobs %s",
+        market.code,
         thresholds.min_skill,
         thresholds.min_interest,
         thresholds.best_threshold,
@@ -337,6 +340,7 @@ def run(
             selection.boards, constraints, identity, client, use_web_search,
             sources_settings=settings.sources,
             known=known,
+            market=market,
         )
         fetch_results = _fetch_all(sources)
 
@@ -369,7 +373,7 @@ def run(
     # Heuristic-normalize everything first (cheap, no LLM) so we can dedup
     # before paying for the LLM gap-fill — otherwise every already-seen
     # posting fires a normalize LLM call only to be dropped on the next line.
-    postings = [heuristic_normalize(raw) for raw in raw_postings]
+    postings = [heuristic_normalize(raw, market) for raw in raw_postings]
 
     with SeenStore(ROOT / "data" / "seen_postings.json") as seen_store:
         unseen = seen_store.filter_unseen(postings)
@@ -394,7 +398,7 @@ def run(
         # posting that would just be dropped anyway.
         candidates = []
         for p in named:
-            if could_pass_location(p, constraints):
+            if could_pass_location(p, constraints, market):
                 candidates.append(p)
             else:
                 filtered_out.append(
@@ -403,7 +407,9 @@ def run(
         logger.info("%d/%d new postings could be in range (worth LLM gap-fill)", len(candidates), len(unseen))
 
         # Now pay for the LLM gap-fill, but only on those candidates.
-        candidates = [fill_gaps(p, client, constraints=constraints) for p in candidates]
+        candidates = [
+            fill_gaps(p, client, constraints=constraints, market=market) for p in candidates
+        ]
 
         kept, filter_results = filter_postings(candidates, constraints)
         logger.info("%d/%d new postings pass hard constraints", len(kept), len(unseen))

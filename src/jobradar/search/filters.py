@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from ..markets import CH, COUNTRY_ALIASES, Market
 from ..models import Constraints, Posting
 
 # Where in the pipeline a posting fell out, before it could be scored. The first
@@ -69,15 +70,6 @@ def _canton_ok(posting: Posting, constraints: Constraints) -> bool:
     )
 
 
-# Country-name variants worth accepting in a location line, so a board that
-# writes "Schweiz" or "Suisse" still matches a remote_countries entry of
-# "Switzerland". Only the country this tool is actually scoped to needs one;
-# anything else falls back to a plain substring match on the configured name.
-_COUNTRY_ALIASES = {
-    "switzerland": ("switzerland", "schweiz", "suisse", "svizzera"),
-}
-
-
 # Words a location line uses to describe HOW the work is done rather than WHERE.
 # Anything left over once these and the country names are stripped is a place.
 _WORK_MODE_WORDS = re.compile(
@@ -102,10 +94,12 @@ def names_a_place(location_text: str | None, constraints: Constraints) -> bool:
     """
     if not location_text or not constraints.remote_countries:
         return bool(location_text)
+    # COUNTRY_ALIASES: a board writing "Schweiz" still matches "Switzerland";
+    # a country no market knows is matched by its configured name alone.
     variants = [
         variant
         for country in constraints.remote_countries
-        for variant in _COUNTRY_ALIASES.get(country.strip().lower(), (country.strip().lower(),))
+        for variant in COUNTRY_ALIASES.get(country.strip().lower(), (country.strip().lower(),))
     ]
     for segment in location_text.lower().split(";"):
         if not any(variant in segment for variant in variants):
@@ -150,7 +144,7 @@ def remote_country_ok(posting: Posting, constraints: Constraints) -> bool:
         return False  # can't place it — treated as no match, like every other location check
     for country in constraints.remote_countries:
         key = country.strip().lower()
-        for variant in _COUNTRY_ALIASES.get(key, (key,)):
+        for variant in COUNTRY_ALIASES.get(key, (key,)):
             if variant in location:
                 return True
     return False
@@ -171,12 +165,9 @@ def _location_ok(posting: Posting, constraints: Constraints) -> bool:
     return False
 
 
-# Words that signal a posting could be in Switzerland even when its town isn't
-# in normalize.py's heuristic canton dict — so it's worth an LLM canton call.
-_SWISS_SIGNALS = ("switzerland", "schweiz", "suisse", "svizzera")
-
-
-def could_pass_location(posting: Posting, constraints: Constraints) -> bool:
+def could_pass_location(
+    posting: Posting, constraints: Constraints, market: Market = CH
+) -> bool:
     """Cheap pre-LLM gate: would it be worth spending a canton-resolution LLM
     call on this (heuristic-only) posting, because it could plausibly pass the
     location filter? Lets the pipeline skip the LLM gap-fill for clearly-foreign
@@ -185,7 +176,9 @@ def could_pass_location(posting: Posting, constraints: Constraints) -> bool:
 
     Canton resolution is the *only* location-relevant thing the LLM adds, so a
     posting that already fails _location_ok can only be rescued if (a) cantons
-    are configured and (b) it might actually be in Switzerland.
+    are configured and (b) it might actually be in the market's country: its
+    location or description names the country in any of its spellings, even
+    though its town isn't one market.region_by_city knows.
     """
     if _location_ok(posting, constraints):
         return True
@@ -193,8 +186,7 @@ def could_pass_location(posting: Posting, constraints: Constraints) -> bool:
         return False  # no canton list → LLM canton resolution can't help
     if not (posting.location_text or "").strip():
         return True  # location unknown — don't silently drop before the LLM sees it
-    haystack = f"{posting.location_text} {posting.description}".lower()
-    return any(sig in haystack for sig in _SWISS_SIGNALS)
+    return market.mentions_country(f"{posting.location_text} {posting.description}")
 
 
 # A posting whose employer we can't identify is not actionable — you can't

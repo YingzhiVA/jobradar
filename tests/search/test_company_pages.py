@@ -1,9 +1,11 @@
 import json
 import logging
+from dataclasses import replace
 
 import httpx
 import pytest
 
+from jobradar.markets import CH
 from jobradar.search.sources.base import RawPosting
 from jobradar.search.sources.company_pages import (
     _FETCHERS,
@@ -2554,7 +2556,7 @@ def test_avature_takes_a_known_postings_title_from_the_list_when_its_url_has_non
 def test_source_passes_known_postings_only_to_per_posting_connectors(monkeypatch):
     received = {}
 
-    def per_posting(name, slug, client, known=None):
+    def per_posting(name, slug, client, known=None, market=None):
         received["workday"] = known
         return [RawPosting(source="workday", url="u1", title="t", company=name,
                            description="", raw={LISTING_ONLY: True}),
@@ -2575,3 +2577,25 @@ def test_source_passes_known_postings_only_to_per_posting_connectors(monkeypatch
     assert received["workday"] is known
     assert len(result.postings) == 3
     assert result.meta["listing_only"] == 1  # lands in runs.jsonl
+
+
+def test_source_passes_market_only_to_country_scoped_connectors(monkeypatch):
+    received = {}
+
+    def scoped(name, slug, client, market=None):
+        received["icims"] = market
+        return []
+
+    def unscoped(name, slug, client):  # would raise TypeError if handed `market`
+        return []
+
+    monkeypatch.setitem(_FETCHERS, "icims", scoped)
+    monkeypatch.setitem(_FETCHERS, "greenhouse", unscoped)
+    market = replace(CH, country="Elsewhere")
+    CompanyPagesSource(
+        [{"name": "A", "ats": "icims", "slug": "careers.example.com"},
+         {"name": "B", "ats": "greenhouse", "slug": "b"}],
+        market=market,
+    ).fetch()
+
+    assert received["icims"] is market

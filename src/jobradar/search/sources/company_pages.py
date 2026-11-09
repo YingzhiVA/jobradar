@@ -25,6 +25,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 
 import httpx
 
+from ...markets import CH, Market
 from .base import FetchResult, RawPosting, parse_workplace_type, strip_html
 
 logger = logging.getLogger(__name__)
@@ -400,11 +401,10 @@ def _fetch_teamtailor(company_name: str, slug: str, client: httpx.Client) -> lis
 # per-posting detail call — so fetching every posting would mean ~1750 HTTP
 # round-trips per run. Multinational boards expose a server-side location facet
 # carrying the country, so we pre-filter to these countries *before* any detail
-# calls. This scopes the connector to Swiss postings to match the rest of the
-# tool (constraints.yaml filters by Swiss canton, with the country left
-# implicit); broaden this set if you ever target other countries. Matched
-# case-insensitively against the facet's country descriptors.
-_WORKDAY_TARGET_COUNTRIES = {"switzerland"}
+# calls. This scopes the connector to the market's country (market.country,
+# Switzerland by default) to match the rest of the tool, whose location filter
+# leaves the country implicit. Matched case-insensitively against the facet's
+# country descriptors.
 
 # The Workday CXS country-facet parameter, whose descriptors are bare country
 # names ("Switzerland"). Two spellings are in the wild: the standard
@@ -453,14 +453,14 @@ _WORKDAY_PAGE_SIZE = 20
 _WORKDAY_MAX_UNSCOPED_POSTINGS = 400
 
 
-def _workday_names_target_country(descriptor: str | None) -> bool:
+def _workday_names_target_country(descriptor: str | None, market: Market = CH) -> bool:
     """`locationCountry` descriptors only: the whole string is a country name."""
     if not descriptor:
         return False
-    return descriptor.strip().lower() in _WORKDAY_TARGET_COUNTRIES
+    return descriptor.strip().lower() == market.country.lower()
 
 
-def _workday_location_in_target_country(descriptor: str | None) -> bool:
+def _workday_location_in_target_country(descriptor: str | None, market: Market = CH) -> bool:
     """`locations` descriptors only: the country is an explicit suffix.
 
     The comma is load-bearing, not cosmetic. A `locations` facet is a flat list
@@ -477,11 +477,11 @@ def _workday_location_in_target_country(descriptor: str | None) -> bool:
     """
     if not descriptor or "," not in descriptor:
         return False
-    return descriptor.rsplit(",", 1)[-1].strip().lower() in _WORKDAY_TARGET_COUNTRIES
+    return descriptor.rsplit(",", 1)[-1].strip().lower() == market.country.lower()
 
 
 def _workday_location_facets(
-    facets: list[dict], allowed_locations: list[str] | None = None
+    facets: list[dict], allowed_locations: list[str] | None = None, market: Market = CH
 ) -> dict[str, list[str]] | None:
     """Decide how to location-scope a Workday board from its facet tree.
 
@@ -530,7 +530,7 @@ def _workday_location_facets(
         return [
             value["id"]
             for value in by_param.get(param, [])
-            if value.get("id") and matches(value.get("descriptor"))
+            if value.get("id") and matches(value.get("descriptor"), market)
         ]
 
     if allowed_locations:
@@ -580,7 +580,11 @@ def _workday_location(info: dict) -> str | None:
 
 
 def _fetch_workday(
-    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+    company_name: str,
+    slug: str,
+    client: httpx.Client,
+    known: KnownPostings = _NOTHING_KNOWN,
+    market: Market = CH,
 ) -> list[RawPosting]:
     # Workday needs three coordinates, not one token, so the slug is
     # "tenant:host:site", e.g. "novartis:wd3:Novartis_Careers". The host is the
@@ -603,12 +607,14 @@ def _fetch_workday(
     probe = client.post(base + "/jobs", json={"appliedFacets": {}, "limit": 1, "offset": 0, "searchText": ""})
     probe.raise_for_status()
     probe_data = probe.json()
-    location_facets = _workday_location_facets(probe_data.get("facets", []), allowed_locations)
+    location_facets = _workday_location_facets(
+        probe_data.get("facets", []), allowed_locations, market
+    )
     if location_facets is not None and not any(location_facets.values()):
         # Nothing in scope: either the board has a country facet naming none of
         # our target countries, or none of the configured locations exist on it.
         # Return [] rather than fetch the whole board.
-        scope = "|".join(allowed_locations) if allowed_locations else "/".join(_WORKDAY_TARGET_COUNTRIES)
+        scope = "|".join(allowed_locations) if allowed_locations else market.country.lower()
         logger.info("Skipping %s (workday): no %s postings", company_name, scope)
         return []
     if location_facets is None:
@@ -1007,12 +1013,10 @@ def _fetch_avature(
 
 # --- SAP SuccessFactors Career Site Builder (EY, Swiss Re, Allianz) ---
 
-# Baked-in server-side location filter, for the same reason as
-# _WORKDAY_TARGET_COUNTRIES: these boards are global (EY lists thousands of
+# A server-side location filter on the market's country, for the same reason
+# Workday is scoped to it: these boards are global (EY lists thousands of
 # postings worldwide) and the description costs a detail call per posting, so
-# scope to Switzerland before any detail call. Broaden if you ever target
-# other countries.
-_SF_LOCATION_SEARCH = "Switzerland"
+# scope to the country before any detail call.
 
 _SF_ROW_RE = re.compile(r'<tr class="data-row.*?</tr>', re.S)
 _SF_ANCHOR_RE = re.compile(r'<a\s([^>]*class="jobTitle-link\b[^"]*"[^>]*)>(.*?)</a>', re.S)
@@ -1080,7 +1084,11 @@ def _sf_description(page_html: str) -> str:
 
 
 def _fetch_successfactors(
-    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+    company_name: str,
+    slug: str,
+    client: httpx.Client,
+    known: KnownPostings = _NOTHING_KNOWN,
+    market: Market = CH,
 ) -> list[RawPosting]:
     # The slug is the search page's host[/site] prefix — "careers.ey.com/ey"
     # (site mounted under a path) or "careers.swissre.com" (mounted at root).
@@ -1095,7 +1103,7 @@ def _fetch_successfactors(
     while True:
         resp = client.get(
             f"https://{slug}/search/",
-            params={"q": "", "locationsearch": _SF_LOCATION_SEARCH, "startrow": startrow},
+            params={"q": "", "locationsearch": market.country, "startrow": startrow},
             headers=_HTML_HEADERS,
             follow_redirects=True,
         )
@@ -1147,13 +1155,12 @@ def _fetch_successfactors(
 # description: no per-posting detail call. Verified on careers.axa.com,
 # 2026-09-07.
 
-# Server-side country facet, for the same reason as _SF_LOCATION_SEARCH: the
-# board is global (AXA lists ~1500 postings worldwide) and only the Swiss ones
-# are wanted. It's a facet on the posting's primary site, so a multi-site
-# posting whose primary site is abroad but that also lists a Swiss office
-# rides along (its full_location names every site; the location gate reads
-# the Swiss one off it). Broaden if you ever target other countries.
-_ICIMS_COUNTRY = "Switzerland"
+# The board is filtered server-side to the market's country, for the same
+# reason as SuccessFactors: it is global (AXA lists ~1500 postings worldwide)
+# and only the Swiss ones are wanted. It's a facet on the posting's primary
+# site, so a multi-site posting whose primary site is abroad but that also
+# lists a Swiss office rides along (its full_location names every site; the
+# location gate reads the Swiss one off it).
 # The endpoint rejects limit > 100 with a 422 (verified 2026-09-07); the
 # page's own default is 10.
 _ICIMS_PAGE_SIZE = 100
@@ -1173,7 +1180,9 @@ def _icims_location(data: dict) -> str | None:
     return None
 
 
-def _fetch_icims(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_icims(
+    company_name: str, slug: str, client: httpx.Client, market: Market = CH
+) -> list[RawPosting]:
     # The slug is the careers host, e.g. "careers.axa.com" (jobs.axa.ch
     # redirects there). The JSON API lives at /api/jobs on it.
     if not slug or "/" in slug:
@@ -1188,7 +1197,7 @@ def _fetch_icims(company_name: str, slug: str, client: httpx.Client) -> list[Raw
             params={
                 "page": page,
                 "limit": _ICIMS_PAGE_SIZE,
-                "country": _ICIMS_COUNTRY,
+                "country": market.country,
                 "sortBy": "relevance",
                 "descending": "false",
                 "internal": "false",
@@ -1621,10 +1630,10 @@ def _fetch_prospective(
 # 15 cards a page) and, per posting, the page the career site frames at
 # /job/show/<id>/full. The list takes a server-side country filter, so a
 # multinational board (Leica: 37 postings, 7 countries) is fetched only for
-# its Swiss ones. robots.txt allows both paths and asks for a Crawl-delay of
-# 1 second, which _ONLYFY_DELAY honours between every request. Verified on
-# hexagon-robotics and leica-geosystems-ag, 2026-09-18.
-_ONLYFY_COUNTRY = "ch"
+# its Swiss ones (the filter takes the market's lower-case country code).
+# robots.txt allows both paths and asks for a Crawl-delay of 1 second, which
+# _ONLYFY_DELAY honours between every request. Verified on hexagon-robotics
+# and leica-geosystems-ag, 2026-09-18.
 _ONLYFY_DELAY = 1.0
 _ONLYFY_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 _ONLYFY_CARD_RE = re.compile(
@@ -1670,7 +1679,11 @@ def _onlyfy_cards(page_html: str) -> list[tuple[str, str, str]]:
 
 
 def _fetch_onlyfy(
-    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+    company_name: str,
+    slug: str,
+    client: httpx.Client,
+    known: KnownPostings = _NOTHING_KNOWN,
+    market: Market = CH,
 ) -> list[RawPosting]:
     # The slug is the career page's subdomain: "hexagon-robotics" for
     # hexagon-robotics.onlyfy.jobs.
@@ -1691,7 +1704,7 @@ def _fetch_onlyfy(
     total: int | None = None
     page = 1
     while total is None or len(cards) < total:
-        resp = get(f"{base}/en", {"country": _ONLYFY_COUNTRY, "page": page})
+        resp = get(f"{base}/en", {"country": market.country_code.lower(), "page": page})
         resp.raise_for_status()
         if total is None:
             total_match = _ONLYFY_TOTAL_RE.search(resp.text)
@@ -1752,7 +1765,9 @@ def _google_location(location: ET.Element) -> str:
     return ", ".join(part.strip() for part in parts if part and part.strip())
 
 
-def _fetch_google(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _fetch_google(
+    company_name: str, slug: str, client: httpx.Client, market: Market = CH
+) -> list[RawPosting]:
     # The slug pipe-separates the feed's <employer> values to keep:
     # "Google|YouTube|DeepMind" are the three it lists, so a watchlist can take
     # DeepMind alone without the rest of Google.
@@ -1771,7 +1786,7 @@ def _fetch_google(company_name: str, slug: str, client: httpx.Client) -> list[Ra
                 continue
             locations = job.findall("locations/location")
             in_scope = (job.findtext("employer") or "").strip().lower() in employers and any(
-                (loc.findtext("country") or "").strip().lower() in _WORKDAY_TARGET_COUNTRIES
+                (loc.findtext("country") or "").strip().lower() == market.country.lower()
                 for loc in locations
             )
             if in_scope:
@@ -1903,38 +1918,41 @@ def _fetch_breezy(
 
 
 # Eightfold's standardizedLocations end in an ISO country code ("Zürich, ZH,
-# CH"). Postings are kept when any location is in one of these, the same
-# Swiss scoping _WORKDAY_TARGET_COUNTRIES gives Workday: every new posting
-# costs a detail request for its description, and a foreign one would only be
-# dropped by the location filter after paying for it.
-_EIGHTFOLD_TARGET_COUNTRY_CODES = {"CH": "Switzerland"}
+# CH"). Postings are kept when any location is in the market's country, the
+# same scoping Workday gets: every new posting costs a detail request for its
+# description, and a foreign one would only be dropped by the location filter
+# after paying for it.
 
 # The search endpoint returns ten positions a page whatever `num` asks for.
 # A board this many pages deep is not a careers site but a misread slug.
 _EIGHTFOLD_MAX_PAGES = 100
 
 
-def _eightfold_location(position: dict) -> str | None:
+def _eightfold_location(position: dict, market: Market = CH) -> str | None:
     # The country code spelled out ("Zürich, ZH, Switzerland"), so that
     # remote_countries can read a Swiss location that names no town; several
     # locations joined with ";", which the location filter reads as segments.
     segments = []
     for loc in position.get("standardizedLocations") or []:
         head, _, code = loc.rpartition(", ")
-        country = _EIGHTFOLD_TARGET_COUNTRY_CODES.get(code)
+        country = market.country if code == market.country_code else None
         segments.append(f"{head}, {country}" if head and country else country or loc)
     return "; ".join(dict.fromkeys(segments)) or None
 
 
-def _eightfold_in_scope(position: dict) -> bool:
+def _eightfold_in_scope(position: dict, market: Market = CH) -> bool:
     return any(
-        loc.rpartition(", ")[2] in _EIGHTFOLD_TARGET_COUNTRY_CODES
+        loc.rpartition(", ")[2] == market.country_code
         for loc in position.get("standardizedLocations") or []
     )
 
 
 def _fetch_eightfold(
-    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+    company_name: str,
+    slug: str,
+    client: httpx.Client,
+    known: KnownPostings = _NOTHING_KNOWN,
+    market: Market = CH,
 ) -> list[RawPosting]:
     # Eightfold serves a company's careers site from its own host (jobs.on.com)
     # and keys every API call by the company's domain (on.com), which need not
@@ -1955,10 +1973,10 @@ def _fetch_eightfold(
         page = data.get("positions") or []
         for position in page:
             position_id = position.get("id")
-            if not position_id or not _eightfold_in_scope(position):
+            if not position_id or not _eightfold_in_scope(position, market):
                 continue
             title = position.get("name", "")
-            location = _eightfold_location(position)
+            location = _eightfold_location(position, market)
             stored = known.by_segment(host, str(position_id))
             if stored:
                 postings.append(_listing_only("eightfold", stored, title, company_name, location))
@@ -2035,6 +2053,12 @@ _SKIPS_KNOWN = frozenset(
     }
 )
 
+# The connectors for global boards that filter to the market's country before
+# fetching, and so take the Market.
+_SCOPED_TO_MARKET = frozenset(
+    {"workday", "successfactors", "icims", "onlyfy", "google", "eightfold"}
+)
+
 
 class CompanyPagesSource:
     """Fetches postings for every board selected in config/companies.yaml, as
@@ -2042,7 +2066,12 @@ class CompanyPagesSource:
 
     name = "company_pages"
 
-    def __init__(self, companies: list[dict] | None, known: KnownPostings | None = None):
+    def __init__(
+        self,
+        companies: list[dict] | None,
+        known: KnownPostings | None = None,
+        market: Market = CH,
+    ):
         """companies: list of {"name": str, "ats": <one of _FETCHERS>, "slug": str}.
 
         None is accepted and means no boards: it is what YAML gives for a
@@ -2051,9 +2080,12 @@ class CompanyPagesSource:
 
         known: postings already settled in the seen store, whose detail
         requests the per-posting connectors skip (see KnownPostings).
+
+        market: the country the global boards are scoped to (_SCOPED_TO_MARKET).
         """
         self.companies = [c for c in (companies or []) if isinstance(c, dict)]
         self.known = known or _NOTHING_KNOWN
+        self.market = market
 
     def fetch(self) -> FetchResult:
         postings: list[RawPosting] = []
@@ -2094,10 +2126,12 @@ class CompanyPagesSource:
                     company_counts[name] = 0
                     continue
                 try:
+                    kwargs: dict = {}
                     if ats in _SKIPS_KNOWN:
-                        found = fetcher(company["name"], company["slug"], client, known=self.known)
-                    else:
-                        found = fetcher(company["name"], company["slug"], client)
+                        kwargs["known"] = self.known
+                    if ats in _SCOPED_TO_MARKET:
+                        kwargs["market"] = self.market
+                    found = fetcher(company["name"], company["slug"], client, **kwargs)
                 except (httpx.HTTPError, ValueError) as exc:
                     # ValueError covers a malformed connector-specific slug (e.g.
                     # a Workday "tenant:host:site") — skip that one company, don't

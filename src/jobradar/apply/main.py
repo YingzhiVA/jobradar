@@ -43,6 +43,7 @@ from dotenv import load_dotenv
 from .. import usage
 from ..archive import load_retention
 from ..config import ConfigError, load_search_settings
+from ..markets import CH, Market
 from ..search.main import AuthenticationConfigError, _check_authentication
 from ..matching import build_profile_block, load_evidence, load_profile, score_posting
 from ..models import Posting, posting_id
@@ -105,6 +106,8 @@ class _Context:
     archived_urls: set[str] = field(default_factory=set)
     # Archived applications, kept only so uid allocation walks past their ids.
     archived: list[Application] = field(default_factory=list)
+    # Whose writing rules the documents follow (Swiss German has no ß).
+    market: Market = CH
 
     def next_uid(self) -> str:
         return next_uid(self.tracker.applications, self.archived)
@@ -417,6 +420,7 @@ def process_entry(
             ctx.client,
             usage_acc=ctx.writer_usage,
             on_delta=stage.advance,
+            market=ctx.market,
         )
     if tailored is None:
         logger.error("Document writing failed for %s; leaving it in the queue for a re-run", entry.url)
@@ -469,6 +473,7 @@ def process_entry(
                 ctx.client,
                 usage_acc=ctx.writer_usage,
                 on_delta=stage.advance,
+                market=ctx.market,
             )
         if translated:
             (folder_path / f"tailored_cv_{lang}.md").write_text(
@@ -581,6 +586,13 @@ def _upgrade_entries(tracker: Tracker, keys: list[str]) -> list[QueueEntry]:
     return entries
 
 
+def _load_market() -> Market:
+    try:
+        return load_search_settings(ROOT).market
+    except ConfigError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
 def run(
     *,
     queue_path: Path | None = None,
@@ -612,6 +624,7 @@ def run(
         writer_usage={},
         archived_urls={a.url for a in archive_tracker.applications},
         archived=archive_tracker.applications,
+        market=_load_market(),
     )
 
     if upgrade_keys:
@@ -703,6 +716,7 @@ def run(
 def run_prep(keys: list[str]) -> None:
     """Generate interview_prep.md for already-drafted application folders."""
     load_dotenv(ROOT / ".env")
+    market = _load_market()
     client = anthropic.Anthropic()
     _check_authentication(client)
 
@@ -728,7 +742,8 @@ def run_prep(keys: list[str]) -> None:
     usage_acc: dict = {}
     for index, key in enumerate(keys, start=1):
         _prep_key(
-            tracker, key, profile_block, client, usage_acc, index=index, total=len(keys)
+            tracker, key, profile_block, client, usage_acc,
+            index=index, total=len(keys), market=market,
         )
     usage.log_summary(logger, "apply/prep", usage_acc)
 
@@ -742,6 +757,7 @@ def _prep_key(
     *,
     index: int = 0,
     total: int = 0,
+    market: Market = CH,
 ) -> None:
     """Resolve a --prep KEY (id, tracked folder name, URL, or filesystem path)
     and write interview_prep.md into its application folder.
@@ -794,6 +810,7 @@ def _prep_key(
             usage_acc=usage_acc,
             language=language,
             on_delta=stage.advance,
+            market=market,
         )
     if sheet is None:
         logger.error("Interview prep failed for %s", folder_path)
@@ -801,7 +818,7 @@ def _prep_key(
     title = (app.title if app is not None and app.title else None) or folder_path.name
     company = (app.company if app is not None else None) or ""
     (folder_path / "interview_prep.md").write_text(
-        render_prep_md(sheet, title, company, url), encoding="utf-8"
+        render_prep_md(sheet, title, company, url, market), encoding="utf-8"
     )
     logger.info("Wrote %s", folder_path / "interview_prep.md")
 

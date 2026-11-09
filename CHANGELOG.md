@@ -4,6 +4,17 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.19.0 — Swiss specifics in one market layer (2026-11-09)
+
+- **Everything Swiss now sits in one place.** The cantons, the country's
+  names, the prompt wording that mentions Switzerland, the Swiss German and
+  Swiss French writing rules, and the country filter of the global boards
+  (Workday, SuccessFactors, iCIMS, onlyfy, Google, Eightfold) moved from
+  across the code into `src/jobradar/markets/`, ahead of support for more
+  countries. A new `market:` key in `config/search.yaml` picks the country;
+  `ch` is the default and so far the only value, so there is nothing to edit
+  and nothing behaves differently.
+
 ## 1.18.0 — EthonAI on Ashby and four new boards (2026-11-03)
 
 - **EthonAI is found again.** Its board moved from Recruitee to Ashby, under
