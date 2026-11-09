@@ -4,8 +4,9 @@ Companies you've genuinely chosen to apply to before are good evidence
 they're worth actively scanning, not just scoring opportunistically. This
 phase builds candidate lists and probes which ones have a supported career
 page. It's a setup-time or occasional step, not part of the daily run, and
-optional: `config/boards.yaml` already ships a catalogue of 85 Swiss boards,
-grouped by industry, that you select by name in `config/companies.yaml`.
+optional: `config/boards/` already ships a catalogue of 85 boards for
+Switzerland, grouped by industry, that you select by name in
+`config/companies.yaml`.
 Discovery skips companies the catalogue already has.
 
 ## Configure
@@ -35,15 +36,15 @@ with a handful of common slug guesses:
 2. **`config/seed_companies.txt`** — your pasted directory names.
 
 Workday, Avature, SuccessFactors, iCIMS, BrassRing, Prospective, Google and
-Eightfold boards are not probed: their slugs aren't guessable. The header of
-`config/boards.yaml` explains how to read each one off a careers URL.
+Eightfold boards are not probed: their slugs aren't guessable.
+`config/boards/README.md` explains how to read each one off a careers URL.
 
 ## Review the output
 
 Results are written to `data/discovered_companies.yaml` as **suggestions to
 review**; copy the correct ones into `config/companies.yaml` yourself, as
 full entries with `ats` and `slug`. A board that would be useful to everyone
-belongs in `config/boards.yaml`, through a pull request upstream. The file
+belongs in `config/boards/`, through a pull request upstream. The file
 lives in `data/` rather than `config/` because it's generated: every run
 replaces the file wholesale, so edits made in place are lost. `config/` holds
 the files you edit, plus the shared catalogue.

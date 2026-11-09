@@ -318,9 +318,9 @@ def run(
     client = anthropic.Anthropic()
     _check_authentication(client)
 
-    # companies.yaml names the boards; boards.yaml says where each one is. An
+    # companies.yaml names the boards; config/boards/ says where each one is. An
     # entry that can't be resolved costs only itself, as a warning here.
-    selection = load_companies(ROOT)
+    selection = load_companies(ROOT, market)
     for note in selection.notes:
         logger.warning("companies.yaml: %s", note.message)
     constraints_config = yaml.safe_load((ROOT / "config" / "constraints.yaml").read_text()) or {}

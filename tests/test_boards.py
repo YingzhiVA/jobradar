@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from jobradar.markets import MARKETS
 from jobradar.boards import (
     BoardsError,
     catalog_problems,
@@ -46,7 +47,7 @@ def test_a_name_block_without_ats_or_slug_counts_as_a_plain_name():
 def test_an_unknown_name_is_an_error_and_is_not_scanned():
     result = _resolve(["Frontfy"])
     assert result.boards == []
-    assert result.errors == ["Frontfy: not in config/boards.yaml — check the spelling, or give its ats and slug"]
+    assert result.errors == ["Frontfy: not in config/boards/global.yaml or ch.yaml — check the spelling, or give its ats and slug"]
 
 
 def test_a_full_entry_for_a_board_the_catalogue_lacks_is_scanned_as_written():
@@ -130,9 +131,10 @@ def test_incomplete_catalogue_entries_are_left_out_of_the_index():
 # --- reading the files ---------------------------------------------------------
 
 
-def _root(tmp_path, *, boards_yaml, companies_yaml):
-    (tmp_path / "config").mkdir()
-    (tmp_path / "config" / "boards.yaml").write_text(boards_yaml, encoding="utf-8")
+def _root(tmp_path, *, boards_yaml, companies_yaml, global_yaml="boards: []\n"):
+    (tmp_path / "config" / "boards").mkdir(parents=True)
+    (tmp_path / "config" / "boards" / "global.yaml").write_text(global_yaml, encoding="utf-8")
+    (tmp_path / "config" / "boards" / "ch.yaml").write_text(boards_yaml, encoding="utf-8")
     (tmp_path / "config" / "companies.yaml").write_text(companies_yaml, encoding="utf-8")
     return tmp_path
 
@@ -173,11 +175,11 @@ def test_orphaned_lines_merging_into_the_entry_above_are_refused(tmp_path):
         load_companies(root)
 
 
-@pytest.mark.parametrize("missing", ["boards.yaml", "companies.yaml"])
+@pytest.mark.parametrize("missing", ["boards/global.yaml", "boards/ch.yaml", "companies.yaml"])
 def test_a_missing_file_is_an_error(tmp_path, missing):
     root = _root(tmp_path, boards_yaml="boards: []\n", companies_yaml="companies: []\n")
     (root / "config" / missing).unlink()
-    with pytest.raises(BoardsError, match=missing):
+    with pytest.raises(BoardsError, match=missing.rpartition("/")[2]):
         load_companies(root)
 
 
@@ -189,5 +191,52 @@ def test_a_file_without_its_top_level_list_is_an_error(tmp_path):
 
 
 def test_the_shipped_catalogue_is_well_formed():
-    # Every entry complete, on a known ATS, and listed once.
-    assert catalog_problems(read_catalog(_ROOT / "config" / "boards.yaml")) == []
+    # Every entry complete, on a known ATS, and listed once across global.yaml
+    # and the market's file.
+    for market in MARKETS.values():
+        assert catalog_problems(read_catalog(_ROOT / "config", market)) == []
+
+
+def test_every_market_has_a_catalogue_file_and_no_stray_ones():
+    files = {p.stem for p in (_ROOT / "config" / "boards").glob("*.yaml")}
+    assert files == {"global", *MARKETS}
+
+
+# --- the per-market catalogue --------------------------------------------------
+
+
+def test_the_catalogue_is_global_plus_the_market_file(tmp_path):
+    root = _root(
+        tmp_path,
+        global_yaml="boards:\n  - name: Google\n    ats: google\n    slug: Google\n",
+        boards_yaml="boards:\n  - name: Frontify\n    ats: ashby\n    slug: frontify\n",
+        companies_yaml="companies:\n  - Google\n  - Frontify\n",
+    )
+    result = load_companies(root)
+    assert [(b["name"], b["file"]) for b in result.boards] == [
+        ("Google", "config/boards/global.yaml"),
+        ("Frontify", "config/boards/ch.yaml"),
+    ]
+
+
+def test_a_name_in_both_files_is_reported_with_both_files(tmp_path):
+    root = _root(
+        tmp_path,
+        global_yaml="boards:\n  - name: Google\n    ats: google\n    slug: Google\n",
+        boards_yaml="boards:\n  - name: google\n    ats: workday\n    slug: a:wd1:b\n",
+        companies_yaml="companies: []\n",
+    )
+    assert catalog_problems(read_catalog(root / "config")) == [
+        "config/boards/ch.yaml: google: listed twice (also as 'Google' in config/boards/global.yaml)"
+    ]
+
+
+def test_an_override_warning_names_the_file_to_fix(tmp_path):
+    root = _root(
+        tmp_path,
+        boards_yaml="boards:\n  - name: Frontify\n    ats: ashby\n    slug: frontify\n",
+        companies_yaml="companies:\n  - name: Frontify\n    ats: lever\n    slug: frontify\n",
+    )
+    assert load_companies(root).warnings[0].startswith(
+        "Frontify: config/boards/ch.yaml has it on ashby/frontify"
+    )

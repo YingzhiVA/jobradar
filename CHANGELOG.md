@@ -4,6 +4,19 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.20.0 — Board catalogue split by market (2026-11-09)
+
+- **The board catalogue is now a folder, `config/boards/`.** `ch.yaml` holds
+  the Swiss boards and `global.yaml` the five employers whose one board
+  serves every country (Google, NVIDIA, Anthropic, Databricks, OpenAI); a
+  search reads both. The format guide that used to head `boards.yaml` is now
+  `config/boards/README.md`. Your `companies.yaml` names boards as before, so
+  there is nothing to edit: the pull moves the file. The doctor and the
+  run's warnings now name the file a board comes from. (If you edited
+  `config/boards.yaml` yourself, which it asked you not to, the pull reports
+  a conflict on it: put your entries in `companies.yaml` with their `ats` and
+  `slug` and delete the file.)
+
 ## 1.19.0 — Swiss specifics in one market layer (2026-11-09)
 
 - **Everything Swiss now sits in one place.** The cantons, the country's

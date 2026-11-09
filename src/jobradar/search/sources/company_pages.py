@@ -2062,7 +2062,7 @@ _SCOPED_TO_MARKET = frozenset(
 
 class CompanyPagesSource:
     """Fetches postings for every board selected in config/companies.yaml, as
-    resolved against config/boards.yaml by jobradar.boards."""
+    resolved against config/boards/ by jobradar.boards."""
 
     name = "company_pages"
 

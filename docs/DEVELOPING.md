@@ -67,6 +67,10 @@ rules for application documents, and whether the RAV report applies. The
 pipeline takes a `Market` and reads these off it. `config/search.yaml` selects
 one with `market:` (default `ch`, the only one so far).
 
+Each market also has its own board list, `config/boards/<code>.yaml`, read
+together with `config/boards/global.yaml` (`boards.read_catalog`). A test
+checks that every market has one and that no stray file sits beside them.
+
 ## Reading the run log
 
 `reports/runs.jsonl` has one JSON line per run. `search/observability.py`

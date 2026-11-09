@@ -7,13 +7,14 @@ rank, write up, report. This page covers how to steer it and what it does.
 
 1. **`config/companies.yaml`** — the career pages to scan, by name.
    **Nothing is scanned until you add boards**: list one company per line,
-   spelled as in `config/boards.yaml`, then run `python -m jobradar.doctor`,
+   spelled as in `config/boards/`, then run `python -m jobradar.doctor`,
    which catches a misspelt name. Begin with a handful: the first run over
    a board scores every posting currently open on it (see
    [COSTS.md](COSTS.md#your-first-run)).
 
-   `config/boards.yaml` is the catalogue you choose from: 85 Swiss boards
-   grouped by industry (big tech, AI, software, consulting, finance, pharma,
+   `config/boards/` is the catalogue you choose from: for Switzerland, 80
+   boards in `ch.yaml` plus 5 global employers in `global.yaml`, grouped by
+   industry (big tech, AI, software, consulting, finance, pharma,
    medtech, robotics, industry, property and climate, consumer), with each
    board's ATS, slug and connector quirks. It is maintained upstream, so
    when a company moves to another ATS, `git pull` fixes the board for you.

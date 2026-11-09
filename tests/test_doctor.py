@@ -14,8 +14,9 @@ def _setup(tmp_path, *, cv="# Jane Example\n\nProduct manager.", identity="## Wh
         (tmp_path / "profile" / "cvs" / "mine.md").write_text(cv, encoding="utf-8")
     if identity is not None:
         (tmp_path / "profile" / "identity.md").write_text(identity, encoding="utf-8")
-    (tmp_path / "config").mkdir()
-    (tmp_path / "config" / "boards.yaml").write_text(
+    (tmp_path / "config" / "boards").mkdir(parents=True)
+    (tmp_path / "config" / "boards" / "global.yaml").write_text("boards: []\n", encoding="utf-8")
+    (tmp_path / "config" / "boards" / "ch.yaml").write_text(
         "boards:\n  - name: Acme\n    ats: greenhouse\n    slug: acme\n", encoding="utf-8"
     )
     (tmp_path / "config" / "companies.yaml").write_text("companies:\n  - Acme\n", encoding="utf-8")
@@ -35,7 +36,8 @@ def test_all_good(tmp_path, monkeypatch):
     assert checks["Anthropic credentials"].level == OK
     assert checks["CVs"].level == OK
     assert checks["Identity"].level == OK
-    assert checks["boards.yaml"].level == OK
+    assert checks["boards"].level == OK
+    assert checks["boards"].message == "1 boards in the shared list for Switzerland (0 global + 1 ch)"
     assert checks["companies.yaml"].level == OK
     assert checks["constraints.yaml"].level == OK
     assert checks["search.yaml"].level == OK
@@ -192,7 +194,7 @@ def _companies(root, text):
 
 
 def _catalog(root, count):
-    (root / "config" / "boards.yaml").write_text(
+    (root / "config" / "boards" / "ch.yaml").write_text(
         "boards:\n" + "".join(f"  - name: Co {i}\n    ats: greenhouse\n    slug: co{i}\n" for i in range(count)),
         encoding="utf-8",
     )
@@ -204,14 +206,14 @@ def test_all_commented_list_warns_and_points_at_the_catalogue(tmp_path):
     check = _companies(root, "companies:\n  # - Acme\n")
     assert check.level == WARN
     assert "no company boards selected" in check.message
-    assert "config/boards.yaml" in check.message
+    assert "config/boards/" in check.message
 
 
 def test_a_name_missing_from_the_catalogue_fails_with_its_name(tmp_path):
     root = _setup(tmp_path)
     check = _companies(root, "companies:\n  - Acme\n  - Acmee\n")
     assert check.level == FAIL
-    assert check.message.startswith("Acmee: not in config/boards.yaml")
+    assert check.message.startswith("Acmee: not in config/boards/global.yaml or ch.yaml")
 
 
 def test_half_uncommented_entry_fails_with_its_name(tmp_path):
@@ -251,10 +253,10 @@ def test_an_override_that_disagrees_with_the_catalogue_warns(tmp_path):
 
 def test_a_broken_catalogue_fails_both_checks(tmp_path):
     root = _setup(tmp_path)
-    (root / "config" / "boards.yaml").write_text("boards:\n  - name: Acme\n    ats: greenhouse\n", encoding="utf-8")
+    (root / "config" / "boards" / "ch.yaml").write_text("boards:\n  - name: Acme\n    ats: greenhouse\n", encoding="utf-8")
     checks = _by_name(run_checks(root, connect=lambda: None))
-    assert checks["boards.yaml"].level == FAIL
-    assert "Acme: missing slug" in checks["boards.yaml"].message
+    assert checks["boards"].level == FAIL
+    assert "config/boards/ch.yaml: Acme: missing slug" in checks["boards"].message
     # An incomplete catalogue entry can't be selected either.
     assert checks["companies.yaml"].level == FAIL
 
