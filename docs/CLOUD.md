@@ -118,7 +118,13 @@ schedule, with `force_email` ticked to check delivery on a quiet day.
 ## Monthly discovery
 
 The second workflow, [discover.yml](../.github/workflows/discover.yml),
-refreshes the company watch list on the 1st of each month, emails a summary
-of newly found companies, and commits the suggestions to
+refreshes the company watch list on the 1st of each month, checks that the
+boards you selected still work, emails a summary of newly found companies and
+of boards to fix, and commits the suggestions to
 `data/discovered_companies.yaml` for you to review. Same credentials and
 secrets. See [DISCOVERY.md](DISCOVERY.md).
+
+To also check every board in a market's shared list, which is only useful if
+you maintain `config/boards/`, set the repository variable
+`JOBRADAR_CATALOG_MARKETS` (Settings → Secrets and variables → Actions →
+Variables) to the market codes, e.g. `ch`.

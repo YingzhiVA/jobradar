@@ -4,6 +4,38 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.21.0 — Board health check (2026-11-09)
+
+- **A new board health check: `python -m jobradar.board_health`.** It reads
+  each board you selected once (no detail pages, no model calls) and reports
+  it as broken (gone or misconfigured), unreachable (timed out or failed),
+  off-market (postings, but none in the country), empty or healthy. A broken
+  board is reported straight away, with a guess at where the company moved;
+  the others only once the previous check agrees. It replaces the monthly check of `reports/company_health.md`,
+  which read the daily runs' counts: that one recorded a broken board as
+  zero postings, so it took four weeks to notice, and couldn't tell a board
+  that stopped posting in the country from a live one. The monthly workflow
+  runs the new check and the discovery email includes its findings
+  (`reports/board_health.md`). `JOBRADAR_HEALTH_STALE_DAYS` is no longer
+  read. Nothing to edit.
+- **For whoever maintains `config/boards/`:** `--catalog ch` also checks
+  every board in a market's shared list, and the repository variable
+  `JOBRADAR_CATALOG_MARKETS` makes the monthly workflow do so.
+  `python -m jobradar.discovery.discover --market ch` looks for companies in
+  another market than the one `config/search.yaml` sets.
+- **join.com boards are read again.** join.com moved the company data in its
+  careers pages, so every join board read as "no company data found" and
+  discovery could no longer find any join company. The first health check
+  caught it on Optiml. Nothing to edit.
+- **Jobgether is no longer in the shared list.** Its Lever board has grown
+  past 200,000 postings and arrives as one response at about 10 KB a second,
+  so a run that scans it never finishes. If you selected it, the doctor now
+  reports "Jobgether: not in config/boards/…": delete that line from your
+  `companies.yaml`.
+- **Lausanne is resolved to Vaud without a model call**, like Zurich or
+  Geneva. The first catalogue-wide health check found two Lausanne boards
+  read as posting outside Switzerland without it.
+
 ## 1.20.0 — Board catalogue split by market (2026-11-09)
 
 - **The board catalogue is now a folder, `config/boards/`.** `ch.yaml` holds

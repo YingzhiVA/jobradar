@@ -16,6 +16,7 @@ same input. Model calls are faked where a test needs one.
 
 ```
 src/jobradar/
+  board_health.py  python -m jobradar.board_health: are the boards still working?
   config.py        config/search.yaml: dials and the market / rav / sources switches
   doctor.py        python -m jobradar.doctor — setup checks
   llm.py           which model each stage uses (env overrides)

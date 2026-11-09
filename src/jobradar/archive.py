@@ -70,7 +70,7 @@ def archive_reports(
 ) -> list[Path]:
     """Move dated daily reports older than the window to reports/archive/.
 
-    Only files named YYYY-MM-DD.md move; company_health.md, latest.json,
+    Only files named YYYY-MM-DD.md move; board_health.md, latest.json,
     runs.jsonl and .gitkeep never match. Returns the moved (or would-move)
     source paths.
     """

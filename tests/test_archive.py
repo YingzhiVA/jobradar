@@ -31,7 +31,7 @@ def _reports_dir(tmp_path):
     reports.mkdir()
     (reports / "2026-05-01.md").write_text("old report", encoding="utf-8")
     (reports / "2026-08-10.md").write_text("recent report", encoding="utf-8")
-    (reports / "company_health.md").write_text("health", encoding="utf-8")
+    (reports / "board_health.md").write_text("health", encoding="utf-8")
     (reports / "latest.json").write_text("{}", encoding="utf-8")
     (reports / "runs.jsonl").write_text("{}\n", encoding="utf-8")
     return reports
@@ -45,7 +45,7 @@ def test_archive_reports_moves_only_old_dated_files(tmp_path):
     assert not (reports / "2026-05-01.md").exists()
     assert (reports / "archive" / "2026-05-01.md").read_text(encoding="utf-8") == "old report"
     # Everything that isn't an out-of-window dated report stays put.
-    for name in ("2026-08-10.md", "company_health.md", "latest.json", "runs.jsonl"):
+    for name in ("2026-08-10.md", "board_health.md", "latest.json", "runs.jsonl"):
         assert (reports / name).exists()
 
     # Idempotent: a second run finds nothing left to move.

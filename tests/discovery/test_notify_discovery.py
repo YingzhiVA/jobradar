@@ -35,7 +35,7 @@ def test_build_message_singular():
 
 def test_load_health_report_returns_body_when_flagged(tmp_path):
     from jobradar.discovery.notify_discovery import load_health_report
-    p = tmp_path / "company_health.md"
+    p = tmp_path / "board_health.md"
     p.write_text(
         "# Company board health — 2026-07-01\n\n"
         "1 configured board(s)...\n\n## Board gone — act\n\n- **Foo** (lever/foo) — dry 90 days.\n"
@@ -46,7 +46,7 @@ def test_load_health_report_returns_body_when_flagged(tmp_path):
 def test_load_health_report_empty_when_clean_or_missing(tmp_path):
     from jobradar.discovery.notify_discovery import load_health_report
     assert load_health_report(tmp_path / "nope.md") == ""
-    clean = tmp_path / "company_health.md"
+    clean = tmp_path / "board_health.md"
     clean.write_text("# Company board health — 2026-07-01\n\nNo configured board has been dry.\n")
     assert load_health_report(clean) == ""
 

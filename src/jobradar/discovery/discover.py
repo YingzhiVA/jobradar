@@ -12,6 +12,8 @@ This is a setup-time/occasional helper, not part of the daily run:
 
     python -m jobradar.discovery.discover                 # seeds + web search
     python -m jobradar.discovery.discover --no-web-search  # seeds only (no LLM web call)
+    python -m jobradar.discovery.discover --market ch      # search another market than
+                                                            # the one search.yaml sets
 
 Candidate names (from either source) are probed against the supported ATSs'
 public APIs (Greenhouse / Lever / Ashby / Personio / Recruitee / Workable /
@@ -62,10 +64,9 @@ from . import discovery_ledger
 from ..boards import BOARDS_DIR, load_companies, read_catalog
 from ..config import load_search_settings
 from ..llm import model_for, web_search_tool_type
-from ..markets import CH, Market
+from ..markets import CH, MARKETS, Market
 from ..matching import load_profile
-from ..search import company_health
-from ..search.sources.company_pages import _FETCHERS, join_jobs_page, parse_join_company
+from ..search.sources.company_pages import join_jobs_page, parse_join_company
 from ..search.sources.web_search import _extract_json
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -98,18 +99,11 @@ _MATCH_TTL_DAYS = int(
 # Cap how many known names we list in the exclusion prompt — input is cheap, but
 # keep the prompt bounded; the most-recently-relevant ones are enough to steer.
 _MAX_EXCLUSIONS_IN_PROMPT = 400
-# A configured board that has produced no postings for this many days is
-# flagged for review. Four weeks: a dead/migrated board costs every posting
-# it would have surfaced, so it should show up within one monthly cycle; a
-# quiet startup flagged by mistake costs only a glance. Advisory only.
-_HEALTH_STALE_DAYS = int(os.environ.get("JOBRADAR_HEALTH_STALE_DAYS", "28"))
 _LEDGER_PATH = ROOT / "data" / "discovery_ledger.json"
 # Written by this module, never hand-edited (each run replaces the file
 # wholesale), which is why it sits in data/ with the other generated state
 # rather than in config/ among the files the user owns.
 _SUGGESTIONS_PATH = ROOT / "data" / "discovered_companies.yaml"
-_RUNS_PATH = ROOT / "reports" / "runs.jsonl"
-_HEALTH_REPORT_PATH = ROOT / "reports" / "company_health.md"
 _SEED_PATH = ROOT / "config" / "seed_companies.txt"
 
 # Personio is an XML feed (not JSON) — handled specially in probe_company.
@@ -517,175 +511,6 @@ def render_suggestions_yaml(matches: list[CompanyMatch], run_date: date) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-class HealthFinding(BaseModel):
-    name: str
-    ats: str
-    slug: str
-    dry_days: int
-    # "gone": configured board unreachable/404; "empty": reachable but no ads;
-    # "has_ads": board has ads now though daily runs recorded none (a bug/flaky
-    # signal); "unsupported": ats no longer has a connector.
-    status: str
-    note: str = ""
-    moved_to: CompanyMatch | None = None  # a live board found on another ATS
-    # Where the board's ats/slug came from, so the report says which file to
-    # fix: "catalog" (config/boards/) or "override"/"local" (companies.yaml).
-    origin: str = ""
-
-
-def diagnose_stale(
-    stale: list[company_health.StaleFinding],
-    companies: list[dict],
-    client: httpx.Client,
-    ledger: discovery_ledger.Ledger | None = None,
-) -> list[HealthFinding]:
-    """Re-check each sustained-dry board live to explain why it's dry: gone,
-    empty, or actually-has-ads (a daily-pipeline bug). For a gone/empty board,
-    look for a live board on another ATS (skipping the configured one) to catch
-    a migration.
-
-    The migration search also skips any board the ledger has flagged as a
-    wrong-company collision for that name, so a known-bad slug isn't suggested."""
-    by_name = {c["name"]: c for c in companies if c.get("name")}
-    findings: list[HealthFinding] = []
-    for s in stale:
-        entry = by_name.get(s.name)
-        if entry is None:
-            continue  # removed from config since the run history was written
-        ats = (entry.get("ats") or "").lower()
-        slug = entry.get("slug") or ""
-        origin = entry.get("origin") or ""
-        # The configured board plus any human-flagged collisions for this name.
-        migration_skip = {(ats, slug)}
-        if ledger is not None:
-            migration_skip |= discovery_ledger.rejected_boards(ledger, s.name)
-        fetcher = _FETCHERS.get(ats)
-        if fetcher is None:
-            findings.append(
-                HealthFinding(
-                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, origin=origin,
-                    status="unsupported", note=f"no connector for ATS {ats!r}",
-                )
-            )
-            continue
-
-        try:
-            live_count = len(fetcher(s.name, slug, client))
-        except (httpx.HTTPError, ValueError) as exc:
-            findings.append(
-                HealthFinding(
-                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, origin=origin,
-                    status="gone", note=f"board unreachable: {exc}",
-                    moved_to=probe_company(s.name, client, skip=migration_skip),
-                )
-            )
-            continue
-
-        if live_count > 0:
-            findings.append(
-                HealthFinding(
-                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, origin=origin, status="has_ads",
-                    note=f"{live_count} ad(s) live now, but daily runs recorded none — "
-                    "connector/pipeline issue or flakiness",
-                )
-            )
-        else:
-            findings.append(
-                HealthFinding(
-                    name=s.name, ats=ats, slug=slug, dry_days=s.dry_days, origin=origin, status="empty",
-                    moved_to=probe_company(s.name, client, skip=migration_skip),
-                )
-            )
-    return findings
-
-
-_HEALTH_GROUPS = [
-    ("gone", "Board gone — act (account removed / left this ATS)"),
-    ("empty", "Empty — verify (not hiring, or moved to an unsupported ATS)"),
-    ("has_ads", "Board has ads but daily runs saw none — investigate the connector"),
-    ("unsupported", "ATS no longer supported"),
-]
-
-
-# Which file a finding's board details came from, named in the report so a
-# moved board is fixed in the right place: the shared list for everyone, or
-# the user's own entry.
-_ORIGIN_FILES = {
-    "catalog": "config/boards/",
-    "override": "your companies.yaml",
-    "local": "your companies.yaml",
-}
-
-
-def render_health_report(findings: list[HealthFinding], run_date: date) -> str:
-    lines = [f"# Company board health — {run_date.isoformat()}", ""]
-    if not findings:
-        lines.append(
-            f"No configured board has been dry for {_HEALTH_STALE_DAYS}+ days. "
-            "(History accrues from runs.jsonl, so this is empty until enough runs exist.)"
-        )
-        return "\n".join(lines) + "\n"
-    lines.append(
-        f"{len(findings)} configured board(s) produced nothing for {_HEALTH_STALE_DAYS}+ days, "
-        "re-checked live:"
-    )
-    for status, heading in _HEALTH_GROUPS:
-        group = [f for f in findings if f.status == status]
-        if not group:
-            continue
-        lines += ["", f"## {heading}", ""]
-        for f in group:
-            moved = (
-                f" **Possibly moved to {f.moved_to.ats}/{f.moved_to.slug}.**"
-                if f.moved_to
-                else ""
-            )
-            note = f" — {f.note}" if f.note else ""
-            where = _ORIGIN_FILES.get(f.origin)
-            source = f", from {where}" if where else ""
-            lines.append(
-                f"- **{f.name}** ({f.ats}/{f.slug}{source}) — dry {f.dry_days} days{note}.{moved}"
-            )
-    return "\n".join(lines) + "\n"
-
-
-def run_health_check(
-    existing_companies: list[dict],
-    *,
-    runs_path: Path = _RUNS_PATH,
-    report_path: Path = _HEALTH_REPORT_PATH,
-    today: date | None = None,
-    stale_days: int = _HEALTH_STALE_DAYS,
-    ledger: discovery_ledger.Ledger | None = None,
-) -> list[HealthFinding]:
-    """Flag configured boards dry for stale_days+, diagnose each live, and write
-    reports/company_health.md. Best-effort — logs and returns [] on any failure
-    rather than breaking the discovery run."""
-    today = today or date.today()
-    try:
-        runs = company_health.load_runs(runs_path)
-        names = [c["name"] for c in existing_companies if c.get("name")]
-        stale = company_health.stale_companies(runs, names, today, stale_days)
-        if not stale:
-            report_path.write_text(render_health_report([], today), encoding="utf-8")
-            logger.info("Board health: no board dry for %d+ days", stale_days)
-            return []
-        with httpx.Client(timeout=_TIMEOUT) as client:
-            findings = diagnose_stale(stale, existing_companies, client, ledger=ledger)
-        report_path.write_text(render_health_report(findings, today), encoding="utf-8")
-        logger.warning(
-            "Board health: %d board(s) dry for %d+ days — see %s",
-            len(findings), stale_days, report_path,
-        )
-        for f in findings:
-            moved = f" (possibly -> {f.moved_to.ats}/{f.moved_to.slug})" if f.moved_to else ""
-            logger.warning("  %s (%s/%s): %s, dry %dd%s", f.name, f.ats, f.slug, f.status, f.dry_days, moved)
-        return findings
-    except Exception as exc:  # noqa: BLE001 - health must never break discovery
-        logger.warning("Board health check failed: %s", exc)
-        return []
-
-
 def _reject_collisions(specs: list[str], now: datetime | None = None) -> None:
     """Register wrong-company slug collisions and re-probe. Each spec is
     "Company Name:ats:slug" (the ats/slug being the board that is NOT this
@@ -725,8 +550,16 @@ def main(argv: list[str] | None = None) -> None:
         help="Flag a slug-collision board as NOT this company (repeatable), so it's "
         "never re-matched. Runs as a standalone maintenance action and exits.",
     )
+    parser.add_argument(
+        "--market",
+        metavar="CODE",
+        help="Look for companies in this market instead of the one config/search.yaml "
+        f"sets ({', '.join(MARKETS)}), e.g. to grow another market's shared list.",
+    )
     args = parser.parse_args(argv)
     use_web_search = not args.no_web_search
+    if args.market and args.market.lower() not in MARKETS:
+        parser.error(f"unknown market {args.market!r}; known: {', '.join(MARKETS)}")
 
     load_dotenv(ROOT / ".env")
 
@@ -734,7 +567,7 @@ def main(argv: list[str] | None = None) -> None:
         _reject_collisions(args.reject)
         return
 
-    market = load_search_settings(ROOT).market
+    market = MARKETS[args.market.lower()] if args.market else load_search_settings(ROOT).market
     client = anthropic.Anthropic()
 
     existing_companies = load_companies(ROOT, market).boards
@@ -772,12 +605,6 @@ def main(argv: list[str] | None = None) -> None:
         "y" if len(matches) == 1 else "ies",
         output_path,
     )
-
-    # Health check on the *existing* list: flag boards that have silently gone
-    # dry (a loud failure is caught by the daily degraded threshold; this is the
-    # silent 200-empty case). Independent of whether new companies were found.
-    # Pass the ledger so a rejected collision isn't suggested as a migration.
-    run_health_check(existing_companies, ledger=ledger)
 
 
 if __name__ == "__main__":

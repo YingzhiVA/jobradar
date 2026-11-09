@@ -18,7 +18,6 @@
 #   Industry, hardware & quantum (10)
 #   Property & climate (6)
 #   Consumer, marketplaces & travel (3)
-#   Job intermediaries (1) — not employers; read the note before selecting it
 
 boards:
 
@@ -457,22 +456,3 @@ boards:
     ats: smartrecruiters
     slug: lastminutecom
     # API reports company_name: 'lastminute.com'
-
-  # ── Job intermediaries ─────────────────────────────────────────────────────
-  # Jobgether is not an employer: it's a matching intermediary that posts
-  # roles on behalf of unnamed partner companies ("This position is listed on
-  # behalf of a partner company"). Two consequences worth knowing before
-  # reading its entries in a report:
-  #   1. Every posting is attributed to "Jobgether", not the real employer —
-  #      the partner is never named anywhere in the payload, so there is no
-  #      company to research, and the CV-fit reasoning has to work from the
-  #      role description alone.
-  #   2. Descriptions are a ~1k-char recruiter summary, not the employer's
-  #      own posting text (descriptionPlain is empty on nearly every entry;
-  #      the connector falls back to stripping the HTML description).
-  # Every Swiss posting is remote with a country-level location and no town
-  # anywhere in its text, so it reaches the report via constraints.yaml's
-  # remote_countries and never via allowed_cantons.
-  - name: Jobgether
-    ats: lever
-    slug: jobgether

@@ -53,10 +53,9 @@ out-of-area postings in code, for free:
   in Switzerland, so a board with a few hundred open roles puts most of them
   through the model on its first run.
 
-Measured on 2026-09-18: every board in the catalogue except Jobgether, 64 in
-all, fetched and run through the free filters with the template's three
-cantons, stopping before any model call. Jobgether's own first run is the
-international-board example above.
+Measured on 2026-09-18: every board in the catalogue as it stood then except
+the international board above, 64 in all, fetched and run through the free
+filters with the template's three cantons, stopping before any model call.
 
 | First run, those 64 boards selected | Postings |
 | --- | --- |
@@ -64,7 +63,7 @@ international-board example above.
 | Reach the paid stages | 1,245 |
 | Pass every filter without a model call | 716 |
 
-Adding Jobgether's 80, the whole catalogue comes to roughly **$4–10** in model
+Adding that board's 80, the whole catalogue came to roughly **$4–10** in model
 calls at the per-call rates above (it was $8–15 before scoring moved to Haiku
 5.5), against about $0.20 for a normal day — once, and then back to normal. The
 Swiss boards dominate: AXA alone put 167 postings through, EY 99, Deloitte
