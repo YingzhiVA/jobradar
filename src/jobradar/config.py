@@ -7,7 +7,7 @@ from its neighbours in ``config/``:
 - ``constraints.yaml`` holds hard, non-negotiable requirements (deterministic
   pass/fail filters — a posting that fails one is dropped, full stop).
 - ``companies.yaml`` holds *where* to look, by name, from the shared board
-  catalogue in ``boards.yaml``.
+  catalogue in ``boards/``.
 - ``retention.yaml`` holds how long output is kept around afterwards.
 - ``search.yaml`` (this module) holds how the search itself is steered, plus
   the situation switches the phases read: ``market`` (the country searched,

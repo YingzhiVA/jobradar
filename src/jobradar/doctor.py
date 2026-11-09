@@ -23,6 +23,7 @@ from . import boards
 from .apply.pdf import find_browser
 from .archive import load_retention
 from .config import ConfigError, load_search_settings
+from .markets import DEFAULT_MARKET, Market
 from .cv import sync_word_cvs
 from .models import Constraints
 
@@ -128,29 +129,46 @@ def _has_run_before(root: Path) -> bool:
         return False
 
 
-def check_boards(root: Path) -> Check:
-    """The shared catalogue, config/boards.yaml: every entry complete, on a
-    known ATS, and listed once."""
+def _market(root: Path) -> Market:
+    """The configured market, or the default when search.yaml is unusable
+    (check_config reports that on its own line)."""
     try:
-        entries = boards.read_catalog(root / "config" / boards.BOARDS_FILE)
+        return load_search_settings(root).market
+    except ConfigError:
+        return DEFAULT_MARKET
+
+
+def check_boards(root: Path, market: Market = DEFAULT_MARKET) -> Check:
+    """The shared catalogue the market reads, config/boards/global.yaml and its
+    own file: every entry complete, on a known ATS, and listed once."""
+    try:
+        entries = boards.read_catalog(root / "config", market)
     except boards.BoardsError as exc:
-        return Check("boards.yaml", FAIL, str(exc)[:220])
+        return Check("boards", FAIL, str(exc)[:220])
     problems = boards.catalog_problems(entries)
     if problems:
-        return Check("boards.yaml", FAIL, "; ".join(problems))
-    return Check("boards.yaml", OK, f"{len(entries)} boards in the shared list")
+        return Check("boards", FAIL, "; ".join(problems))
+    in_global = sum(
+        1 for e in entries
+        if isinstance(e, dict) and e.get("file", "").endswith(f"/{boards.GLOBAL_BOARDS}.yaml")
+    )
+    return Check(
+        "boards", OK,
+        f"{len(entries)} boards in the shared list for {market.country} "
+        f"({in_global} global + {len(entries) - in_global} {market.code})",
+    )
 
 
-def check_companies(root: Path) -> Check:
+def check_companies(root: Path, market: Market = DEFAULT_MARKET) -> Check:
     """The selection, config/companies.yaml, resolved against the catalogue."""
     try:
-        selection = boards.load_companies(root)
+        selection = boards.load_companies(root, market)
     except boards.BoardsError as exc:
         return Check("companies.yaml", FAIL, str(exc)[:220])
     if not selection.selected:
         return Check(
             "companies.yaml", WARN,
-            "no company boards selected yet — add names from config/boards.yaml to "
+            "no company boards selected yet — add names from config/boards/ to "
             "config/companies.yaml (start with a handful, see docs/COSTS.md). "
             "Until then only web search runs.",
         )
@@ -170,7 +188,8 @@ def check_companies(root: Path) -> Check:
 
 
 def check_config(root: Path) -> list[Check]:
-    checks: list[Check] = [check_boards(root), check_companies(root)]
+    market = _market(root)
+    checks: list[Check] = [check_boards(root, market), check_companies(root, market)]
     constraints = root / "config" / "constraints.yaml"
     try:
         Constraints.from_dict(yaml.safe_load(constraints.read_text(encoding="utf-8")) or {})

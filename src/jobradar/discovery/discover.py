@@ -59,7 +59,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
 
 from . import discovery_ledger
-from ..boards import BOARDS_FILE, load_companies, read_catalog
+from ..boards import BOARDS_DIR, load_companies, read_catalog
 from ..config import load_search_settings
 from ..llm import model_for, web_search_tool_type
 from ..markets import CH, Market
@@ -421,7 +421,7 @@ def discover(
     match_ttl_days: int = _MATCH_TTL_DAYS,
     market: Market = CH,
 ) -> list[CompanyMatch]:
-    """catalog_names: the companies config/boards.yaml already has a board for.
+    """catalog_names: the companies config/boards/ already has a board for.
     They count as known even when not selected: suggesting one would only
     re-derive, from a slug guess, a board the shared list already confirms."""
     now = now or datetime.now(timezone.utc)
@@ -456,8 +456,8 @@ def discover(
             continue
         if key in in_catalog:
             logger.info(
-                "%s is already in config/%s; add it to config/companies.yaml to scan it",
-                in_catalog[key], BOARDS_FILE,
+                "%s is already in config/%s/; add it to config/companies.yaml to scan it",
+                in_catalog[key], BOARDS_DIR,
             )
             seen.add(key)
             continue
@@ -497,7 +497,7 @@ def render_suggestions_yaml(matches: list[CompanyMatch], run_date: date) -> str:
         f"# Auto-discovered on {run_date.isoformat()}.",
         "# These are SUGGESTIONS based on guessed ATS slugs, not confirmed matches —",
         "# verify each one (e.g. open the URL) before copying it into companies.yaml",
-        "# (or into config/boards.yaml, if it belongs in the shared list).",
+        "# (or into config/boards/, if it belongs in the shared list).",
         "# Greenhouse and SmartRecruiters hits include the API's own company_name",
         "# for a quick sanity check; Lever and Ashby don't expose one.",
         "",
@@ -529,7 +529,7 @@ class HealthFinding(BaseModel):
     note: str = ""
     moved_to: CompanyMatch | None = None  # a live board found on another ATS
     # Where the board's ats/slug came from, so the report says which file to
-    # fix: "catalog" (config/boards.yaml) or "override"/"local" (companies.yaml).
+    # fix: "catalog" (config/boards/) or "override"/"local" (companies.yaml).
     origin: str = ""
 
 
@@ -611,7 +611,7 @@ _HEALTH_GROUPS = [
 # moved board is fixed in the right place: the shared list for everyone, or
 # the user's own entry.
 _ORIGIN_FILES = {
-    "catalog": "config/boards.yaml",
+    "catalog": "config/boards/",
     "override": "your companies.yaml",
     "local": "your companies.yaml",
 }
@@ -737,9 +737,9 @@ def main(argv: list[str] | None = None) -> None:
     market = load_search_settings(ROOT).market
     client = anthropic.Anthropic()
 
-    existing_companies = load_companies(ROOT).boards
+    existing_companies = load_companies(ROOT, market).boards
     catalog_names = [
-        e["name"] for e in read_catalog(ROOT / "config" / BOARDS_FILE)
+        e["name"] for e in read_catalog(ROOT / "config", market)
         if isinstance(e, dict) and e.get("name")
     ]
 

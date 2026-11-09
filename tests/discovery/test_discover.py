@@ -740,7 +740,7 @@ def test_render_health_report_names_the_file_to_fix():
         HealthFinding(name="Bare", ats="lever", slug="b", dry_days=40, status="empty"),
     ]
     text = render_health_report(findings, date(2026, 7, 1))
-    assert "**Shared** (lever/s, from config/boards.yaml)" in text
+    assert "**Shared** (lever/s, from config/boards/)" in text
     assert "**Mine** (lever/m, from your companies.yaml)" in text
     assert "**Bare** (lever/b)" in text
 

@@ -149,9 +149,11 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    workload range, office days. The shipped example is three cantons around
    Zürich.
 6. **Pick the company boards to scan.** None are selected.
-   `config/boards.yaml` lists the boards jobradar knows, grouped by industry,
-   with the list of sections at the top of the file. Add the name of each
-   board you want to `config/companies.yaml`, one per line.
+   `config/boards/` lists the boards jobradar knows: `ch.yaml` for
+   Switzerland, grouped by industry with the list of sections at the top,
+   and `global.yaml` for big employers whose one board serves every country.
+   Add the name of each board you want to `config/companies.yaml`, one per
+   line.
    **Start with five or ten**: your first run scores every open
    posting on the boards you chose, so it costs far more than a normal day
    (see [What it costs](#what-it-costs)). You can add more later, a few at a
@@ -177,7 +179,8 @@ Three phases, each its own module, sharing the profile you set up once:
 
 1. **Company discovery** (`jobradar.discovery`), occasional: find companies
    worth scanning and feed them into `config/companies.yaml`. Optional; the
-   shipped catalogue in `config/boards.yaml` already covers 85 Swiss boards.
+   shipped catalogue in `config/boards/` already covers 85 boards for
+   Switzerland.
 2. **Search** (`jobradar.search`), the daily run: fetch postings, filter,
    score, report the few worth your time.
 3. **Apply** (`jobradar.apply`), on demand: turn chosen postings into

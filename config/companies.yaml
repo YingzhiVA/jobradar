@@ -1,7 +1,7 @@
-# The company job boards to scan: your selection from config/boards.yaml.
+# The company job boards to scan: your selection from the shared list in config/boards/ (global.ymal, plus ch.yaml for Switzerland).
 #
 # NOTHING IS SCANNED UNTIL YOU CHOOSE. Add one line per board, with the
-# company's name as config/boards.yaml spells it (case doesn't matter):
+# company's name as config/boards spells it (case doesn't matter):
 #
 #   companies:
 #     - Frontify
@@ -16,7 +16,7 @@
 # addition costs one such catch-up on its own. docs/COSTS.md has the numbers.
 #
 # A BOARD THE SHARED LIST LACKS: give its ats and slug yourself.
-# config/boards.yaml explains how to read both off a careers page.
+# config/boards/README.md explains how to read both off a careers page.
 #
 #     - name: Acme
 #       ats: greenhouse

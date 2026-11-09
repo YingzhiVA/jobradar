@@ -1,0 +1,32 @@
+# Employers whose one board serves every market: a global board the connector
+# scopes to the market's country (Google's feed, NVIDIA's Workday board), or
+# one the location filter trims (Anthropic, Databricks, OpenAI). Every search
+# reads this file together with its market's own (ch.yaml for Switzerland).
+# README.md in this folder explains the entry format.
+
+boards:
+
+  # Google, YouTube and DeepMind. In Switzerland: Google's largest engineering
+  # office outside the US is in Zurich. Meta is left out on purpose: its
+  # careers site forbids automated collection (see docs/ROADMAP.md).
+  - name: Google
+    ats: google
+    slug: "Google|YouTube|DeepMind"
+  # A global board (2000+ postings) scoped to the market's country
+  # server-side. In Switzerland: ~40, many of them remote within the country.
+  - name: NVIDIA
+    ats: workday
+    slug: nvidia:wd5:NVIDIAExternalCareerSite
+  # US-HQ; a global board, trimmed by the location gate. In Switzerland: a
+  # Zurich office.
+  - name: Anthropic
+    ats: greenhouse
+    slug: anthropic
+  - name: Databricks
+    ats: greenhouse
+    slug: databricks
+  # A global board of 800+ postings, trimmed by the location gate. In
+  # Switzerland: a Zurich office (opened 2025) with a handful of postings.
+  - name: OpenAI
+    ats: ashby
+    slug: openai

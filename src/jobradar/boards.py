@@ -1,11 +1,12 @@
 """Where each company's job board is, and which boards to scan.
 
-Two files in ``config/`` share the job, so that a board that moves is fixed in
-one place for everyone:
+Two places in ``config/`` share the job, so that a board that moves is fixed
+in one place for everyone:
 
-- ``boards.yaml`` is the shared catalogue: every known board with its ``ats``
-  and ``slug``. It is maintained upstream and updated by ``git pull``, like the
-  code.
+- ``boards/`` is the shared catalogue: every known board with its ``ats`` and
+  ``slug``, in ``global.yaml`` (boards that serve every market) and one file
+  per market (``ch.yaml``). A search sees ``global.yaml`` plus its market's
+  file. It is maintained upstream and updated by ``git pull``, like the code.
 - ``companies.yaml`` is the user's selection: a list of names looked up in the
   catalogue. An entry may instead give its own ``ats`` and ``slug``, for a
   board the catalogue doesn't have, or to scan a catalogue board differently.
@@ -26,7 +27,10 @@ from pathlib import Path
 
 import yaml
 
-BOARDS_FILE = "boards.yaml"
+from .markets import CH, Market
+
+BOARDS_DIR = "boards"
+GLOBAL_BOARDS = "global"
 COMPANIES_FILE = "companies.yaml"
 
 ERROR = "error"
@@ -93,21 +97,42 @@ def _known_ats() -> set[str]:
     return set(_FETCHERS)
 
 
-def read_catalog(path: Path) -> list:
-    """The raw entries of config/boards.yaml."""
-    return _read_list(path, "boards")
+def catalog_files(config: Path, market: Market = CH) -> list[Path]:
+    """The catalogue files a search in `market` reads, in order."""
+    return [config / BOARDS_DIR / f"{name}.yaml" for name in (GLOBAL_BOARDS, market.code)]
+
+
+def read_catalog(config: Path, market: Market = CH) -> list:
+    """The raw entries of the market's catalogue: config/boards/global.yaml,
+    then the market's own file. Each dict entry gains a `file` key naming the
+    file it came from (config/boards/ch.yaml), for messages that say where to
+    fix it."""
+    entries: list = []
+    for path in catalog_files(config, market):
+        where = f"{config.name}/{BOARDS_DIR}/{path.name}"
+        entries += [
+            {**entry, "file": where} if isinstance(entry, dict) else entry
+            for entry in _read_list(path, "boards")
+        ]
+    return entries
+
+
+def _where(entry: dict) -> str:
+    return entry.get("file") or f"config/{BOARDS_DIR}/"
 
 
 def catalog_problems(entries: list) -> list[str]:
     """What is wrong with the catalogue's entries, one line each."""
     known = _known_ats()
     problems = []
-    seen: dict[str, str] = {}
+    seen: dict[str, dict] = {}
     for i, entry in enumerate(entries, 1):
         if not isinstance(entry, dict):
             problems.append(f"entry {i} is not a name/ats/slug block")
             continue
         label = entry.get("name") or f"entry {i}"
+        if entry.get("file"):
+            label = f"{entry['file']}: {label}"
         missing = [k for k in ("name", "ats", "slug") if not entry.get(k)]
         if missing:
             problems.append(f"{label}: missing {', '.join(missing)}")
@@ -116,8 +141,12 @@ def catalog_problems(entries: list) -> list[str]:
             problems.append(f"{label}: unknown ats {entry['ats']!r}")
         key = _key(entry["name"])
         if key in seen:
-            problems.append(f"{label}: listed twice (also as {seen[key]!r})")
-        seen.setdefault(key, entry["name"])
+            first = seen[key]
+            also = repr(first["name"])
+            if _where(first) != _where(entry):
+                also += f" in {_where(first)}"
+            problems.append(f"{label}: listed twice (also as {also})")
+        seen.setdefault(key, entry)
     return problems
 
 
@@ -141,8 +170,9 @@ class Note:
 class Resolution:
     # Each board is {"name", "ats", "slug", "origin"}; origin says where its
     # ats/slug came from, and so which file to fix when it breaks: "catalog"
-    # (boards.yaml), "override" (companies.yaml, for a name the catalogue also
-    # has) or "local" (companies.yaml only).
+    # (config/boards/), "override" (companies.yaml, for a name the catalogue
+    # also has) or "local" (companies.yaml only). A catalog board also carries
+    # "file", the catalogue file it came from.
     boards: list[dict] = field(default_factory=list)
     notes: list[Note] = field(default_factory=list)
     selected: int = 0  # entries in companies.yaml, scannable or not
@@ -156,9 +186,11 @@ class Resolution:
         return [n.message for n in self.notes if n.level == WARNING]
 
 
-def resolve(selection: list, catalog: dict[str, dict]) -> Resolution:
+def resolve(selection: list, catalog: dict[str, dict], market: Market = CH) -> Resolution:
     """Turn the entries of companies.yaml into boards to scan, using the
-    catalogue for any entry that gives only a name."""
+    catalogue for any entry that gives only a name. `market` only names the
+    catalogue in messages."""
+    files = f"config/{BOARDS_DIR}/{GLOBAL_BOARDS}.yaml or {market.code}.yaml"
     known = _known_ats()
     result = Resolution(selected=len(selection))
     scanned: set[str] = set()
@@ -194,15 +226,14 @@ def resolve(selection: list, catalog: dict[str, dict]) -> Resolution:
                 if (ats, slug) != (shared_ats, shared_slug):
                     result.notes.append(Note(
                         WARNING,
-                        f"{name}: config/boards.yaml has it on {shared_ats}/{shared_slug}, "
+                        f"{name}: {_where(shared)} has it on {shared_ats}/{shared_slug}, "
                         f"your companies.yaml on {ats}/{slug} — delete your ats and slug "
                         f"lines to follow the shared list",
                     ))
         elif shared is None:
             result.notes.append(Note(
                 ERROR,
-                f"{name}: not in config/boards.yaml — check the spelling, or give its "
-                f"ats and slug",
+                f"{name}: not in {files} — check the spelling, or give its ats and slug",
             ))
             continue
         else:
@@ -211,6 +242,7 @@ def resolve(selection: list, catalog: dict[str, dict]) -> Resolution:
                 "ats": str(shared["ats"]).lower(),
                 "slug": str(shared["slug"]),
                 "origin": "catalog",
+                **({"file": shared["file"]} if shared.get("file") else {}),
             }
 
         key = _key(board["name"])
@@ -222,10 +254,10 @@ def resolve(selection: list, catalog: dict[str, dict]) -> Resolution:
     return result
 
 
-def load_companies(root: Path) -> Resolution:
-    """The boards to scan, from config/companies.yaml resolved against
-    config/boards.yaml. Raises BoardsError if either file is missing or
-    unreadable."""
+def load_companies(root: Path, market: Market = CH) -> Resolution:
+    """The boards to scan, from config/companies.yaml resolved against the
+    market's catalogue in config/boards/. Raises BoardsError if a file is
+    missing or unreadable."""
     config = root / "config"
-    catalog = index_catalog(read_catalog(config / BOARDS_FILE))
-    return resolve(_read_list(config / COMPANIES_FILE, "companies"), catalog)
+    catalog = index_catalog(read_catalog(config, market))
+    return resolve(_read_list(config / COMPANIES_FILE, "companies"), catalog, market)
