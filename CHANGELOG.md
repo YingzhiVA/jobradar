@@ -4,6 +4,24 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.23.0 — Complete write-ups, Lever and join descriptions (2026-11-10)
+
+- **Write-ups no longer stop mid-sentence.** About one in twelve ended
+  where it was about to quote the posting ("…that is exactly the"), since
+  July. The write-up came back as a JSON string, and a plain quotation mark
+  from the model ended that string early, so the cut went unnoticed and the
+  report's cut-off note never appeared. It is now plain text.
+- **Lever postings are scored on the whole posting.** The connector read
+  only Lever's `description` field, which on many boards is just the company
+  introduction; the responsibilities and requirements sit in its `lists`.
+  Every Lever posting was scored without them, and a few with nothing to
+  check were dropped (ANYbotics, Wingtra and Gravis Robotics on 2026-11-09).
+  Lever postings already settled keep their old score.
+- **join.com boards are read again, fully this time.** join.com no longer
+  answers its per-job API, so 1.21.0's fix found Optiml's postings and then
+  failed on their descriptions. They are now read from each job's page.
+  Nothing to edit.
+
 ## 1.22.0 — Oracle connector, ELCA found again (2026-11-09)
 
 - **A connector for Oracle Recruiting Cloud** (`ats: oracle`, slug
