@@ -129,6 +129,30 @@ def test_redirect_is_followed_to_final_status():
     assert is_url_live(_LIVE, client) is False
 
 
+def test_greenhouse_redirect_to_the_board_with_error_is_dropped():
+    # Greenhouse answers a closed posting with a 302 to the board's job list
+    # plus ?error=true, and the list itself answers 200.
+    url = "https://8.8.8.8/robotsandpencils/jobs/5452911008"
+    board = "https://8.8.8.8/robotsandpencils?error=true"
+    client = _FakeClient({url: _FakeResponse(302, next_url=board), board: 200})
+    assert check_url(url, client) == DEAD
+
+
+def test_workable_redirect_to_the_account_with_not_found_is_dropped():
+    url = "https://8.8.8.8/unit8/j/CAD1B53C35/"
+    account = "https://8.8.8.8/unit8/?not_found=true"
+    client = _FakeClient({url: _FakeResponse(302, next_url=account), account: 200})
+    assert check_url(url, client) == DEAD
+
+
+def test_an_ordinary_redirect_with_other_parameters_is_kept():
+    # Only the ATS markers count: a tracking parameter or error=false is not one.
+    url = "https://8.8.8.8/job/7"
+    for target in ("https://8.8.8.8/job/7?utm_source=x", "https://8.8.8.8/jobs?error=false"):
+        client = _FakeClient({url: _FakeResponse(301, next_url=target), target: 200})
+        assert check_url(url, client) == LIVENESS_CONFIRMED
+
+
 def test_redirect_loop_is_bounded_and_kept():
     # A self-redirect must not spin forever; recall bias keeps it.
     looping = "https://8.8.8.8/loop"

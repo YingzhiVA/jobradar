@@ -8,8 +8,11 @@ module does: drop links that are definitively gone before they reach scoring.
 
 Deliberately conservative — recall-biased to match the "wide net, prune only
 clear failures" design:
-  * Only a hard "gone" status (404/410) drops a link. A live posting is the
-    common case; we don't want to discard a good role over a transient blip.
+  * Only a hard "gone" status (404/410) drops a link, or the redirect an ATS
+    sends instead of one: Greenhouse and Workable answer a closed posting by
+    redirecting to the company's job list with `?error=true` /
+    `?not_found=true`, which then loads fine. A live posting is the common
+    case; we don't want to discard a good role over a transient blip.
   * A 403 doesn't drop on its own, but some sites bot-block our browser-y UA
     site-wide and 403 *every* URL — which would hide a real 404 on a closed
     posting. So a 403 triggers one retry with a plainer UA; only if that retry
@@ -43,7 +46,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 import socket
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -59,6 +62,13 @@ DEAD = "dead"
 _TIMEOUT = 10.0
 # Statuses that mean "this URL is gone" — the only signals we drop on.
 _DEAD_STATUSES = {404, 410}
+# Query parameters an ATS adds when it redirects a closed posting to the
+# company's job list instead of answering 404: Greenhouse sends
+# job-boards.greenhouse.io/<board>?error=true, Workable sends
+# apply.workable.com/<account>/?not_found=true. The list itself answers 200, so
+# without this a closed posting read as live (2026-11-10: six of nine web_search
+# finds, all counted live).
+_GONE_REDIRECT_PARAMS = {"error": "true", "not_found": "true"}
 # Bound manual redirect-following so a redirect loop can't spin forever.
 _MAX_REDIRECTS = 5
 # Some career/ATS sites reject the default httpx User-Agent; present a browser-y
@@ -100,9 +110,17 @@ def _is_public_http_url(url: str) -> bool:
     )
 
 
+def _is_gone_redirect(url: str) -> bool:
+    """True when a redirect target carries an ATS's "posting not found" marker."""
+    query = parse_qs(urlsplit(url).query)
+    return any(
+        value in query.get(key, ()) for key, value in _GONE_REDIRECT_PARAMS.items()
+    )
+
+
 def _probe(url: str, client: httpx.Client, headers: dict | None) -> str:
     """Follow redirects manually and classify the terminal state as one of
-    'gone' (404/410), 'unsafe' (fails the SSRF guard at some hop), 'blocked'
+    'gone' (404/410, or a redirect to an ATS's not-found marker), 'unsafe' (fails the SSRF guard at some hop), 'blocked'
     (403 — ambiguous, may be a site-wide UA block), 'inconclusive' (a network
     error or an exhausted redirect budget: the fetch settled nothing either
     way), or 'live' (a status we actually got back and that isn't any of the
@@ -128,6 +146,9 @@ def _probe(url: str, client: httpx.Client, headers: dict | None) -> str:
                         return "gone"
                     return "blocked" if resp.status_code == 403 else "live"
                 url = str(nxt.url)
+                if _is_gone_redirect(url):
+                    logger.info("liveness: redirected to a not-found page: %s", url)
+                    return "gone"
         except httpx.HTTPError as exc:
             # Transient/unknown — keep it rather than drop a role on a network blip.
             logger.info("liveness: keeping %s despite fetch error: %s", url, exc)
