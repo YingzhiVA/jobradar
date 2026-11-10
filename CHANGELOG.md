@@ -4,6 +4,15 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.23.1 — Closed postings behind ATS redirects (2026-11-10)
+
+- **Closed postings found by web search are dropped again.** Greenhouse and
+  Workable answer a closed posting by redirecting to the company's job list
+  (`?error=true`, `?not_found=true`), and that page loads fine, so the link
+  check counted it as open. On 2026-11-10 six of nine web-search finds were
+  closed this way and all reached the location filter; one was sent to
+  scoring and failed. Such a redirect now counts as closed. Nothing to edit.
+
 ## 1.23.0 — Complete write-ups, Lever and join descriptions (2026-11-10)
 
 - **Write-ups no longer stop mid-sentence.** About one in twelve ended
