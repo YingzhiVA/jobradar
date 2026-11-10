@@ -858,7 +858,9 @@ class _HtmlResp:
 
 
 class _JoinClient:
-    """Fake for the join.com careers-page-resolve + list + per-job-detail flow."""
+    """Fake for the join.com careers-page-resolve + list + per-job-page flow. A
+    job page carries its job in the same embedded blob as the careers page; a
+    job missing from `details` answers 404, as a closed one does."""
 
     def __init__(self, company: dict, pages: dict[int, dict], details: dict[int, dict]):
         self._html = _join_page_html(company)
@@ -882,9 +884,14 @@ class _JoinClient:
                     [{"param": "pageSize", "msg": "Invalid value"}], status=422
                 )
             return _Resp(self._pages[params["page"]])
-        job_id = int(url.rsplit("/", 1)[1])
         self.detail_calls += 1
-        return _Resp(self._details[job_id])
+        job_id = int(url.rsplit("/", 1)[1].split("-", 1)[0])
+        if job_id not in self._details:
+            return _HtmlResp("<html>Not found</html>", status=404)
+        payload = {"props": {"pageProps": {"pageData": {"job": self._details[job_id]}}}}
+        return _HtmlResp(
+            f'<html><script id="__NEXT_DATA__" type="application/json">{json.dumps(payload)}</script></html>'
+        )
 
 
 def test_join_fetches_list_and_details():
@@ -950,6 +957,28 @@ def test_join_paginates():
 
     assert client.list_calls == 2
     assert [p.title for p in postings] == ["A", "B"]
+
+
+def test_join_reads_the_description_from_the_job_page_as_text():
+    pages = {1: {"items": [{"id": 1, "idParam": "1-pm", "title": "PM"}], "pagination": {"pageCount": 1}}}
+    details = {1: {"description": "<p><strong>About us</strong></p><ul><li>Own the roadmap</li></ul>"}}
+    client = _JoinClient({"id": 42, "name": "Acme", "domain": "acme"}, pages, details)
+    assert _fetch_join("Acme", "acme", client)[0].description == "About us Own the roadmap"
+
+
+def test_join_skips_a_job_closed_before_its_page_is_read():
+    pages = {1: {"items": [{"id": 1, "idParam": "1-a", "title": "A"}, {"id": 2, "idParam": "2-b", "title": "B"}],
+                 "pagination": {"pageCount": 1}}}
+    client = _JoinClient({"id": 42, "name": "Acme", "domain": "acme"}, pages, {2: {"description": "d"}})
+    assert [p.title for p in _fetch_join("Acme", "acme", client)] == ["B"]
+
+
+def test_join_job_page_without_job_data_fails_the_board():
+    pages = {1: {"items": [{"id": 1, "idParam": "1-a", "title": "A"}], "pagination": {"pageCount": 1}}}
+    client = _JoinClient({"id": 42, "name": "Acme", "domain": "acme"}, pages, {1: {}})
+    client._details = {1: None}  # page found, but no job object in it
+    with pytest.raises(ValueError, match="no job data"):
+        _fetch_join("Acme", "acme", client)
 
 
 def test_join_empty_board():
@@ -2227,6 +2256,40 @@ def test_lever_reads_remote_from_workplace_type():
     # The remote one's location says nothing but the country — which is exactly
     # why the board's own flag has to be carried through.
     assert postings[0].location == "Switzerland"
+
+
+def test_lever_description_includes_the_lists_and_closing_text():
+    # ANYbotics' shape: the description is only the company introduction, and
+    # the role itself is in `lists`. Read without them, the scorer had no
+    # requirement to check and dropped the posting.
+    payload = [{
+        "text": "Deal Desk Specialist",
+        "hostedUrl": "https://jobs.lever.co/acme/1",
+        "descriptionPlain": "Acme is a fast-growing robotics company.",
+        "lists": [
+            {"text": "Your Role", "content": "<li>Own deal structuring</li><li>Support sales</li>"},
+            {"text": "Your Profile", "content": "<li>3+ years in deal desk or sales ops</li>"},
+            {"text": "Empty", "content": ""},
+        ],
+        "additionalPlain": "We look forward to your application.",
+        "categories": {"location": "Zurich"},
+    }]
+    description = _fetch_lever("Acme", "acme", _JsonClient(payload))[0].description
+    assert description == (
+        "Acme is a fast-growing robotics company.\n\n"
+        "Your Role\nOwn deal structuring Support sales\n\n"
+        "Your Profile\n3+ years in deal desk or sales ops\n\n"
+        "We look forward to your application."
+    )
+
+
+def test_lever_falls_back_to_html_when_the_plain_fields_are_missing():
+    payload = [{
+        "text": "Role", "hostedUrl": "https://jobs.lever.co/acme/2",
+        "description": "<p>Intro</p>", "additional": "<p>Outro</p>",
+        "categories": {"location": "Zurich"},
+    }]
+    assert _fetch_lever("Acme", "acme", _JsonClient(payload))[0].description == "Intro\n\nOutro"
 
 
 # --- Google job feed ---

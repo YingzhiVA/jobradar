@@ -166,6 +166,24 @@ def _fetch_greenhouse(company_name: str, slug: str, client: httpx.Client) -> lis
     return postings
 
 
+def _lever_description(job: dict) -> str:
+    """The whole posting text. Lever splits it in three: `description` (often
+    just the company introduction), `lists` (the sections an employer adds,
+    usually the responsibilities and the requirements, each a heading and an
+    HTML list) and `additional` (closing text). Until 2026-11 only the first was
+    read, so every Lever posting was scored without its requirements, and on
+    boards whose description is all introduction (ANYbotics, Wingtra, Gravis
+    Robotics) the scorer found nothing to check and dropped the posting."""
+    parts = [job.get("descriptionPlain") or strip_html(job.get("description") or "")]
+    for section in job.get("lists") or []:
+        body = strip_html(section.get("content") or "")
+        if body:
+            heading = strip_html(section.get("text") or "")
+            parts.append(f"{heading}\n{body}" if heading else body)
+    parts.append(job.get("additionalPlain") or strip_html(job.get("additional") or ""))
+    return "\n\n".join(p.strip() for p in parts if p and p.strip())
+
+
 def _fetch_lever(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
     url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
     resp = client.get(url)
@@ -173,7 +191,7 @@ def _fetch_lever(company_name: str, slug: str, client: httpx.Client) -> list[Raw
     data = resp.json()
     postings = []
     for job in data:
-        description = job.get("descriptionPlain") or strip_html(job.get("description", ""))
+        description = _lever_description(job)
         postings.append(
             RawPosting(
                 source="lever",
@@ -727,21 +745,36 @@ def parse_join_company(page_html: str) -> dict | None:
     and discovery's probe (to verify a candidate slug) read it out of this
     blob instead.
     """
-    match = _JOIN_NEXT_DATA_RE.search(page_html)
-    if not match:
-        return None
-    try:
-        page_props = json.loads(match.group(1))["props"]["pageProps"]
-    except (ValueError, KeyError, TypeError):
-        return None
     # pageData is where join.com has kept it since some time before 2026-11-09,
     # when the board health check found Optiml's board unreadable although it
     # was live; initialState is the older layout, read in case it comes back.
+    page_props = _join_page_props(page_html)
     for container in ("pageData", "initialState"):
-        company = (page_props.get(container) or {}).get("company") if isinstance(page_props, dict) else None
+        company = (page_props.get(container) or {}).get("company")
         if isinstance(company, dict) and company.get("id"):
             return company
     return None
+
+
+def _join_page_props(page_html: str) -> dict:
+    """The Next.js pageProps embedded in a join.com page, or {}."""
+    match = _JOIN_NEXT_DATA_RE.search(page_html)
+    if not match:
+        return {}
+    try:
+        page_props = json.loads(match.group(1))["props"]["pageProps"]
+    except (ValueError, KeyError, TypeError):
+        return {}
+    return page_props if isinstance(page_props, dict) else {}
+
+
+def _parse_join_job(page_html: str) -> dict | None:
+    """The `job` object (title, description as HTML, ...) on a join.com job
+    page. The public per-job API (/api/public/jobs/<id>) answers 404 for every
+    job since about November 2026, so the description is read from the job's
+    own page, the same blob parse_join_company reads the company from."""
+    job = (_join_page_props(page_html).get("pageData") or {}).get("job")
+    return job if isinstance(job, dict) else None
 
 
 # join.com's public jobs API rejects any pageSize above 5 with HTTP 422
@@ -856,16 +889,24 @@ def _fetch_join(
             if known.exact(url):
                 postings.append(_listing_only("join", url, item.get("title", ""), company_name, location))
                 continue
-            detail = client.get(f"https://join.com/api/public/jobs/{item['id']}")
-            detail.raise_for_status()
-            job = detail.json()
+            job_page = client.get(url)
+            if job_page.status_code == 404:
+                # Closed between the list call and this one.
+                logger.info("Skipping unavailable %s job %s", company_name, item.get("idParam"))
+                continue
+            job_page.raise_for_status()
+            job = _parse_join_job(job_page.text)
+            if job is None:
+                # The page layout moved again: fail the board loudly rather
+                # than score postings with no description.
+                raise ValueError(f"join.com: no job data on {url}")
             postings.append(
                 RawPosting(
                     source="join",
                     url=url,
                     title=item.get("title", ""),
                     company=company_name,
-                    description=job.get("description", ""),
+                    description=strip_html(job.get("description") or ""),
                     location=location,
                     remote=parse_workplace_type(item.get("workplaceType")),
                     raw={"id": item.get("id"), "workplaceType": item.get("workplaceType")},

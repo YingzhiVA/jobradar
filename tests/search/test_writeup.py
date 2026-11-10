@@ -3,14 +3,16 @@ from jobradar.search.ranking import RankedPosting
 from jobradar.search.writeup import _TRUNCATION_NOTE, _WRITEUP_ATTEMPTS, write_rationale
 
 
-class _Parsed:
+class _Text:
+    type = "text"
+
     def __init__(self, text):
-        self.writeup = text
+        self.text = text
 
 
 class _Response:
     def __init__(self, text, stop_reason="end_turn"):
-        self.parsed_output = _Parsed(text) if text is not None else None
+        self.content = [_Text(text)] if text is not None else []
         self.stop_reason = stop_reason
         self.usage = None
 
@@ -21,8 +23,10 @@ class _Messages:
     def __init__(self, *script):
         self.script = list(script)
         self.calls = 0
+        self.kwargs = []
 
-    def parse(self, **kwargs):
+    def create(self, **kwargs):
+        self.kwargs.append(kwargs)
         outcome = self.script[self.calls]
         self.calls += 1
         if isinstance(outcome, Exception):
@@ -101,3 +105,28 @@ def test_a_truncated_draw_is_kept_if_the_retry_errors():
     )
     final = write_rationale(_ranked(), "profile", client)
     assert final.writeup == "Most of the analysis" + _TRUNCATION_NOTE
+
+
+def test_a_quotation_in_the_write_up_survives():
+    # As a JSON string field, the write-up ended at the model's first unescaped
+    # quote; plain text has nothing for a quote to close.
+    text = 'Your C# work satisfies the "strong engineering foundation" ask.\n\nNext paragraph.'
+    client = _Client(_Response(text))
+    final = write_rationale(_ranked(), "profile", client)
+    assert final.writeup == text
+    assert "output_format" not in client.messages.kwargs[0]
+
+
+def test_an_empty_reply_is_retried():
+    client = _Client(_Response("   "), _Response("The write-up."))
+    assert write_rationale(_ranked(), "profile", client).writeup == "The write-up."
+
+
+def test_headings_are_demoted_so_the_report_keeps_its_structure():
+    # A "## " line would end the match block when apply/findings.py reads the
+    # report back.
+    client = _Client(_Response("## Manager, Acme\n\n### Why it fits\n\nIt fits.\n\n#hashtag stays"))
+    assert write_rationale(_ranked(), "profile", client).writeup == (
+        "**Manager, Acme**\n\n**Why it fits**\n\nIt fits.\n\n#hashtag stays"
+    )
+

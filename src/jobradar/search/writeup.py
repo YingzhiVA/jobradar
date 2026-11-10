@@ -8,9 +8,9 @@ scoring stage.
 from __future__ import annotations
 
 import logging
+import re
 
 import anthropic
-from pydantic import BaseModel
 
 from .. import usage
 from ..llm import MODEL_DEFAULTS, model_for
@@ -23,10 +23,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_WRITEUP_MODEL = MODEL_DEFAULTS["JOBRADAR_WRITEUP_MODEL"]
 
 
-class _WriteupOutput(BaseModel):
-    writeup: str
-
-
 _WRITEUP_PROMPT = """\
 Write an application-ready rationale for why this job posting is a {tier} match \
 for the candidate, using their CV "{best_cv}" and their stated career identity.
@@ -36,7 +32,10 @@ Cover, in a few short paragraphs:
 - What to highlight when applying (most relevant experience/achievements).
 - Any concerns or gaps worth being aware of going in.
 
-Keep it concise and concrete — no generic filler.
+Keep it concise and concrete — no generic filler. Reply with the write-up \
+itself in Markdown: no preamble, no closing remark, and no # headings (the \
+report already heads it with the posting's title); use a bold lead-in for each \
+part instead.
 
 Job posting:
 Title: {title}
@@ -56,6 +55,15 @@ Scoring notes from the initial pass: {brief_reason}
 # ran past 2048 and was cut mid-sentence. Raising the ceiling was already tried
 # once (it was 1024) and only moved the cut; a second draw usually lands.
 _WRITEUP_ATTEMPTS = 2
+
+# A Markdown heading line. The report gives each match a "## [TIER] ..." heading
+# and apply/findings.py ends a match at the next "## " line, so a heading inside
+# a write-up would cut the write-up off for the apply pipeline.
+_HEADING_RE = re.compile(r"^#{1,6}[ \t]+(.+?)[ \t#]*$", re.M)
+
+
+def _demote_headings(text: str) -> str:
+    return _HEADING_RE.sub(r"**\1**", text)
 
 # Appended when every attempt ran out of room. The report is the only place the
 # reader looks — the run log already warned about truncation and it went
@@ -79,12 +87,19 @@ def write_rationale(
     truncated = False
     for attempt in range(1, _WRITEUP_ATTEMPTS + 1):
         try:
-            response = client.messages.parse(
+            # Plain text, not structured output. As a JSON string field the
+            # write-up ended at the first unescaped quote the model wrote: the
+            # grammar read it as the string's end, closed the object, and the
+            # call finished normally, so neither the length check below nor its
+            # note fired. 18 of 230 write-ups from July to November 2026 stopped
+            # mid-sentence that way, right where a quotation from the posting
+            # was about to start ("...satisfies the").
+            response = client.messages.create(
                 model=model,
-                # The rationale is a 3-section write-up (fit / highlights / concerns)
-                # plus JSON-structure overhead. 1024 truncated the longer ones
-                # mid-sentence; 2048 still does occasionally, which the retry and
-                # the visible note below handle.
+                # The rationale is a 3-section write-up (fit / highlights /
+                # concerns). 1024 truncated the longer ones mid-sentence; 2048
+                # still does occasionally, which the retry and the visible note
+                # below handle.
                 max_tokens=2048,
                 system=[
                     {
@@ -107,7 +122,6 @@ def write_rationale(
                         ),
                     }
                 ],
-                output_format=_WriteupOutput,
             )
         except Exception as exc:  # noqa: BLE001 - fall back to the brief reason rather than failing the run
             logger.warning(
@@ -117,13 +131,14 @@ def write_rationale(
             continue
         if usage_acc is not None:
             usage.accumulate(usage_acc, response)
-        if response.parsed_output is None:
+        text = "".join(b.text for b in response.content if b.type == "text").strip()
+        if not text:
             logger.warning(
                 "Write-up attempt %d/%d returned nothing usable for %s",
                 attempt, _WRITEUP_ATTEMPTS, posting.url,
             )
             continue
-        writeup = response.parsed_output.writeup
+        writeup = _demote_headings(text)
         truncated = response.stop_reason == "max_tokens"
         if not truncated:
             break
