@@ -66,6 +66,13 @@ def _version(root: Path) -> str:
         return ""
 
 
+def _offset(query: dict) -> int:
+    try:
+        return max(0, int(query.get("offset") or 0))
+    except ValueError as exc:
+        raise SetupError("Not a page of the list.") from exc
+
+
 class App:
     """What the handler needs: where the instance lives, the token, the runner."""
 
@@ -206,7 +213,10 @@ class App:
             "/api/search_warnings": lambda q: {"warnings": setup.search_warnings(q)},
             "/api/doctor": self.get_doctor,
             "/api/report": lambda q: views.report(r),
-            "/api/applications": lambda q: {"applications": views.applications(r)},
+            "/api/applications": lambda q: {"applications": views.applications(r), "archived": views.archived_count(r)},
+            "/api/applications/archive": lambda q: views.archived_applications(r, _offset(q)),
+            "/api/application": lambda q: views.application(r, q.get("uid", "")),
+            "/api/report/archive": lambda q: views.report_archive(r, _offset(q)),
             "/api/file": lambda q: views.read_file(r, q.get("uid", ""), q.get("name", "")),
             "/api/job": self.get_job,
             "/api/rav": self.get_rav,

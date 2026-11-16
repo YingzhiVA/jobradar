@@ -46,7 +46,8 @@ with a label beside the title, which is how it stands in your copy:
   matches is never marked as waiting, because nothing records that you read
   them.
 
-A line at the top names the one thing to do next.
+A line at the top names the one thing to do next; when nothing is waiting
+for you, there is none.
 
 **Show commands**, a switch at the top right, shows under each stage the file it
 lives in or the command that runs it, with a button to copy it. The same
@@ -77,10 +78,15 @@ a step leads back to the map for the next.
   is billed to your API key, and if the cloud schedule runs for the same
   copy the dialogue reminds you to pull first and push afterwards. Reports leave the list when they
   are archived (`reports_days` in `config/retention.yaml`); where nothing
-  archives them, the page reads the newest 30.
+  archives them, the page reads the newest 30. Archived reports sit in a
+  folded section at the bottom, read twenty at a time when you unfold it;
+  a match you applied to shows its application, archived or not.
 - **Applications**: what you drafted. Open one to read and edit its
   documents, run the pre-submission check, make the PDFs, and record that
-  you submitted it or what came back.
+  you submitted it or what came back. Archived applications sit in a folded
+  section at the bottom, below the RAV card when RAV is on, read fifty at a
+  time when you unfold it. They open read-only: what was sent, kept for
+  reuse.
 
   Some career sites only show a posting to a browser, and the pipeline
   cannot read them. A draft for such a posting ends with a placeholder

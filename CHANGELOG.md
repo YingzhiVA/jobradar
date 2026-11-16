@@ -4,7 +4,32 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
-## 1.24.0 — Browser interface (2026-11-16)
+## 1.24.1 — UI polish (2026-11-16)
+
+- **A PDF print that writes nothing no longer passes for a fresh one.** The
+  PDF step counted a print as done if a PDF existed afterwards, so when the
+  browser exited without writing, the previous run's PDF was reported as
+  new and drifted from the edited Markdown. That happens with the snap
+  build of Chromium, which can only write inside your home folder (a repo
+  under /tmp, or on /mnt/c in WSL). Such a print now counts as failed, falls
+  back to HTML as any failed print does, and the log says why.
+- **Browser interface:**
+  - Saving an edited CV or cover letter makes its PDF again in the same
+    step, and a document whose PDF is missing, older than its text or only
+    an HTML fallback says so above the text.
+  - Archived reports and applications are listed under the live ones,
+    folded until opened and read a page at a time. Archived applications
+    open read-only, and a match you applied to links to its application
+    even once that is archived, instead of offering a second draft.
+  - An application's documents are tabs, with the PDF link and Edit at the
+    end of the tab row; its actions sit in two labelled rows (work on it,
+    update status), and a closed application shows none. The posting link
+    moved to the line under the title, and the job description is
+    read-only.
+  - The banner on the workflow page appears only when something is
+    waiting for you.
+
+ — Browser interface (2026-11-16)
 
 Nothing to edit after pulling: every change below is either new or a
 warning.

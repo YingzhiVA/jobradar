@@ -221,6 +221,12 @@ def find_browser() -> str | None:
 
 
 def _print_to_pdf(browser: str, html_path: Path, pdf_path: Path) -> bool:
+    # A PDF from an earlier run must not count as this one. A browser can exit
+    # cleanly without writing anything: the snap build of Chromium, for one,
+    # cannot write outside the home folder (a repo under /tmp, or on /mnt/c in
+    # WSL), and a stale PDF would then be reported as fresh and drift from the
+    # Markdown it claims to show.
+    before = pdf_path.stat().st_mtime_ns if pdf_path.exists() else None
     result = subprocess.run(
         [
             browser,
@@ -237,6 +243,13 @@ def _print_to_pdf(browser: str, html_path: Path, pdf_path: Path) -> bool:
     if result.returncode != 0 or not pdf_path.exists():
         logger.warning(
             "PDF print failed for %s: %s", html_path.name, (result.stderr or "").strip()[-300:]
+        )
+        return False
+    if pdf_path.stat().st_mtime_ns == before:
+        logger.warning(
+            "PDF print for %s left %s unchanged: the browser (%s) may not be allowed to "
+            "write there. A snap-packaged Chromium can only write inside your home folder.",
+            html_path.name, pdf_path.name, browser,
         )
         return False
     return True
