@@ -47,7 +47,9 @@ with a label beside the title, which is how it stands in your copy:
   them.
 
 A line at the top names the one thing to do next; when nothing is waiting
-for you, there is none.
+for you, there is none. Before your first search it also offers a practice
+run, which scores made-up postings against your real profile for a few
+cents, to show the whole loop before a real search is paid for.
 
 **Show commands**, a switch at the top right, shows under each stage the file it
 lives in or the command that runs it, with a button to copy it. The same
@@ -63,17 +65,22 @@ that tests the key.
 
 Once every setup step is done and the check passes, the six setup stages
 fold into one line, since they are done once; **Show the steps** unfolds
-them. On a new copy they are open, the first one to do is marked, and saving
-a step leads back to the map for the next.
+them. On a new copy they are open and the first one to do is marked. Its
+button opens that step in Settings, and from there saving a step leads
+straight to the next one, and the last to the check, which points back here
+for the first search. Until the steps are done, the search buttons are
+switched off and say why.
 
 ## The other views
 
 - **Matches**: every report not yet archived, newest first. The matches of
   the newest are unfolded, each with both scores and the reasoning; earlier
   ones are a line each (title, company, scores, and the application if you
-  drafted one) until you click them. **Draft CV** starts the apply pipeline
-  for a match, and **CV + cover letter** does the same at full tier. A box
-  above the reports takes the address of a posting you found yourself.
+  drafted one) until you click them. An unfolded match sets why it fits and
+  the concerns side by side, which is what deciding takes; what to highlight
+  when applying is folded under them, for once you have decided. **Draft
+  CV** starts the apply pipeline for a match, and **CV + cover letter** does
+  the same at full tier.
   **Search now**, here and on the map, first asks you to confirm: a search
   is billed to your API key, and if the cloud schedule runs for the same
   copy the dialogue reminds you to pull first and push afterwards. Reports leave the list when they
@@ -81,9 +88,15 @@ a step leads back to the map for the next.
   archives them, the page reads the newest 30. Archived reports sit in a
   folded section at the bottom, read twenty at a time when you unfold it;
   a match you applied to shows its application, archived or not.
-- **Applications**: what you drafted. Open one to read and edit its
-  documents, run the pre-submission check, make the PDFs, and record that
-  you submitted it or what came back. Archived applications sit in a folded
+- **Applications**: what you drafted, in up to three groups: **Needs you**
+  (drafts not sent yet, and postings waiting for their job text),
+  **Awaiting an answer** (submitted) and **Closed** (rejected, withdrawn or
+  an offer, until the archive takes them). **Last update** is the day of the
+  step the status names: drafted, submitted, or closed. Open one to read and
+  edit its documents, run the pre-submission check, make the PDFs, and
+  record that you submitted it or what came back. **Draft a posting you found**,
+  beside the title, unfolds a box for the address of a posting the search
+  didn't bring you; it is drafted the same way as a match. Archived applications sit in a folded
   section at the bottom, below the RAV card when RAV is on, read fifty at a
   time when you unfold it. They open read-only: what was sent, kept for
   reuse.
@@ -96,11 +109,20 @@ a step leads back to the map for the next.
   200 characters) before anything is paid for. This is the same placeholder
   the terminal route uses: pasting under the marker line of its
   `job_description.md` and re-running `jobradar.apply` works as before.
-- **Settings**: the setup steps as forms, plus the score floors and the
-  number of matches per run. The form keeps strong matches to 1–5 and okay
+- **Settings**: the setup steps as forms, in the order and under the titles
+  the map gives them, then the check, then the score floors and the number
+  of matches per run ("How much you see"). While setup is still open, each
+  step's tab shows its number, or a tick once it is done; Settings opens on
+  the first open step, a line above the tabs counts the steps done, and
+  "How much you see" stays out of the way until they all are. That last
+  form keeps strong matches to 1–5 and okay
   ones to 0–10 per search, and warns as you type when a value will make
   searches noticeably dearer (a low skill floor, a low strong-match bar,
   many matches per search); saving such values asks first.
+
+A view with nothing in it yet says what will be there and has a button to
+the next thing: the next setup step while setup is open, the first search or
+a draft once it is done.
 
 Every action that calls Claude asks before it starts and says roughly what
 it costs: a search, a practice run, a draft, re-drafting with a cover letter
@@ -134,11 +156,11 @@ the file you would otherwise edit:
 
 | Form | File |
 | --- | --- |
-| Claude key | `.env` |
-| CV | `profile/cvs/` |
+| Connect Claude | `.env` |
+| Your CV | `profile/cvs/` |
 | What you want | `profile/identity.md` |
 | Must-haves | `config/constraints.yaml` |
-| Where to look | `config/companies.yaml` |
+| Where to search | `config/companies.yaml` |
 | How much you see | `config/search.yaml` |
 
 Saving a form changes only the lines whose values changed. Comments, the

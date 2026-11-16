@@ -4,6 +4,37 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.25.0 — Guided setup, clearer matches and applications (2026-11-16)
+
+- **Browser interface, for someone opening it the first time:**
+  - Settings follows the setup. Its tabs are the workflow page's setup
+    steps, in that order and under those titles (they were in reverse, with
+    the score floors first and the key sixth). While setup is open each tab
+    shows its number or a tick, Settings opens on the first open step, and
+    saving a step leads straight to the next one and finally to the check,
+    instead of back to the workflow page after each.
+  - An empty page says what comes next. Matches and Applications, before
+    there is anything in them, say what will be there and have a button to
+    the next setup step, or to the first search or draft once setup is done.
+    Search and draft buttons that need the setup are switched off until then
+    and say why; on Matches they used to be live. Before the first search,
+    the practice run is offered beside the real one.
+  - Matches starts with the matches. The box for a posting you found
+    yourself moved to the Applications page, folded behind **Draft a posting
+    you found**: it starts an application and never passes through a
+    search. An unfolded match sets why it fits and the concerns side by side,
+    with what to highlight when applying folded under them, so the page
+    is shorter and its lines are half as wide.
+  - The Applications list is grouped by what an application asks of you:
+    **Needs you** (drafts, and postings waiting for their job text),
+    **Awaiting an answer**, and **Closed**. The two date columns became one,
+    **Last update**: the day of the step the status names, so a rejection or
+    a withdrawal shows the day it was recorded instead of the day it was
+    drafted.
+  - Two small fixes: the setup check no longer says "no company companies
+    selected yet", and the page has its own tab icon, which also ends the
+    refused request for one that browsers logged as an error on every load.
+
 ## 1.24.1 — UI polish (2026-11-16)
 
 - **A PDF print that writes nothing no longer passes for a fresh one.** The
@@ -29,7 +60,7 @@ version numbers exist to give changes a name.
   - The banner on the workflow page appears only when something is
     waiting for you.
 
- — Browser interface (2026-11-16)
+## 1.24.0 — Browser interface (2026-11-16)
 
 Nothing to edit after pulling: every change below is either new or a
 warning.
