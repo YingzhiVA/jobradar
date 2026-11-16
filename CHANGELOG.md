@@ -4,6 +4,41 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.24.0 — Browser interface (2026-11-16)
+
+Nothing to edit after pulling: every change below is either new or a
+warning.
+
+- **A browser interface, beside the terminal.** `python -m jobradar.ui`
+  opens jobradar as a page on your own computer, for a copy that is already
+  installed. It opens on a map of the workflow (set up, search, apply) that
+  shows where each stage stands in your copy: which setup steps are still
+  open, how the last search narrowed, how many drafts are waiting, and
+  whether the setup check passes right now. From there you can fill in the
+  setup files as forms, run a search, read every report not yet archived,
+  draft applications, edit their documents, record outcomes and file a RAV
+  month. Every button runs the command the docs give for it, and a tick on
+  "Show commands" shows that command or file under each stage, so the
+  terminal and your editor keep working beside the page. See docs/UI.md.
+  - **Forms keep your comments.** Saving a config form changes only the
+    lines whose values changed; comments and keys the form doesn't show
+    stay as you wrote them.
+  - **Nothing is paid for on one click.** A search, a draft, a re-draft and
+    the interview sheet each ask first and say roughly what they cost.
+  - **Postings the pipeline can't read** open straight away with a box to
+    paste the job description into, instead of a placeholder file to edit.
+  - **The API key form** stores the key in a `.env` only you can read, in a
+    field browsers and password managers don't offer to save.
+- **The setup check warns about search settings that raise the cost of a
+  run**: a skill floor below 50, a strong-match bar below 70, or more than
+  five matches per run, and more strongly when they are combined. Each match
+  a run shows is written up (about 3 cents), and an eligible posting that
+  misses the per-run cap is scored again on every later run. It also warns
+  about a per-run count outside 1–5 strong or 0–10 okay, including
+  `max_best: 0`. These are warnings only: a run with such settings works as
+  before. The browser interface's settings form warns as you type and keeps
+  the counts within those ranges.
+
 ## 1.23.1 — Closed postings behind ATS redirects (2026-11-10)
 
 - **Closed postings found by web search are dropped again.** Greenhouse and

@@ -230,3 +230,45 @@ def test_eth_job_types_accept_names_and_ints(tmp_path):
 def test_eth_empty_job_types_is_fine_while_disabled(tmp_path):
     write_config(tmp_path, {"sources": {"eth_jobs": {"job_types": []}}})
     assert load_search_settings(tmp_path).sources.eth_jobs.job_types == ()
+
+
+# ── settings that are valid but costly ─────────────────────────────────────
+
+from jobradar.config import Output, Thresholds, cost_warnings  # noqa: E402
+
+
+def _keys(thresholds=None, output=None):
+    return [w.key for w in cost_warnings(thresholds or Thresholds(), output or Output())]
+
+
+def test_the_defaults_cost_nothing_extra():
+    assert _keys() == []
+    # The edges are not yet costly: floor 50, bar 70, five per run.
+    assert _keys(Thresholds(min_skill=50, best_threshold=70), Output(max_best=2, max_okay=3)) == []
+
+
+def test_each_costly_setting_is_named():
+    assert _keys(Thresholds(min_skill=49)) == ["min_skill"]
+    assert _keys(Thresholds(best_threshold=69)) == ["best_threshold"]
+    assert _keys(output=Output(max_best=1, max_okay=5)) == ["per_run"]
+
+
+def test_a_low_floor_with_many_slots_is_called_out_as_a_combination():
+    assert _keys(Thresholds(min_skill=40), Output(max_best=2, max_okay=8)) == ["min_skill", "per_run", "combined"]
+    assert _keys(Thresholds(min_skill=40, best_threshold=60)) == ["min_skill", "best_threshold", "combined"]
+
+
+def test_the_per_run_figure_is_priced():
+    (warning,) = cost_warnings(Thresholds(), Output(max_best=2, max_okay=8))
+    assert "up to 10 write-ups" in warning.message and "$0.30 a run" in warning.message
+
+
+def test_a_low_floor_suggests_an_interest_floor_only_when_there_is_none():
+    (bare,) = cost_warnings(Thresholds(min_skill=40), Output())
+    (with_interest,) = cost_warnings(Thresholds(min_skill=40, min_interest=40), Output())
+    assert "interest floor" in bare.message and "interest floor" not in with_interest.message
+
+
+def test_hand_edited_caps_outside_the_form_ranges_are_warned_not_refused():
+    assert _keys(output=Output(max_best=0, max_okay=3)) == ["max_best"]
+    assert _keys(output=Output(max_best=1, max_okay=11)) == ["per_run", "max_okay"]

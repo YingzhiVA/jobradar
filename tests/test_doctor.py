@@ -291,3 +291,15 @@ def test_many_boards_is_fine_once_a_run_has_happened(tmp_path):
     check = _companies(root, _catalog(root, doctor.MANY_BOARDS + 1))
     assert check.level == OK
     assert check.message == f"{doctor.MANY_BOARDS + 1} boards"
+
+
+def test_costly_search_settings_are_a_warning_naming_each(tmp_path):
+    from jobradar.doctor import check_config
+
+    _setup(tmp_path)
+    (tmp_path / "config" / "search.yaml").write_text(
+        "thresholds:\n  min_skill: 40\noutput:\n  max_best: 2\n  max_okay: 8\n", encoding="utf-8"
+    )
+    (check,) = [c for c in check_config(tmp_path) if c.name == "search.yaml"]
+    assert check.level == WARN
+    assert "skill floor 40 is low" in check.message and "10 matches per run" in check.message

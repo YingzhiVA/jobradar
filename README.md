@@ -123,13 +123,27 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    git clone https://github.com/<you>/jobradar.git && cd jobradar
    python3 -m venv .venv
    ./.venv/bin/pip install -e ".[dev]"
-   cp .env.example .env        # then paste your key from step 2 into .env
    ```
 
-4. **Tell it who you are.** Two files, both Markdown:
+   From here there are two ways to do the rest, and you can mix them:
+
+   - **In your browser.** Run `./.venv/bin/python -m jobradar.ui`. It opens a
+     map of the whole workflow that walks you through steps 4 to 8 with forms
+     and buttons, and shows the file or command behind each one, so you can
+     switch to the terminal at any point. See [docs/UI.md](docs/UI.md).
+   - **In a terminal and your editor.** Read on.
+4. **Add your key.** Copy the template and paste your key from step 2 into
+   it, after `ANTHROPIC_API_KEY=`:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   `.env` stays on your computer; Git ignores it.
+5. **Tell it who you are.** Two files, both Markdown:
    - `profile/cvs/` — add your CV as a `.md` file (one per role type if you
      have several), then delete `example.md`. A Word CV (`.docx`) works too:
-     drop it in and the setup check in step 7 makes the Markdown for you.
+     drop it in and the setup check in step 8 makes the Markdown for you.
 
      **Use your full base CV, not one you trimmed for an earlier
      application.** Everything reads from it. Skill fit is scored against it.
@@ -145,10 +159,10 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    - `profile/identity.md` — replace the template with a real page about what
      you are moving toward and away from. This drives interest fit; vague
      text gets vague scores.
-5. **Tell it what is non-negotiable** in `config/constraints.yaml`: cantons,
+6. **Tell it what is non-negotiable** in `config/constraints.yaml`: cantons,
    workload range, office days. The shipped example is three cantons around
    Zürich.
-6. **Pick the company boards to scan.** None are selected.
+7. **Pick the company boards to scan.** None are selected.
    `config/boards/` lists the boards jobradar knows: `ch.yaml` for
    Switzerland, grouped by industry with the list of sections at the top,
    and `global.yaml` for big employers whose one board serves every country.
@@ -158,7 +172,7 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    posting on the boards you chose, so it costs far more than a normal day
    (see [What it costs](#what-it-costs)). You can add more later, a few at a
    time. With none chosen, only web search runs.
-7. **Check the setup**, then do a dry run (real Claude calls on sample
+8. **Check the setup**, then do a dry run (real Claude calls on sample
    postings, no live sources), then a real one:
 
    ```bash
@@ -194,6 +208,8 @@ you apply, so nothing is paid for twice.
 
 - [docs/SETUP.md](docs/SETUP.md) — the profile in full, credentials, getting
   updates from this repo later
+- [docs/UI.md](docs/UI.md) — the browser interface: the workflow on one
+  page, as an alternative to the terminal for daily use
 - [docs/SEARCH.md](docs/SEARCH.md) — the daily run: configuration dials, how
   a run works, the report and run log
 - [docs/CLOUD.md](docs/CLOUD.md) — the GitHub Actions schedule and email

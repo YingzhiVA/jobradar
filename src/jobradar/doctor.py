@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from . import boards
 from .apply.pdf import find_browser
 from .archive import load_retention
-from .config import ConfigError, load_search_settings
+from .config import ConfigError, cost_warnings, load_search_settings
 from .markets import DEFAULT_MARKET, Market
 from .cv import sync_word_cvs
 from .models import Constraints
@@ -203,7 +203,15 @@ def check_config(root: Path) -> list[Check]:
             extras.append("RAV reporting on")
         if settings.sources.eth_jobs.enabled:
             extras.append("ETH board on")
-        checks.append(Check("search.yaml", OK, ", ".join(extras) or "defaults"))
+        costly = cost_warnings(settings.thresholds, settings.output)
+        if costly:
+            checks.append(Check(
+                "search.yaml", WARN,
+                "; ".join(w.short for w in costly) + " — runs will cost more, mostly for "
+                "write-ups of postings not worth reading (see docs/COSTS.md)",
+            ))
+        else:
+            checks.append(Check("search.yaml", OK, ", ".join(extras) or "defaults"))
     except ConfigError as exc:
         checks.append(Check("search.yaml", FAIL, str(exc)))
     try:
