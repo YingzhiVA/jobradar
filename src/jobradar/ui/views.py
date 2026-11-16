@@ -12,6 +12,7 @@ import markdown as markdown_lib
 
 from ..apply.main import _MIN_PASTED_CHARS, STUB_MARKER, _read_pasted_jd, _stub_jd_file
 from ..apply import archive as app_archive
+from ..apply import lint, pdf
 from ..apply.tracker import render_rav_month
 from ..apply.tracker import (
     STATUS_DRAFTED,
@@ -109,36 +110,75 @@ def parse_report(text: str) -> list[dict]:
 MAX_REPORTS = 30
 
 
+def _application_finder(root: Path):
+    """A lookup from posting URL to its application, active first, then
+    archived, so a match already applied to never offers a second draft."""
+    active, archived = _tracker(root), _archived_tracker(root)
+
+    def find(url: str) -> dict:
+        if not url:
+            return {"application": None, "application_status": None, "application_archived": False}
+        app = active.find_by_url(url)
+        was_archived = False
+        if app is None or app.archived_on:
+            app, was_archived = archived.find_by_url(url), True
+        return {
+            "application": app.uid if app else None,
+            "application_status": app.status if app else None,
+            "application_archived": bool(app) and was_archived,
+        }
+    return find
+
+
+def _read_report(path: Path, find) -> dict:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return {
+        "date": path.stem,
+        "degraded": "This run was **incomplete**" in text,
+        "matches": [
+            {
+                **{k: v for k, v in match.items() if k != "writeup"},
+                "writeup_html": render_markdown(match["writeup"]),
+                **find(match["url"]),
+            }
+            for match in parse_report(text)
+        ],
+    }
+
+
+def _dated(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        return []
+    return sorted((p for p in directory.glob("*.md") if _REPORT_NAME.match(p.name)), reverse=True)
+
+
 def report(root: Path) -> dict:
     """The matches of every daily report not yet archived, newest report
     first, each match with its write-up as HTML and the application already
     drafted for it, if any."""
-    reports_dir = root / "reports"
-    dated = sorted(
-        (p for p in reports_dir.glob("*.md") if _REPORT_NAME.match(p.name)), reverse=True
-    ) if reports_dir.is_dir() else []
-    tracker = _tracker(root)
-    reports = []
-    for path in dated[:MAX_REPORTS]:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        matches = []
-        for match in parse_report(text):
-            app = tracker.find_by_url(match["url"]) if match["url"] else None
-            matches.append({
-                **{k: v for k, v in match.items() if k != "writeup"},
-                "writeup_html": render_markdown(match["writeup"]),
-                "application": app.uid if app else None,
-                "application_status": app.status if app else None,
-            })
-        reports.append({
-            "date": path.stem,
-            "degraded": "This run was **incomplete**" in text,
-            "matches": matches,
-        })
+    dated = _dated(root / "reports")
+    find = _application_finder(root)
     return {
-        "reports": reports,
+        "reports": [_read_report(path, find) for path in dated[:MAX_REPORTS]],
         "hidden": max(0, len(dated) - MAX_REPORTS),
+        "archived": len(_dated(root / "reports" / "archive")),
         "last_run": _last_run(root),
+    }
+
+
+# Archived reports are read this many at a time, newest first. Counting them
+# is a directory listing; reading one is parsing its Markdown, so only the
+# page asked for is read.
+REPORT_ARCHIVE_PAGE = 20
+
+
+def report_archive(root: Path, offset: int = 0, limit: int = REPORT_ARCHIVE_PAGE) -> dict:
+    dated = _dated(root / "reports" / "archive")
+    find = _application_finder(root)
+    return {
+        "total": len(dated),
+        "reports": [_read_report(path, find) for path in dated[offset:offset + limit]],
+        "next": offset + limit if offset + limit < len(dated) else None,
     }
 
 
@@ -146,18 +186,45 @@ def report(root: Path) -> dict:
 _ORDER = ("notes.md", "tailored_cv", "cover_letter", "interview_prep.md", "job_description.md")
 _SHOWN = (".md", ".pdf", ".html")
 # What may be edited in the page: the documents the user sends or pastes into.
-_EDITABLE = re.compile(r"^(tailored_cv|cover_letter|notes|job_description)[\w-]*\.md$")
+# The documents you send or keep notes in. The job description is the
+# posting's own text, kept as the record of what was applied to: it is read
+# here, not edited. (A posting that could not be read gets its text through
+# paste_jd, not through this.)
+_EDITABLE = re.compile(r"^(tailored_cv|cover_letter|notes)[\w-]*\.md$")
 
 
 def _rank(name: str) -> tuple[int, str]:
     return (next((i for i, prefix in enumerate(_ORDER) if name.startswith(prefix)), len(_ORDER)), name)
 
 
-def _folder(root: Path, uid: str) -> tuple[object, Path]:
+def _archived_tracker(root: Path) -> Tracker:
+    """applications/archive/applications.json, where archiving moves a row
+    (apply/archive.py). Empty when nothing was archived yet."""
+    return Tracker(app_archive.archive_tracker_path(root / "applications"))
+
+
+def _find(root: Path, uid: str) -> tuple[object, Path, bool] | None:
+    """An application by its id, active or archived: (application, folder,
+    archived). Ids are never reused across the two (tracker.next_uid)."""
     app = _tracker(root).find_by_uid(str(uid))
-    if app is None or app.archived_on:
-        raise SetupError(f"No active application {uid}.")
-    return app, root / "applications" / app.folder
+    if app is not None and not app.archived_on:
+        return app, root / "applications" / app.folder, False
+    app = _archived_tracker(root).find_by_uid(str(uid))
+    if app is not None:
+        return app, root / "applications" / app_archive.ARCHIVE_DIRNAME / app.folder, True
+    return None
+
+
+def _folder(root: Path, uid: str, *, writable: bool = False) -> tuple[object, Path]:
+    """An application's folder. Archived ones can be read, never written:
+    they are the record of what was sent."""
+    found = _find(root, uid)
+    if found is None:
+        raise SetupError(f"No application {uid}.")
+    app, folder, archived = found
+    if archived and writable:
+        raise SetupError(f"Application {app.uid} is archived and can't be changed here.")
+    return app, folder
 
 
 _WHY = re.compile(r"^- Why: (.+)$", re.MULTILINE)
@@ -186,7 +253,7 @@ def paste_jd(root: Path, uid: str, text: str) -> None:
     """Store a job description pasted in the page where the pipeline looks
     for it: under the marker line of the placeholder's job_description.md,
     which is also where the terminal route has it pasted."""
-    app, folder = _folder(root, uid)
+    app, folder = _folder(root, uid, writable=True)
     if app.status != STATUS_NEEDS_JD:
         raise SetupError(f"Application {app.uid} already has its job description.")
     pasted = text.strip()
@@ -208,35 +275,71 @@ def paste_jd(root: Path, uid: str, text: str) -> None:
     path.write_text(f"{head}{STUB_MARKER}\n\n{pasted}\n", encoding="utf-8")
 
 
+def _describe(app, folder: Path, archived: bool) -> dict:
+    files = sorted(
+        (p.name for p in folder.iterdir() if p.is_file() and p.suffix.lower() in _SHOWN),
+        key=_rank,
+    ) if folder.is_dir() else []
+    return {
+        **(_waiting_for_jd(folder) if app.status == STATUS_NEEDS_JD and not archived else {}),
+        "uid": app.uid,
+        "folder": app.folder,
+        "title": app.title or "(waiting for the job description)",
+        "company": app.company,
+        "url": app.url,
+        "status": app.status,
+        "tier": app.tier,
+        "prepared_on": app.prepared_on,
+        "submitted_on": app.submitted_on,
+        "closed_on": app.closed_on,
+        "archived_on": app.archived_on,
+        "archived": archived,
+        "skill_score": app.skill_score,
+        "interest_score": app.interest_score,
+        "files": files,
+        "open": not archived and app.status in (STATUS_NEEDS_JD, STATUS_DRAFTED, STATUS_SUBMITTED),
+    }
+
+
 def applications(root: Path) -> list[dict]:
     """Active applications, newest first."""
-    out = []
-    for app in _tracker(root).applications:
-        if app.archived_on:
-            continue
-        folder = root / "applications" / app.folder
-        files = sorted(
-            (p.name for p in folder.iterdir() if p.is_file() and p.suffix.lower() in _SHOWN),
-            key=_rank,
-        ) if folder.is_dir() else []
-        out.append({
-            **(_waiting_for_jd(folder) if app.status == STATUS_NEEDS_JD else {}),
-            "uid": app.uid,
-            "folder": app.folder,
-            "title": app.title or "(waiting for the job description)",
-            "company": app.company,
-            "url": app.url,
-            "status": app.status,
-            "tier": app.tier,
-            "prepared_on": app.prepared_on,
-            "submitted_on": app.submitted_on,
-            "closed_on": app.closed_on,
-            "skill_score": app.skill_score,
-            "interest_score": app.interest_score,
-            "files": files,
-            "open": app.status in (STATUS_NEEDS_JD, STATUS_DRAFTED, STATUS_SUBMITTED),
-        })
+    out = [
+        _describe(app, root / "applications" / app.folder, False)
+        for app in _tracker(root).applications
+        if not app.archived_on
+    ]
     return sorted(out, key=lambda a: a["uid"], reverse=True)
+
+
+def archived_count(root: Path) -> int:
+    return len(_archived_tracker(root).applications)
+
+
+# Archived applications are listed this many at a time. Only their rows are
+# read for the list (one JSON file); a folder is read when it is opened.
+ARCHIVE_PAGE = 50
+
+
+def archived_applications(root: Path, offset: int = 0, limit: int = ARCHIVE_PAGE) -> dict:
+    """A page of archived applications, newest first, without their files."""
+    apps = sorted(_archived_tracker(root).applications, key=lambda a: a.uid, reverse=True)
+    page = apps[offset:offset + limit]
+    return {
+        "total": len(apps),
+        "applications": [
+            {k: v for k, v in _describe(app, Path("/nonexistent"), True).items() if k != "files"}
+            for app in page
+        ],
+        "next": offset + limit if offset + limit < len(apps) else None,
+    }
+
+
+def application(root: Path, uid: str) -> dict:
+    """One application, active or archived, with its files."""
+    found = _find(root, uid)
+    if found is None:
+        raise SetupError(f"No application {uid}.")
+    return _describe(*found)
 
 
 def file_path(root: Path, uid: str, name: str) -> Path:
@@ -259,11 +362,33 @@ def read_file(root: Path, uid: str, name: str) -> dict:
         "name": name,
         "text": text,
         "html": render_markdown(text),
-        "editable": bool(_EDITABLE.match(name)),
+        "editable": bool(_EDITABLE.match(name)) and not _find(root, uid)[2],
+        # A document that is sent as a PDF: saving it is followed by making
+        # the PDF again, so the two never disagree. pdf.convertible_files is
+        # what `jobradar.apply --pdf` converts and what the linter checks.
+        "makes_pdf": path in pdf.convertible_files(path.parent),
+        "pdf_problem": _pdf_problem(root, uid, path),
     }
 
 
+def _pdf_problem(root: Path, uid: str, md_path: Path) -> str | None:
+    """Why this document's PDF is not what would be sent, in the linter's own
+    words: missing, older than the text, or a print that fell back to HTML.
+    None when the PDF is current, or the document has none."""
+    if md_path not in pdf.convertible_files(md_path.parent):
+        return None
+    app = _folder(root, uid)[0]
+    # A finding names its file first: the .md, its .pdf, or the .html left
+    # by a print that fell back.
+    own = {md_path.name, md_path.with_suffix(".pdf").name, md_path.with_suffix(".html").name}
+    for finding in lint._check_pdfs(md_path.parent, app):
+        if finding.code in lint.PDF_STALENESS_CODES and finding.message.split()[0] in own:
+            return finding.message
+    return None
+
+
 def write_file(root: Path, uid: str, name: str, text: str) -> None:
+    _folder(root, uid, writable=True)
     path = file_path(root, uid, name)
     if not _EDITABLE.match(name):
         raise SetupError(f"{name} can't be edited here.")

@@ -639,6 +639,56 @@ async function confirmSearch() {
     "Search and pay");
 }
 
+// ── archives ───────────────────────────────────────────────────────────────
+// Archived reports and applications are folded away under their live ones.
+// Only their number is known up front; the first page is read when the
+// section is unfolded, and each further page on request. What was read stays
+// in `store` while the page is open, so folding and unfolding costs nothing.
+
+function archiveStore(path) {
+  return { path, open: false, items: [], next: 0, total: null, loading: false };
+}
+
+async function loadArchivePage(store) {
+  if (store.loading || store.next === null) return;
+  store.loading = true;
+  try {
+    const page = await api(`${store.path}?offset=${store.next}`);
+    store.items.push(...(page.reports || page.applications));
+    store.total = page.total;
+    store.next = page.next;
+  } finally {
+    store.loading = false;
+  }
+}
+
+// `count` is what the live view already knows; `body` draws the items read
+// so far; `rerender` draws the whole view again after a toggle or a load.
+function archiveSection(store, { title, count, unit, body, rerender }) {
+  if (!count) return null;
+  const toggle = act(async () => {
+    store.open = !store.open;
+    if (store.open && store.items.length === 0) await loadArchivePage(store);
+    rerender();
+  });
+  const more = act(async () => { await loadArchivePage(store); rerender(); });
+  const left = (store.total ?? count) - store.items.length;
+  return h("section", { class: "archive" },
+    h("button", { class: "archive-head", "aria-expanded": String(store.open), onclick: toggle },
+      h("span", { class: "caret" }, store.open ? "▾" : "▸"),
+      h("h2", {}, title),
+      h("span", { class: "muted" }, `${count}`)),
+    store.open && [
+      body(store.items),
+      store.next !== null && h("button", { class: "quiet", onclick: more }, `Show ${Math.min(left, ARCHIVE_STEP[unit])} more of ${left}`),
+    ]);
+}
+
+// Page sizes, as the server reads them (views.REPORT_ARCHIVE_PAGE, ARCHIVE_PAGE).
+const ARCHIVE_STEP = { reports: 20, applications: 50 };
+const reportArchive = archiveStore("/api/report/archive");
+const applicationArchive = archiveStore("/api/applications/archive");
+
 // ── workflow ───────────────────────────────────────────────────────────────
 // The whole of jobradar on one page: what happens in which order, where each
 // stage stands in this copy, and how to do it here or in a terminal.
@@ -725,7 +775,8 @@ function nextUp(o, phases, check) {
   if (!o.last_run || o.last_run.practice) return ["Setup is complete. Next: your first search.", "Search now", runSearch];
   if (o.needs_jd) return [`${o.needs_jd} posting${o.needs_jd > 1 ? "s" : ""} could not be read and need the job text pasted in.`, "Open applications", () => go("applications")];
   if (o.drafted) return [`${o.drafted} draft${o.drafted > 1 ? "s" : ""} to finish and send.`, "Open applications", () => go("applications")];
-  return ["Nothing is waiting for you.", "Search now", runSearch];
+  // Nothing waiting: no banner. Search keeps its own button in stage 7.
+  return null;
 }
 
 function openStage(stage) {
@@ -759,7 +810,7 @@ async function renderWorkflow(main, fresh) {
     return put(main, h("div", { class: "note bad" }, error.message));
   }
   const phases = workflow(o, lastCheck);
-  const [message, label, fn] = nextUp(o, phases, lastCheck);
+  const next = nextUp(o, phases, lastCheck);
   const setup = phases[0].stages;
   const setupDone = setup.every((stage) => stage.state === "done" || stage.id === "health" && stage.state !== "act");
   const open = setupOpen ?? !setupDone;
@@ -806,7 +857,8 @@ async function renderWorkflow(main, fresh) {
     h("p", { class: "muted" }, "Three phases: one-time setup, search relevant postings, then apply on demand. Every stage can be done on this page or in a terminal and your editor, and the two ways can be mixed freely.",
       h("span", { class: "hint" }, " The grey line under each stage names the file it lives in or the command that runs it."),
       h("span", { class: "no-hint" }, " Tick “Show commands”, top right, to see the file or command behind each stage.")),
-    h("div", { class: "note next row between" }, h("span", {}, message), h("button", { class: fn === runSearch ? "primary" : "", disabled: busy(), onclick: act(fn) }, label)),
+    next && h("div", { class: "note next row between" }, h("span", {}, next[0]),
+      h("button", { class: next[2] === runSearch ? "primary" : "", disabled: busy(), onclick: act(next[2]) }, next[1])),
     phases.map((phase, i) => h("section", { class: "phase" },
       phaseHead(phase, PAGES[i]),
       h("p", { class: "muted small" }, phase.note,
@@ -914,7 +966,8 @@ function matchCard(m, practice, fold) {
       external(m.url, "Open the posting"),
       h("span", { class: "grow" }),
       m.application
-        ? h("button", { onclick: () => { openApp = m.application; go("applications"); } }, `Open application #${m.application}`)
+        ? h("button", { onclick: () => { openApp = m.application; go("applications"); } },
+            `Open application #${m.application}${m.application_archived ? " (archived)" : ""}`)
         : !practice && draftButtons(m.url)));
 }
 
@@ -924,7 +977,8 @@ function matchRow(m, unfold) {
     h("span", { class: "caret" }, "▸"),
     h("span", { class: "grow" }, h("strong", {}, m.title), h("span", { class: "muted" }, ` · ${m.company}`)),
     h("span", { class: "muted small" }, `skill ${m.skill_score ?? "–"} · interest ${m.interest_score ?? "–"}`),
-    status && h("span", { class: `pill ${status[1]}` }, `${status[0]} #${m.application}`),
+    status && h("span", { class: `pill ${m.application_archived ? "grey" : status[1]}` },
+      `${m.application_archived ? "Archived" : status[0]} #${m.application}`),
     h("span", { class: `pill ${m.tier === "best" ? "best" : ""}` }, m.tier === "best" ? "Strong" : "Okay"));
 }
 
@@ -952,7 +1006,7 @@ async function renderMatches(main) {
     return h("section", { class: "report" },
       h("div", { class: "report-head" },
         h("h2", {}, report.date),
-        h("span", { class: "muted" }, i === 0 ? "newest report" : "", count === 0 ? `${i === 0 ? " · " : ""}no match` : ""),
+        h("span", { class: "muted" }, i === 0 ? "newest report" : "", count === 0 ? `${i === 0 ? " · " : ""}no match` : "", i < 0 ? " · archived" : ""),
         practice && h("span", { class: "pill warn" }, "Practice"),
         report.degraded && h("span", { class: "pill warn" }, "Incomplete")),
       practice && h("div", { class: "note warn" }, "This was a practice run on made-up sample postings. These are not real jobs; press Search now for real ones."),
@@ -988,6 +1042,11 @@ async function renderMatches(main) {
     reports.length > 0 && h("p", { class: "muted small gap" },
       "Reports leave this list when they are archived, on the window in config/retention.yaml.",
       data.hidden > 0 && ` ${data.hidden} older report${data.hidden > 1 ? "s are" : " is"} not shown: the page reads the newest ${reports.length} at most.`),
+    archiveSection(reportArchive, {
+      title: "Archived reports", count: data.archived, unit: "reports",
+      body: (items) => items.map((report) => section(report, -1)),
+      rerender: () => renderMatches(main),
+    }),
     alt("Reports are ", file("reports/<date>.md"), ". Search: ", cmd(`${PY} -m jobradar.search.main`),
       " Draft: ", cmd(`${PY} -m jobradar.apply --url <address>`)),
   );
@@ -1017,9 +1076,11 @@ function fileLabel(name) {
 
 async function renderApplications(main) {
   app.refresh = () => renderApplications(main);
-  const { applications } = await api("/api/applications");
+  const { applications, archived } = await api("/api/applications");
   if (openApp) {
-    const found = applications.find((a) => Number(a.uid) === Number(openApp));
+    const found = applications.find((a) => Number(a.uid) === Number(openApp))
+      // Not active: an archived one, from a match link or an address.
+      || await api(`/api/application?uid=${encodeURIComponent(openApp)}`).catch(() => null);
     if (found) return renderApplication(main, found);
     openApp = null;
   }
@@ -1038,6 +1099,19 @@ async function renderApplications(main) {
               h("td", { class: "small" }, a.prepared_on || ""),
               h("td", { class: "small" }, a.submitted_on || "")))))),
     h("div", { id: "rav" }),
+    archiveSection(applicationArchive, {
+      title: "Archived applications", count: archived, unit: "applications",
+      body: (items) => h("div", { class: "card" }, h("table", { class: "apps" },
+        h("thead", {}, h("tr", {}, ["#", "Role", "Status", "Submitted", "Archived"].map((t) => h("th", {}, t)))),
+        h("tbody", {}, items.map((a) =>
+          h("tr", { class: "clickable", onclick: () => { openApp = a.uid; go("applications"); } },
+            h("td", { class: "muted" }, a.uid),
+            h("td", {}, h("strong", {}, a.title), h("div", { class: "muted small" }, a.company)),
+            h("td", {}, h("span", { class: "pill grey" }, STATUS[a.status]?.[0] ?? a.status)),
+            h("td", { class: "small" }, a.submitted_on || ""),
+            h("td", { class: "small" }, a.archived_on || "")))))),
+      rerender: () => renderApplications(main),
+    }),
   );
   renderRav(main.querySelector("#rav"));
 }
@@ -1148,62 +1222,105 @@ async function renderApplication(main, a) {
       result.output && h("pre", { class: "out" }, result.output));
   });
 
+  // The documents are tabs, the page's way of switching what is shown, so
+  // they can't be taken for the action buttons above. A PDF (or the .html
+  // print version) is not a tab of its own: it is offered as a link inside
+  // the tab of the document it was made from.
+  const texts = a.files.filter((name) => name.endsWith(".md"));
+  const printed = (name) => a.files.filter((other) => !other.endsWith(".md") && other.replace(/\.\w+$/, ".md") === name);
+  const loose = a.files.filter((name) => !name.endsWith(".md") && !texts.includes(name.replace(/\.\w+$/, ".md")));
+  const printLink = (name) => h("a", { class: "print-link", href: fileUrl(a.uid, name), target: "_blank", rel: "noopener" },
+    `Open the ${name.split(".").pop().toUpperCase()} ↗`);
+
   const show = async (name) => {
-    fileButtons.forEach(([n, b]) => b.classList.toggle("on", n === name));
-    if (!name.endsWith(".md")) return;
+    tabs.forEach(([n, b]) => b.classList.toggle("on", n === name));
     const file = await api(`/api/file?uid=${a.uid}&name=${encodeURIComponent(name)}`);
+    // A document that is sent as a PDF is saved together with its PDF, so
+    // what you read here and what you send never differ. Making the PDF runs
+    // `--pdf`, which checks the application first and refuses on a mistake
+    // (a wrong company name, say): then the text is saved, the PDF is not,
+    // and the job bar's Details say why.
     const edit = () => {
       const area = h("textarea", { class: "tall", value: file.text });
+      const save = act(async () => {
+        await api("/api/file", { uid: a.uid, name, text: area.value });
+        if (!file.makes_pdf) {
+          toast("Saved.");
+          return show(name);
+        }
+        await start("pdf", { uid: a.uid }, async (data) => {
+          // Judged by the PDF itself, not the command's exit: a print can
+          // fall back to HTML and still end cleanly.
+          const after = await api(`/api/file?uid=${a.uid}&name=${encodeURIComponent(name)}`).catch(() => null);
+          if (after && !after.pdf_problem) toast("Saved, and the PDF is made again.");
+          else if (data.state === "failed") toast("Saved, but the PDF was not made: the check found a problem. See Details below.", true);
+          else toast("Saved, but the PDF could not be made. See the note above the text.", true);
+          openApp = a.uid;
+          go("applications"); // the PDF link may be new
+        });
+      });
       put(viewer, area, h("div", { class: "row end gap" },
         h("button", { onclick: () => show(name) }, "Cancel"),
-        h("button", { class: "primary", onclick: act(async () => {
-          await api("/api/file", { uid: a.uid, name, text: area.value });
-          toast("Saved.");
-          show(name);
-        }) }, "Save")));
+        h("button", { class: "primary", disabled: file.makes_pdf && busy(), onclick: save },
+          file.makes_pdf ? "Save and make the PDF" : "Save")));
     };
-    put(viewer, 
-      file.editable && h("div", { class: "row end" }, h("button", { onclick: edit }, name === "job_description.md" ? "Paste or edit the text" : "Edit")),
+    // The document's own tools (its PDF, Edit) sit at the right end of the
+    // tab row, so a document without any starts right under the tabs.
+    put(tools, printed(name).map(printLink), loose.map(printLink),
+      file.editable && h("button", { class: "small", onclick: () => { put(tools, loose.map(printLink)); edit(); } }, "Edit"));
+    put(viewer,
+      file.pdf_problem && h("div", { class: "note warn" }, file.pdf_problem),
       h("div", { class: "prose", html: file.html }));
   };
-  const fileButtons = a.files.map((name) => [name,
-    name.endsWith(".md")
-      ? h("button", { onclick: act(() => show(name)) }, fileLabel(name))
-      : h("a", { class: "button", href: fileUrl(a.uid, name), target: "_blank", rel: "noopener" },
-          `${fileLabel(name.replace(/\.\w+$/, ".md"))} (${name.split(".").pop().toUpperCase()}) ↗`)]);
+  const tools = h("div", { class: "row doc-tools" });
+  const tabs = texts.map((name) => [name, h("button", { role: "tab", onclick: act(() => show(name)) }, fileLabel(name))]);
 
-  const waiting = a.status === "needs_jd";
+  // An archived application is the record of what was sent: read, not changed.
+  const waiting = a.status === "needs_jd" && !a.archived;
   const id = String(Number(a.uid));
-  const actions = [];
-  if (a.status === "drafted") {
-    actions.push(
+  // Two kinds of action, in two labelled rows: work on the documents, and
+  // recording what happened to the application. An archived one has neither.
+  const work = [];
+  const record = [];
+  if (!a.archived && a.status === "drafted") {
+    work.push(
       h("button", { onclick: lint }, "Check before sending"),
       h("button", { disabled: busy(), onclick: long("pdf") }, "Make PDFs"),
-      a.tier !== "full" && h("button", { disabled: busy(), onclick: long("upgrade") }, "Add a cover letter"),
-      h("button", { class: "primary", onclick: quick("submitted", ["Mark as submitted?", "Do this after you have actually submitted the application on the employer’s site. jobradar never sends anything itself.", "Mark as submitted"]) }, "Mark as submitted"));
+      a.tier !== "full" && h("button", { disabled: busy(), onclick: long("upgrade") }, "Add a cover letter"));
+    record.push(h("button", { class: "primary", onclick: quick("submitted", ["Mark as submitted?", "Do this after you have actually submitted the application on the employer’s site. jobradar never sends anything itself.", "Mark as submitted"]) }, "Submitted"));
   }
-  if (a.status === "drafted" || a.status === "submitted") {
-    actions.push(h("button", { disabled: busy(), onclick: long("prep") }, "Prepare for an interview"));
+  if (!a.archived && (a.status === "drafted" || a.status === "submitted")) {
+    work.push(h("button", { disabled: busy(), onclick: long("prep") }, "Prepare for an interview"));
   }
-  if (a.status === "submitted") {
-    actions.push(
+  if (!a.archived && a.status === "submitted") {
+    record.push(
       h("button", { onclick: quick("offer", ["Record an offer?", "Congratulations. This closes the application.", "Record offer"]) }, "Got an offer"),
       h("button", { onclick: quick("rejected", ["Record a rejection?", "This closes the application.", "Record rejection"]) }, "Rejected"));
   }
-  if (a.open) actions.push(h("button", { onclick: quick("withdrawn", ["Withdraw?", "This closes the application as withdrawn.", "Withdraw"]) }, "Withdraw"));
+  if (a.open) record.push(h("button", { onclick: quick("withdrawn", ["Withdraw?", "This closes the application as withdrawn.", "Withdraw"]) }, "Withdrawn"));
+  const group = (label, buttons) => buttons.filter(Boolean).length > 0 &&
+    h("div", { class: "action-group" }, h("span", { class: "action-label" }, label), h("div", { class: "row" }, buttons));
 
   put(main, 
-    crumbs("applications", `#${a.uid}`),
-    h("div", { class: "row between" },
-      h("div", {}, h("h1", {}, a.title), h("p", { class: "muted" }, [a.company, `#${a.uid}`, a.tier === "full" ? "full effort" : "quick draft"].filter(Boolean).join(" · "))),
-      h("span", { class: `pill ${STATUS[a.status]?.[1] ?? ""}` }, STATUS[a.status]?.[0] ?? a.status)),
+    crumbs("applications", a.archived ? `#${a.uid} (archived)` : `#${a.uid}`),
+    h("div", { class: "row between app-head" },
+      // The posting link belongs with what identifies the application, so
+      // the box below holds actions only and is left out when there are none.
+      h("div", {}, h("h1", {}, a.title), h("p", { class: "muted" }, [
+        a.company, `#${a.uid}`, a.tier === "full" ? "CV + cover letter" : "quick draft",
+        a.skill_score != null && `skill fit ${a.skill_score}`, a.interest_score != null && `interest fit ${a.interest_score}`,
+      ].filter(Boolean).join(" · "), " · ", external(a.url, "posting ↗"))),
+      h("div", { class: "row" },
+        a.archived && h("span", { class: "pill grey" }, `Archived ${a.archived_on || ""}`.trim()),
+        h("span", { class: `pill ${a.archived ? "grey" : STATUS[a.status]?.[1] ?? ""}` }, STATUS[a.status]?.[0] ?? a.status))),
+    a.archived && h("div", { class: "note" }, "This application is archived: it is shown as it was sent and can't be changed here. Its material is in ",
+      h("code", {}, `applications/archive/${a.folder}/`), ", to reuse for a new application."),
     waiting && pasteBox(a, again),
-    h("div", { class: "card" },
-      h("div", { class: "row" }, !waiting && external(a.url, "Open the posting"),
-        a.skill_score != null && h("span", { class: "muted small" }, `Skill fit ${a.skill_score} · Interest fit ${a.interest_score}`)),
-      h("div", { class: "row gap" }, actions),
+    (work.some(Boolean) || record.length > 0) && h("div", { class: "card" },
+      group("Work on it", work),
+      group("Update status", record),
       output,
-      !waiting && h("details", { class: "gap hint" },
+      !waiting && !a.archived && h("details", { class: "gap hint" },
         h("summary", {}, "The same in the terminal"),
         alt("The folder is ", file(`applications/${a.folder}/`), ". Edit the Markdown files there in your editor."),
         h("div", { class: "cmds" },
@@ -1213,10 +1330,12 @@ async function renderApplication(main, a) {
     // A placeholder's only file is the stub the paste box above writes to;
     // showing it as a document would offer a second, rawer way to do the same.
     !waiting && h("div", { class: "card" },
-      h("div", { class: "files" }, fileButtons.map(([, b]) => b)),
+      h("div", { class: "tabs doc-tabs" },
+        h("div", { class: "row", role: "tablist" }, tabs.map(([, b]) => b)),
+        h("span", { class: "grow" }), tools),
       viewer),
   );
-  const first = !waiting && a.files.find((n) => n.endsWith(".md"));
+  const first = !waiting && texts[0];
   if (first) show(first).catch((error) => toast(error.message, true));
 }
 

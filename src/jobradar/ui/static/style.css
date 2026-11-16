@@ -150,11 +150,19 @@ table.apps { width: 100%; border-collapse: collapse; }
 table.apps td, table.apps th { text-align: left; padding: 11px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.apps th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--soft); font-weight: 600; }
 table.apps tr.clickable { cursor: pointer; } table.apps tr.clickable:hover { background: var(--accent-soft); }
-.files { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
-.files button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
-.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--soft); padding: 8px 12px; }
-.tabs button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+/* An application's documents: tabs, as on Settings, so switching what is
+   shown never looks like the action buttons above them. */
+.doc-tabs { align-items: center; margin-bottom: 16px; }
+.doc-tabs [role=tablist] { gap: 24px; }
+.doc-tools { gap: 14px; }
+.print-link { font-size: .9rem; }
+button.small { padding: 4px 12px; font-size: .9rem; }
+/* Tabs start at the left edge of what they switch, text first: no padding
+   on the sides, so the first tab lines up with the content below it and each
+   underline is exactly as wide as its label. */
+.tabs { display: flex; gap: 4px 24px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+.tabs > button, .tabs [role=tab] { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--soft); padding: 8px 0; text-align: left; }
+.tabs > button.on, .tabs [role=tab].on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 pre.out { white-space: pre-wrap; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: .85rem; max-height: 320px; overflow: auto; }
 
 /* job bar, toast, dialog */
@@ -194,3 +202,23 @@ body.no-hints .no-hint { display: inline; }
 .rav-table { overflow-x: auto; margin-top: 12px; font-size: .9rem; }
 .rav-table h1 { display: none; }
 .rav-table table { width: 100%; }
+
+/* archives: folded under the live list, read a page at a time */
+.archive { margin-top: 30px; }
+.archive-head { display: flex; align-items: baseline; gap: 12px; text-align: left; border: 0; border-radius: 0; background: none; padding: 4px 0; }
+.archive-head h2 { margin: 0; font-size: 1.15rem; }
+.archive-head .caret { color: var(--soft); width: 1em; }
+.archive-head:hover .caret { color: var(--accent); }
+.archive .report { margin-top: 18px; }
+
+/* an application's actions, in labelled rows */
+.action-group { display: grid; grid-template-columns: 9em 1fr; gap: 12px; align-items: start; }
+.action-group + .action-group { margin-top: 14px; }
+.action-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--soft); font-weight: 600; padding-top: 11px; white-space: nowrap; }
+@media (max-width: 640px) { .action-group { grid-template-columns: 1fr; gap: 6px; } }
+
+/* an application's title block: the status pills stay at the right of the
+   title, however long the subtitle under it runs */
+.app-head { flex-wrap: nowrap; align-items: flex-start; }
+.app-head > :first-child { flex: 1; min-width: 0; }
+.app-head > :last-child { flex: none; margin-top: 10px; }

@@ -138,3 +138,25 @@ def test_period_line_is_styled():
 def test_italic_line_under_heading_that_is_not_a_period_stays_italic():
     html = pdf.markdown_to_html("**Acme AG** *- PM*\n*Led two product initiatives.*\n", title="cv")
     assert "cv-period" not in html.split("<body>")[1]
+
+
+def test_a_print_that_leaves_the_old_pdf_in_place_is_a_failure(tmp_path, monkeypatch):
+    """A browser that exits 0 without writing (a confined snap Chromium) must
+    not have the previous run's PDF counted as this run's."""
+    import subprocess
+
+    html = tmp_path / "cv.html"
+    html.write_text("<p>cv</p>", encoding="utf-8")
+    old = tmp_path / "cv.pdf"
+    old.write_bytes(b"%PDF old")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, "", ""))
+    assert pdf._print_to_pdf("chromium", html, old) is False
+
+    def writes(*args, **kwargs):
+        old.write_bytes(b"%PDF new")
+        import os
+        os.utime(old, ns=(old.stat().st_atime_ns, old.stat().st_mtime_ns + 1_000_000))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", writes)
+    assert pdf._print_to_pdf("chromium", html, old) is True

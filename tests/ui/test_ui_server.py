@@ -112,3 +112,9 @@ def test_the_setup_check_is_reused_until_something_it_reads_changes(running, mon
     (app.root / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-changed\n", encoding="utf-8")
     _call(base + "/api/doctor", **token)
     assert len(calls) == 3  # an edit in an editor makes the old result stale
+
+
+@pytest.mark.parametrize("path", ["/api/report/archive?offset=x", "/api/applications/archive?offset=-"])
+def test_a_page_that_is_not_a_number_is_refused(running, path):
+    app, base = running
+    assert _call(base + path, **{"X-Jobradar-Token": app.token})[0] == 400

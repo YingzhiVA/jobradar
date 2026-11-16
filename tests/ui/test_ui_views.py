@@ -90,6 +90,29 @@ def test_only_documents_inside_an_active_application_can_be_opened(root, uid, na
         views.file_path(root, uid, name)
 
 
+def test_documents_sent_as_pdf_are_the_ones_saved_with_their_pdf(root):
+    made = {name: views.read_file(root, "007", name)["makes_pdf"] for name in ("tailored_cv.md", "tailored_cv_de.md", "notes.md")}
+    assert made == {"tailored_cv.md": True, "tailored_cv_de.md": True, "notes.md": False}
+
+
+def test_a_pdf_older_than_its_text_is_named(root):
+    import os
+
+    folder = root / "applications" / "007_2026-11-10_acme_ra-manager"
+    assert views.read_file(root, "007", "tailored_cv.md")["pdf_problem"] is None  # the PDF is the newer file
+    md = folder / "tailored_cv.md"
+    os.utime(md, (md.stat().st_atime, (folder / "tailored_cv.pdf").stat().st_mtime + 60))
+    assert "older than tailored_cv.md" in views.read_file(root, "007", "tailored_cv.md")["pdf_problem"]
+    assert views.read_file(root, "007", "notes.md")["pdf_problem"] is None
+
+
+def test_the_job_description_is_read_not_edited(root):
+    assert views.read_file(root, "007", "job_description.md")["editable"] is False
+    assert views.read_file(root, "007", "tailored_cv.md")["editable"] is True
+    with pytest.raises(SetupError):
+        views.write_file(root, "007", "job_description.md", "changed")
+
+
 def test_documents_can_be_edited_but_not_created(root):
     views.write_file(root, "7", "tailored_cv_de.md", "Neu\n\n\n")
     assert views.read_file(root, "007", "tailored_cv_de.md")["text"] == "Neu\n"
@@ -133,7 +156,7 @@ def test_only_the_newest_reports_are_read_where_nothing_archives_them(root, monk
 
 
 def test_no_report_yet(tmp_path):
-    assert views.report(tmp_path) == {"reports": [], "hidden": 0, "last_run": None}
+    assert views.report(tmp_path) == {"reports": [], "hidden": 0, "archived": 0, "last_run": None}
     assert views.applications(tmp_path) == []
 
 
@@ -235,3 +258,72 @@ def test_rav_month_shows_archived_applications_and_suggests_the_month_to_file(ro
     two = views.rav(root, "2026-09", today=today)["table_html"]
     assert two.count("<table>") == 1 and two.count("<tr>") == 3 and "| " not in two
     assert (september["filed_on"], september["report"]) == ("2026-09-30", "reports/rav/2026-09.md")
+
+
+# ── archives ────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def archived(root: Path) -> Path:
+    """Application 003 archived, as apply/archive.py leaves it: its row in
+    the archive tracker and its folder under applications/archive/."""
+    folder = root / "applications" / "archive" / "003_old"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "tailored_cv.md").write_text("# Sent CV\n", encoding="utf-8")
+    (root / "applications" / "archive" / "applications.json").write_text(json.dumps({"applications": [
+        {"url": "https://old.example/3", "folder": "003_old", "uid": "003", "title": "Old role", "company": "Oldco",
+         "status": "rejected", "submitted_on": "2026-08-01", "archived_on": "2026-10-01"},
+    ]}), encoding="utf-8")
+    # The active tracker of the root fixture still has a stale row for 003;
+    # the archive is what counts for an archived id.
+    return root
+
+
+def test_an_archived_application_opens_read_only(archived):
+    app = views.application(archived, "3")
+    assert (app["archived"], app["open"], app["files"]) == (True, False, ["tailored_cv.md"])
+    assert views.read_file(archived, "003", "tailored_cv.md")["editable"] is False
+    with pytest.raises(SetupError, match="archived"):
+        views.write_file(archived, "003", "tailored_cv.md", "changed")
+    assert (archived / "applications" / "archive" / "003_old" / "tailored_cv.md").read_text(encoding="utf-8") == "# Sent CV\n"
+    assert views.application(archived, "7")["archived"] is False
+    with pytest.raises(SetupError):
+        views.application(archived, "999")
+
+
+def test_archived_applications_come_a_page_at_a_time_newest_first(archived):
+    rows = [{"url": f"https://x.example/{n}", "folder": f"{n:03d}_x", "uid": f"{n:03d}", "status": "rejected",
+             "archived_on": "2026-10-01"} for n in range(1, 8)]
+    (archived / "applications" / "archive" / "applications.json").write_text(json.dumps({"applications": rows}), encoding="utf-8")
+    first = views.archived_applications(archived, 0, 3)
+    assert [a["uid"] for a in first["applications"]] == ["007", "006", "005"]
+    assert (first["total"], first["next"]) == (7, 3)
+    last = views.archived_applications(archived, 6, 3)
+    assert [a["uid"] for a in last["applications"]] == ["001"] and last["next"] is None
+    assert views.archived_count(archived) == 7
+
+
+def test_a_match_already_applied_to_and_archived_links_to_it(archived):
+    (archived / "reports" / "2026-11-10.md").write_text(
+        render_report([_final("okay", "Old role", "Oldco", "https://old.example/3", 70, 45)], date(2026, 11, 10)),
+        encoding="utf-8",
+    )
+    (match,) = views.report(archived)["reports"][0]["matches"]
+    assert (match["application"], match["application_status"], match["application_archived"]) == ("003", "rejected", True)
+
+
+def test_archived_reports_are_counted_up_front_and_read_a_page_at_a_time(root, monkeypatch):
+    archive = root / "reports" / "archive"
+    archive.mkdir(parents=True)
+    for day in range(1, 6):
+        (archive / f"2026-10-{day:02d}.md").write_text(
+            render_report([_final("okay", f"Role {day}", "Acme", f"https://acme.example/{day}", 70, 45)], date(2026, 10, day)),
+            encoding="utf-8",
+        )
+    (archive / "notes.md").write_text("not a report\n", encoding="utf-8")
+    assert views.report(root)["archived"] == 5
+    first = views.report_archive(root, 0, 2)
+    assert [r["date"] for r in first["reports"]] == ["2026-10-05", "2026-10-04"]
+    assert (first["total"], first["next"]) == (5, 2)
+    assert first["reports"][0]["matches"][0]["title"] == "Role 5"
+    assert views.report_archive(root, 4, 2)["next"] is None
