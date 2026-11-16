@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="token" content="{{token}}">
+<title>jobradar</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <button class="brand" id="home" title="Workflow"><span class="dot"></span>jobradar</button>
+  <nav id="nav"></nav>
+  <label class="hints-toggle" title="Show the file or terminal command behind each stage and form">
+    <input type="checkbox" id="hints"><span>Show commands</span>
+  </label>
+  <div id="version" class="muted small"></div>
+</header>
+<main id="main"><p class="muted">Loading…</p></main>
+<aside id="job" hidden></aside>
+<div id="toast" hidden></div>
+<dialog id="dialog"></dialog>
+<script src="/static/app.js"></script>
+</body>
+</html>

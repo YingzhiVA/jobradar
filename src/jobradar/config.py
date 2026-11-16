@@ -212,6 +212,99 @@ class Output:
         return cls(max_best=max_best, max_okay=max_okay)
 
 
+# ── Settings that are valid but costly ──────────────────────────────────────
+#
+# The search accepts any floor and any cap; these only warn. What a setting
+# costs follows from how a run spends (docs/COSTS.md):
+#
+# - Every match a run shows gets a write-up, about 3 cents on Sonnet. So the
+#   per-run caps bound the write-up bill, and a lower floor is what fills them.
+# - An eligible posting that loses the cap is not marked seen
+#   (ranking.ids_to_leave_unmarked): it is scored again on every later run until
+#   it is shown or closes. A low floor with a small cap grows that backlog.
+# - Unused strong slots are not handed down to okay (ranking.select_matches),
+#   so a lower strong bar fills slots that would otherwise stay empty: up to
+#   max_best more write-ups per run.
+#
+# The page's settings form enforces the two per-run ranges; a hand-edited
+# search.yaml outside them is warned about here, not refused, since max_best: 0
+# (never promote a headline) is a documented choice.
+
+WRITEUP_COST_USD = 0.03  # one Sonnet write-up, docs/COSTS.md (October 2026)
+WEEKDAY_RUNS_PER_MONTH = 22
+LOW_SKILL_FLOOR = 50  # warn below this
+LOW_BEST_THRESHOLD = 70  # warn below this
+MANY_PER_RUN = 5  # warn above this many matches per run
+MAX_BEST_RANGE = (1, 5)
+MAX_OKAY_RANGE = (0, 10)
+
+
+@dataclass(frozen=True)
+class CostWarning:
+    key: str  # what it is about: min_skill, best_threshold, per_run, combined, max_best, max_okay
+    short: str  # one clause, for the setup check's single line
+    message: str  # the full explanation, for the settings form
+
+
+def cost_warnings(thresholds: Thresholds, output: Output) -> list[CostWarning]:
+    """What in these settings will make runs cost noticeably more, mostly by
+    writing up postings that are not worth it. Empty for the defaults."""
+    warnings: list[CostWarning] = []
+    skill, best = thresholds.min_skill, thresholds.best_threshold
+    per_run = output.max_best + output.max_okay
+    low_skill = skill < LOW_SKILL_FLOOR
+    many = per_run > MANY_PER_RUN
+
+    if low_skill:
+        message = (
+            f"A skill floor of {skill} lets through postings that meet only part of "
+            f"what they ask for, and most of those are not worth applying to. Each one "
+            f"that passes is either written up or, once this run's limit is full, "
+            f"scored again on every later run until it is shown or taken down. "
+            f"The default is {DEFAULT_MIN_SKILL}."
+        )
+        if thresholds.min_interest == 0:
+            message += (
+                " If you lower it to see more, an interest floor (40, say) keeps out "
+                "the roles you don't want."
+            )
+        warnings.append(CostWarning("min_skill", f"skill floor {skill} is low", message))
+    if best < LOW_BEST_THRESHOLD:
+        warnings.append(CostWarning(
+            "best_threshold", f"strong-match bar {best} is low",
+            f"A strong-match bar of {best} makes “strong” ordinary. It costs too: strong "
+            f"slots that no posting clears stay empty, so a lower bar fills them, and "
+            f"each filled slot is one more write-up per run. The default is "
+            f"{DEFAULT_BEST_THRESHOLD}.",
+        ))
+    if many:
+        warnings.append(CostWarning(
+            "per_run", f"{per_run} matches per run",
+            f"Up to {per_run} matches per run means up to {per_run} write-ups, about "
+            f"{WRITEUP_COST_USD * 100:.0f} cents each: up to ${per_run * WRITEUP_COST_USD:.2f} "
+            f"a run, about ${per_run * WRITEUP_COST_USD * WEEKDAY_RUNS_PER_MONTH:.0f} a month "
+            f"of weekday runs. The default is "
+            f"{DEFAULT_MAX_BEST + DEFAULT_MAX_OKAY}.",
+        ))
+    if low_skill and (many or best < LOW_BEST_THRESHOLD):
+        warnings.append(CostWarning(
+            "combined", "low floor with many slots",
+            "These add up: with a low floor, enough postings pass to fill every slot on "
+            "most runs, so expect to pay for the full number of write-ups each time, "
+            "mostly for roles you would not apply to.",
+        ))
+    for key, value, (low, high), label in (
+        ("max_best", output.max_best, MAX_BEST_RANGE, "strong matches"),
+        ("max_okay", output.max_okay, MAX_OKAY_RANGE, "okay matches"),
+    ):
+        if not low <= value <= high:
+            warnings.append(CostWarning(
+                key, f"{value} {label} per run is outside {low}–{high}",
+                f"{value} {label} per run is outside the usual {low} to {high}.",
+            ))
+    return warnings
+
+
 @dataclass(frozen=True)
 class Schedule:
     """How often the search actually runs.
@@ -506,6 +599,8 @@ def main(argv: list[str] | None = None) -> None:
 # or a one-off run without hand-rebuilding the whole nested structure.
 __all__ = [
     "ConfigError",
+    "CostWarning",
+    "cost_warnings",
     "ETH_JOB_TYPES",
     "EthSource",
     "Output",

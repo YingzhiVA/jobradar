@@ -42,6 +42,16 @@ rank, write up, report. This page covers how to steer it and what it does.
    | `thresholds.best_threshold` | `80` | The bar for the headline "best" tier, on the *combined* (mean) score, so a promotion needs genuine interest as well as skill. |
    | `output.max_best` | `1` | Headline matches per run. |
    | `output.max_okay` | `3` | Secondary matches per run (daily total = `max_best + max_okay`). |
+
+   Three of these also set what a run costs, since every match shown is
+   written up (about 3 cents each, see [COSTS.md](COSTS.md)): a skill floor
+   below 50, a strong-match bar below 70, or more than 5 matches per run.
+   A low floor fills the slots on most runs, and an eligible posting that
+   misses the cap is scored again on every later run until it is shown. The
+   setup check (`python -m jobradar.doctor`) warns about each, and the
+   browser interface's settings form warns as you type. The form keeps
+   `max_best` to 1–5 and `max_okay` to 0–10; a hand-edited value outside
+   that is warned about, not refused.
    | `schedule.frequency` | `daily` | `daily` / `every_other_day` / `twice_weekly` / `weekly` / `custom` → at least 1 / 2 / 3 / 7 / `min_interval_days` days between runs. |
    | `schedule.days_of_week` | `[mon…fri]` | Days the search may run at all. `[]` means any day. |
    | `rav.enabled` | `false` | Swiss RAV registrants: turns on the monthly proof-of-applications table and the archive gate that keeps submitted applications until their month is filed. See [APPLY.md](APPLY.md). |
