@@ -45,6 +45,18 @@ def test_the_page_carries_the_token_and_a_policy_that_forbids_foreign_scripts(ru
     assert status == 200 and "use strict" in script
 
 
+def test_the_page_names_its_own_icon_so_the_browser_asks_for_no_favicon(running):
+    # Without the link a browser asks for /favicon.ico, which carries no token
+    # and is refused: an error in the console on every load.
+    _, base = running
+    with urllib.request.urlopen(base + "/", timeout=10) as response:
+        html = response.read().decode()
+    assert 'rel="icon"' in html and "/static/favicon.svg" in html
+    with urllib.request.urlopen(base + "/static/favicon.svg", timeout=10) as response:
+        assert response.status == 200 and response.headers["Content-Type"] == "image/svg+xml"
+        assert b"<svg" in response.read()
+
+
 def test_state_needs_the_token(running):
     app, base = running
     assert _call(base + "/api/state")[0] == 403

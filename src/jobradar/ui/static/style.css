@@ -39,6 +39,10 @@ p { margin: 0 0 .9em; } a { color: var(--accent); }
 .crumbs { display: flex; align-items: center; gap: 4px; font-size: .88rem; color: var(--soft); margin: -10px 0 14px; }
 .crumbs button.quiet { padding: 2px 4px; }
 main { max-width: 920px; margin: 0 auto; padding: 32px 24px; }
+/* A view's title with its buttons at the right: room under it, so what
+   follows doesn't run into the buttons. */
+.page-head { margin-bottom: 14px; }
+.page-head h1 { margin: 0; }
 
 /* controls
    Three weights of button, each with one meaning:
@@ -108,6 +112,9 @@ ol.steps-list { padding-left: 1.25em; } ol.steps-list li { margin-bottom: .5em; 
 .stage .detail { color: var(--soft); }
 .stage .how { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .note.next { background: var(--accent-soft); font-weight: 600; margin-top: 18px; }
+.note.next .plain { font-weight: 400; }
+/* a view with nothing in it yet: what will be here, and the way to it */
+.card.empty p { max-width: 62ch; }
 table.side { width: 100%; border-collapse: collapse; margin-top: 10px; }
 table.side td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); vertical-align: middle; font-size: .94rem; }
 
@@ -144,12 +151,18 @@ code.path, .cmd { background: var(--paper); border: 1px solid var(--line); borde
 .prose p { margin-bottom: .8em; } .prose ul { padding-left: 1.2em; } .prose h1, .prose h2, .prose h3 { font-size: 1.05rem; margin-top: 1em; }
 .prose table { border-collapse: collapse; } .prose td, .prose th { border: 1px solid var(--line); padding: 4px 8px; }
 details > summary { cursor: pointer; color: var(--accent); margin-bottom: 8px; }
-.funnel { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; color: var(--soft); font-size: .9rem; margin-bottom: 20px; }
+.funnel { display: flex; gap: 2px 7px; flex-wrap: wrap; align-items: center; color: var(--soft); font-size: .875rem; margin-bottom: 20px; }
 .funnel b { color: var(--ink); }
 table.apps { width: 100%; border-collapse: collapse; }
 table.apps td, table.apps th { text-align: left; padding: 11px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.apps th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--soft); font-weight: 600; }
 table.apps tr.clickable { cursor: pointer; } table.apps tr.clickable:hover { background: var(--accent-soft); }
+table.apps td.date, table.apps thead th { white-space: nowrap; }
+/* the list in groups: a heading row over each, with how many it holds */
+table.apps tr.group th { font: 600 1.05rem Georgia, "Iowan Old Style", "Times New Roman", serif; text-transform: none; letter-spacing: 0; color: var(--ink); padding: 26px 8px 8px; }
+table.apps tbody:first-of-type tr.group th { padding-top: 16px; }
+table.apps tr.group th span { font: 400 .875rem system-ui, sans-serif; margin-left: 10px; }
+table.apps tbody tr:last-child td { border-bottom: 0; }
 /* An application's documents: tabs, as on Settings, so switching what is
    shown never looks like the action buttons above them. */
 .doc-tabs { align-items: center; margin-bottom: 16px; }
@@ -163,6 +176,14 @@ button.small { padding: 4px 12px; font-size: .9rem; }
 .tabs { display: flex; gap: 4px 24px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
 .tabs > button, .tabs [role=tab] { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--soft); padding: 8px 0; text-align: left; }
 .tabs > button.on, .tabs [role=tab].on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+/* Settings while setup is open: each step's tab carries its place and state,
+   in the colours of the map's rail. "How much you see" is not a step. */
+.settings-tabs { gap: 4px 20px; }
+.settings-tabs .apart { margin-left: auto; }
+.tab-num { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 6px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--card); color: var(--soft); font-size: .72rem; font-weight: 600; vertical-align: 1px; }
+.tab-num.done { background: var(--good); border-color: var(--good); color: var(--card); }
+.tab-num.act { background: var(--act); border-color: var(--act); color: var(--card); }
+.setup-progress { margin: -4px 0 12px; }
 pre.out { white-space: pre-wrap; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: .85rem; max-height: 320px; overflow: auto; }
 
 /* job bar, toast, dialog */
@@ -190,6 +211,14 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 .match header .caret { border: 0; background: none; padding: 2px 0 0; color: var(--soft); font-size: 1rem; line-height: 1.6; }
 .match header.foldable:hover .caret { color: var(--accent); }
 .match-row .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A match's write-up: why it fits and the concerns side by side, which is the
+   decision; what to highlight when applying is folded under them. */
+.writeup { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 32px; font-size: .94rem; margin-top: 28px; }
+.writeup h4 { margin: 0 0 .8em; font: 600 .8rem system-ui, sans-serif; text-transform: uppercase; letter-spacing: .05em; color: var(--soft); }
+.writeup details { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 10px; }
+.writeup details > summary { margin-bottom: 0; }
+.writeup details[open] > summary { margin-bottom: 12px; }
+@media (max-width: 720px) { .writeup { grid-template-columns: 1fr; } }
 
 /* the "Show commands" switch: one class on <body> shows or hides every hint */
 .hints-toggle { display: flex; align-items: center; gap: 7px; font-size: .88rem; color: var(--soft); cursor: pointer; user-select: none; }

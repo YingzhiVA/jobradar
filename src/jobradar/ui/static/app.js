@@ -200,6 +200,30 @@ function go(view) {
   render();
 }
 
+// Setup as a newcomer meets it: the five steps in the order the map numbers
+// them. While any is open the page is "guiding": Settings opens on the first
+// open step, shows each step's state in its tab, and saving one leads to the
+// next instead of back to the map.
+const SETUP_ORDER = ["key", "cv", "identity", "constraints", "boards"];
+const setupSteps = () => (app.state && app.state.setup.steps) || {};
+const guiding = () => Boolean(app.state) && !app.state.setup.ready;
+const firstOpenStep = () => SETUP_ORDER.find((id) => !setupSteps()[id]) || null;
+
+// Why a search or a draft can't be started yet, for the title of a button
+// that is disabled because of it.
+const LOCKED = "Finish the setup steps first";
+// What a view shows instead of its content while setup is open: what will be
+// here, and a way to the step that is next.
+function setupFirst(what) {
+  const next = firstOpenStep();
+  return [
+    h("p", { class: "muted" }, what, next ? ` Setup comes first, and the next step is “${SETTING_TITLES[next]}”.` : " Setup comes first."),
+    h("div", { class: "row" }, h("button", { onclick: () => { settingsTab = next || "health"; go("settings"); } }, "Continue setup →")),
+  ];
+}
+const practiceRun = () => start("search_practice", {}); // asks first: see PAID
+const PRACTICE_TITLE = "Scores made-up sample postings against your real profile: a few cents, about a minute";
+
 // The address keeps the place, so a reload or the back button returns to it:
 // #workflow, #matches, #applications/055, #settings/boards.
 function remember() {
@@ -218,6 +242,8 @@ function recall() {
 }
 
 function render() {
+  // Settings not opened yet: start where there is something to do.
+  if (app.view === "settings" && !settingsTab) settingsTab = firstOpenStep() || "search";
   remember();
   renderNav();
   const main = $("main");
@@ -431,7 +457,7 @@ async function stepCv(box, done) {
         h("div", { class: "row end" }, h("button", { onclick: paste }, "Save pasted CV"))),
       real.length > 0 && h("p", { class: "muted small gap" }, "Applying to more than one kind of role? Add one CV per kind. Each should still cover all your experience and differ in emphasis only.")),
     h("div", { class: "row end" },
-      real.length > 0 && h("button", { onclick: done }, "Done")),
+      real.length > 0 && h("button", { onclick: done }, guiding() ? "Continue →" : "Done")),
   );
 }
 
@@ -456,6 +482,9 @@ async function editCv(name, after) {
   dialog.showModal();
 }
 
+// A setup form's save button, which also moves on while setup is still open.
+const saveLabel = () => (guiding() ? "Save and continue" : "Save");
+
 async function stepIdentity(box, done) {
   const data = await api("/api/identity");
   const areas = data.sections.map((s) => ({ ...s, el: h("textarea", { value: s.body }) }));
@@ -469,7 +498,7 @@ async function stepIdentity(box, done) {
     h("p", {}, "Your CV says what you can do. This page says what you want to do, and it is what stops the tool from showing you jobs you are qualified for but would never take."),
     h("div", { class: "note" }, "Write it as you would explain yourself to a thoughtful mentor, in plain sentences, in any language. Vague text gets vague scores: “something with impact” helps nobody, “a product role at a company under 200 people, close to the data” does."),
     h("div", { class: "card" }, areas.map((s) => field(s.label, s.hint, s.el))),
-    h("div", { class: "row end" }, h("button", { class: "primary", onclick: save }, "Save")),
+    h("div", { class: "row end" }, h("button", { class: "primary", onclick: save }, saveLabel())),
   );
 }
 
@@ -516,7 +545,7 @@ async function stepConstraints(box, done) {
       field("Most days a week in the office", "Postings that say they require more are dropped. Most don’t say, and those are kept.", days)),
     h("div", { class: "card" },
       field("Other deal-breakers", "One per line, in your own words. These are judged when a posting is read.", breakers)),
-    h("div", { class: "row end" }, h("button", { class: "primary", onclick: save }, "Save")),
+    h("div", { class: "row end" }, h("button", { class: "primary", onclick: save }, saveLabel())),
   );
 }
 
@@ -582,7 +611,7 @@ async function stepBoards(box, done) {
       search,
       data.own.length > 0 && h("p", { class: "muted small gap" }, `Also scanned, added by hand in companies.yaml: ${data.own.join(", ")}.`),
       list),
-    h("div", { class: "sticky-bar row" }, cost, h("button", { class: "primary", onclick: save }, "Save")),
+    h("div", { class: "sticky-bar row" }, cost, h("button", { class: "primary", onclick: save }, saveLabel())),
   );
 }
 
@@ -599,6 +628,13 @@ const OK_TEXT = {
 };
 const TECHNICAL = new Set(["Python", "Git merge driver", "retention.yaml", "boards"]);
 
+// The doctor's messages say "boards" where the page says "companies". A path
+// (config/boards/) keeps its name, and "company boards" becomes one word, not
+// "company companies".
+const pageWords = (message) => message
+  .replace(/\bcompany boards\b/g, "companies")
+  .replace(/(^|[\s(])boards\b(?!\/)/g, "$1companies");
+
 async function checksList(fresh) {
   const result = await api(`/api/doctor${fresh ? "?fresh=1" : ""}`);
   lastCheck = result;
@@ -609,7 +645,7 @@ async function checksList(fresh) {
     failed,
     list: h("ul", { class: "checks" }, shown.map((c) =>
       h("li", {}, h("strong", { class: c.level }, icon[c.level]), h("strong", {}, CHECK_NAMES[c.name] || c.name),
-        h("span", {}, c.level === "ok" && OK_TEXT[c.name] ? OK_TEXT[c.name] : c.message.replace(/\bboards\b/, "companies"))))),
+        h("span", {}, c.level === "ok" && OK_TEXT[c.name] ? OK_TEXT[c.name] : pageWords(c.message))))),
   };
 }
 
@@ -730,9 +766,9 @@ function workflow(o, check) {
       { title: "Search", what: "Fetches the postings on your boards and from the web, keeps the new ones, filters them by your must-haves, and scores what is left on skill fit and interest fit.",
         detail: !run ? "" : `${(run.found ?? 0).toLocaleString()} found → ${run.new ?? 0} new → ${run.passed ?? 0} passed must-haves → ${run.scored ?? 0} scored → ${run.surfaced ?? 0} surfaced.`,
         command: `${PY} -m jobradar.search.main`,
-        ...(o.setup.ready && (!run || run.practice) ? { state: "act", pill: "Next" } : { state: "info", pill: run ? `Last run ${run.date}${run.practice ? " (practice)" : ""}` : "Not run yet" }),
+        ...(o.setup.ready && (!run || run.practice) ? { state: "act", pill: "Next" } : { state: "info", pill: run ? `Last run ${run.date}${run.practice ? " (practice)" : ""}` : o.setup.ready ? "Not run yet" : "After setup" }),
         action: "search", button: "Search now",
-        extra: { label: "Practice run", action: "practice", title: "Scores made-up sample postings against your real profile: a few cents, about a minute", command: `${PY} -m jobradar.search.main --dry-run` } },
+        extra: { label: "Practice run", action: "practice", title: PRACTICE_TITLE, command: `${PY} -m jobradar.search.main --dry-run` } },
       { title: "Review the matches", what: "A handful per run, each with both scores, why it fits, and how to tailor your application. A run with no matches is normal.",
         detail: o.report_date ? `Newest report: ${o.report_date}. ${n(o.reports, "report", "reports")} not yet archived.` : "",
         // Never "waiting for you": nothing records that a match was read, so
@@ -744,7 +780,7 @@ function workflow(o, check) {
       { title: "Draft", what: "Fetches the posting and writes a tailored CV, a cover letter when one is asked for, and notes on fit, gaps and what was cut. In the posting’s language.",
         detail: o.needs_jd ? "A posting that could not be read waits for you to paste the job text." : "",
         command: `${PY} -m jobradar.apply --url <address>`, ...waiting(o.needs_jd, `${o.needs_jd} need the job text`), open: [o.needs_jd ? "applications" : "matches"], button: o.needs_jd ? "Open applications" : "Draft from a match",
-        more: { label: "Draft a posting you found", title: "Paste the address of a posting the search didn’t find", fn: () => { wantPaste = true; go("matches"); } } },
+        more: { label: "Draft a posting you found", title: "Paste the address of a posting the search didn’t find", fn: () => { wantPaste = true; openApp = null; go("applications"); } } },
       { title: "Edit and check", what: "Read what was written, change what you would say differently, run the pre-submission check, make the PDFs.",
         files: ["applications/<id>_…/"], command: `${PY} -m jobradar.apply --lint <id>`, ...waiting(o.drafted, `${n(o.drafted, "draft", "drafts")} not sent`), open: ["applications"], button: "Open applications" },
       { title: "Send and record", what: "You submit on the employer’s site yourself; jobradar never sends anything. Then record that you did, which starts the clock for follow-up and archiving.",
@@ -772,7 +808,12 @@ const SIDE_TASKS = (o) => [
 function nextUp(o, phases, check) {
   const open = phases[0].stages.find((stage) => stage.state === "act");
   if (open) return [open.id === "health" ? "The setup check found a problem." : `Next: ${open.title}.`, open.button, () => openStage(open)];
-  if (!o.last_run || o.last_run.practice) return ["Setup is complete. Next: your first search.", "Search now", runSearch];
+  // A fourth entry is a second, lesser button. The practice run is offered
+  // before the first search only: it is the cheap way to see the whole loop.
+  if (!o.last_run) return ["Setup is complete. Next: your first search.", "Search now", runSearch,
+    ["Practice run", practiceRun, PRACTICE_TITLE],
+    " To see how it works first, a practice run scores made-up postings against your real profile for a few cents."];
+  if (o.last_run.practice) return ["The practice run worked. Next: your first real search.", "Search now", runSearch];
   if (o.needs_jd) return [`${o.needs_jd} posting${o.needs_jd > 1 ? "s" : ""} could not be read and need the job text pasted in.`, "Open applications", () => go("applications")];
   if (o.drafted) return [`${o.drafted} draft${o.drafted > 1 ? "s" : ""} to finish and send.`, "Open applications", () => go("applications")];
   // Nothing waiting: no banner. Search keeps its own button in stage 7.
@@ -821,10 +862,11 @@ async function renderWorkflow(main, fresh) {
     // Filled means "this acts" (see the button rule in style.css). On the map
     // only Search does; every other stage button leads to a view, and the
     // orange marker is what says a stage is waiting.
-    if (stage.action === "search") buttons.push(h("button", { class: "primary", disabled: busy() || !o.setup.ready, onclick: act(runSearch) }, stage.button));
+    const locked = !o.setup.ready && LOCKED;
+    if (stage.action === "search") buttons.push(h("button", { class: "primary", title: locked, disabled: busy() || !o.setup.ready, onclick: act(runSearch) }, stage.button));
     else if (stage.open) buttons.push(h("button", { onclick: () => openStage(stage) }, stage.button));
     if (stage.more) buttons.push(h("button", { title: stage.more.title, onclick: stage.more.fn }, stage.more.label));
-    if (stage.extra) buttons.push(h("button", { title: stage.extra.title, disabled: busy() || !o.setup.ready, onclick: act(() => start("search_practice", {})) }, stage.extra.label));
+    if (stage.extra) buttons.push(h("button", { title: locked || stage.extra.title, disabled: busy() || !o.setup.ready, onclick: act(practiceRun) }, stage.extra.label));
     return h("li", { class: `stage ${stage.state}` },
       h("span", { class: "num" }, number),
       h("div", { class: "body" },
@@ -857,7 +899,9 @@ async function renderWorkflow(main, fresh) {
     h("p", { class: "muted" }, "Three phases: one-time setup, search relevant postings, then apply on demand. Every stage can be done on this page or in a terminal and your editor, and the two ways can be mixed freely.",
       h("span", { class: "hint" }, " The grey line under each stage names the file it lives in or the command that runs it."),
       h("span", { class: "no-hint" }, " Tick “Show commands”, top right, to see the file or command behind each stage.")),
-    next && h("div", { class: "note next row between" }, h("span", {}, next[0]),
+    next && h("div", { class: "note next row between" },
+      h("span", { class: "grow" }, next[0], next[4] && h("span", { class: "plain" }, next[4])),
+      next[3] && h("button", { title: next[3][2], disabled: busy(), onclick: act(next[3][1]) }, next[3][0]),
       h("button", { class: next[2] === runSearch ? "primary" : "", disabled: busy(), onclick: act(next[2]) }, next[1])),
     phases.map((phase, i) => h("section", { class: "phase" },
       phaseHead(phase, PAGES[i]),
@@ -920,6 +964,8 @@ async function draft(url, full) {
     const made = applications.find((a) => before.get(a.uid) !== a.status);
     if (made) {
       openApp = made.uid;
+      pasteOpen = false;
+      pasteText = "";
       if (made.status === "needs_jd") {
         job.note = "The posting could not be read, so nothing was drafted.";
         toast("jobradar could not read that posting. Paste its job description here.", true);
@@ -940,9 +986,54 @@ function draftButtons(address) {
   ];
 }
 
-// Set by the map's "Draft a posting you found": Matches opens with the cursor
-// in the paste box.
+// A posting you found yourself is drafted from the Applications page: it is
+// the start of an application and never passes through a search, so it has
+// no place among the matches. The box for its address is folded behind a
+// button in that page's heading, so the list comes first; what was typed
+// into it survives the page redrawing. `wantPaste` is set by the map's
+// "Draft a posting you found": the page then opens with the box unfolded and
+// the cursor in it.
 let wantPaste = false;
+let pasteOpen = false;
+let pasteText = "";
+
+// A write-up has three parts, by the prompt that writes it (search/writeup.py):
+// why the posting fits, what to highlight when applying, and the concerns.
+// Each starts with a paragraph that opens in bold. Deciding whether to apply
+// takes the first and the last, so the card sets those side by side and folds
+// the middle one, which is advice for after the decision. Returns null for
+// text of any other shape, which is then shown as it is.
+function writeupParts(html) {
+  const box = h("div", { html });
+  const parts = [];
+  for (const node of [...box.children]) {
+    const lead = node.tagName === "P" && node.firstChild && node.firstChild.nodeName === "STRONG" ? node.firstChild : null;
+    if (!lead && !parts.length) return null;
+    if (!lead) { parts[parts.length - 1].body.push(node); continue; }
+    const part = { title: lead.textContent.trim().replace(/[.:]$/, ""), body: [] };
+    parts.push(part);
+    lead.remove();
+    while (node.firstChild && (node.firstChild.nodeName === "BR" || (node.firstChild.nodeType === 3 && !node.firstChild.textContent.trim()))) node.firstChild.remove();
+    if (!node.firstChild) continue; // the heading stood alone in its paragraph
+    if (node.firstChild.nodeType === 3) node.firstChild.textContent = node.firstChild.textContent.trimStart();
+    part.body.push(node);
+  }
+  return parts.length === 3 && parts.every((part) => part.body.length) ? parts : null;
+}
+
+// Which matches have "what to highlight" unfolded, by posting address.
+const openAdvice = new Set();
+
+function writeup(m) {
+  const parts = writeupParts(m.writeup_html);
+  if (!parts) return h("div", { class: "prose", html: m.writeup_html });
+  const [why, advice, concerns] = parts;
+  const column = (part) => h("section", {}, h("h4", {}, part.title), part.body);
+  return h("div", { class: "prose writeup" },
+    column(why), column(concerns),
+    h("details", { open: openAdvice.has(m.url), ontoggle: (e) => (e.target.open ? openAdvice.add(m.url) : openAdvice.delete(m.url)) },
+      h("summary", {}, advice.title), advice.body));
+}
 
 // Which matches are unfolded to their write-up, by posting address. Those of
 // the newest report start open: they are what the page is opened for. Older
@@ -961,7 +1052,7 @@ function matchCard(m, practice, fold) {
         h("div", { class: "muted" }, [m.company, m.location].filter(Boolean).join(" · "))),
       h("span", { class: `pill ${m.tier === "best" ? "best" : ""}` }, m.tier === "best" ? "Strong match" : "Okay match")),
     h("div", { class: "scores" }, scoreBar("Skill fit", m.skill_score), scoreBar("Interest fit", m.interest_score)),
-    h("div", { class: "prose", html: m.writeup_html }),
+    writeup(m),
     h("div", { class: "row gap" },
       external(m.url, "Open the posting"),
       h("span", { class: "grow" }),
@@ -986,10 +1077,13 @@ async function renderMatches(main) {
   app.refresh = () => renderMatches(main);
   let data;
   try {
-    data = await api("/api/report");
+    // The setup state is read again with the report: a step may have been
+    // filled in, or emptied, in an editor since the page loaded.
+    [data] = await Promise.all([api("/api/report"), loadState()]);
   } catch (error) {
     return put(main, h("div", { class: "note bad" }, error.message));
   }
+  const ready = app.state.setup.ready;
   const run = data.last_run;
   const reports = data.reports;
   if (reports.length && openedNewest !== reports[0].date) {
@@ -997,7 +1091,6 @@ async function renderMatches(main) {
     openedNewest = reports[0].date;
   }
   const total = reports.reduce((sum, report) => sum + report.matches.length, 0);
-  const paste = h("input", { type: "url", placeholder: "https://…", class: "grow" });
   const section = (report, i) => {
     // A practice run's report is the newest one; its postings are not real.
     const practice = i === 0 && run && run.practice && run.date === report.date;
@@ -1016,23 +1109,25 @@ async function renderMatches(main) {
   };
   put(main,
     crumbs("matches"),
-    h("div", { class: "row between" },
+    h("div", { class: "row between page-head" },
       h("h1", {}, "Matches"),
-      h("button", { disabled: busy(), onclick: act(runSearch) }, "Search now")),
+      // With no report yet, the card below is where the first search starts.
+      (reports.length > 0 || !ready) && h("button", { title: !ready && LOCKED, disabled: busy() || !ready, onclick: act(runSearch) }, "Search now")),
     run && h("div", { class: "funnel" },
-      h("span", {}, `Last run ${run.date}:`),
-      h("span", {}, h("b", {}, (run.found ?? 0).toLocaleString()), " postings found"), "→",
+      h("span", {}, `Last search ${run.date}:`),
+      h("span", {}, h("b", {}, (run.found ?? 0).toLocaleString()), " postings"), "→",
       h("span", {}, h("b", {}, run.new ?? 0), " new"), "→",
-      h("span", {}, h("b", {}, run.passed ?? 0), " passed your must-haves"), "→",
+      h("span", {}, h("b", {}, run.passed ?? 0), " passed must-haves"), "→",
       h("span", {}, h("b", {}, run.scored ?? 0), " read in full"), "→",
       h("span", {}, h("b", {}, run.surfaced ?? 0), " worth your time")),
-    h("div", { class: "card", id: "own-posting" },
-      h("h3", {}, "Found a posting yourself?"),
-      h("p", { class: "muted small" }, "Paste its web address and jobradar scores it and drafts a tailored CV for it, the same as for a match."),
-      h("div", { class: "row" }, paste, draftButtons(() => paste.value))),
-    reports.length === 0 && h("div", { class: "card" },
+    reports.length === 0 && h("div", { class: "card empty" },
       h("h3", {}, "No report yet"),
-      h("p", { class: "muted" }, "Press Search now to run the first search.")),
+      ready
+        ? [h("p", { class: "muted" }, "A search reads the careers pages of your companies and the web, and lists here the few postings worth your time, each with two scores and the reasoning behind them. To see how that looks first, a practice run does the same with made-up postings for a few cents."),
+           h("div", { class: "row" },
+             h("button", { class: "primary", disabled: busy(), onclick: act(runSearch) }, "Search now"),
+             h("button", { title: PRACTICE_TITLE, disabled: busy(), onclick: act(practiceRun) }, "Practice run"))]
+        : setupFirst("Every search lists here the few postings worth your time, each with two scores and the reasoning behind them.")),
     reports.length > 1 && h("p", { class: "muted small" },
       `${total} match${total === 1 ? "" : "es"} in ${reports.length} reports not yet archived. Click a match’s heading to unfold or fold it.`,
       openMatches.size > 0
@@ -1050,11 +1145,6 @@ async function renderMatches(main) {
     alt("Reports are ", file("reports/<date>.md"), ". Search: ", cmd(`${PY} -m jobradar.search.main`),
       " Draft: ", cmd(`${PY} -m jobradar.apply --url <address>`)),
   );
-  if (wantPaste) {
-    wantPaste = false;
-    paste.scrollIntoView({ block: "center" });
-    paste.focus();
-  }
 }
 
 // ── applications ───────────────────────────────────────────────────────────
@@ -1074,9 +1164,26 @@ function fileLabel(name) {
   return name;
 }
 
+// The list is grouped by what an application asks of you, in that order:
+// drafts and unread postings need you, submitted ones wait on the employer,
+// closed ones stay until the archive takes them. A group with nothing in it
+// is left out.
+const APP_GROUPS = [
+  ["Needs you", ["needs_jd", "drafted"]],
+  ["Awaiting an answer", ["submitted"]],
+  ["Closed", ["rejected", "withdrawn", "offer"]],
+];
+// The day of the latest step an application took: the one its status names.
+// Editing its documents doesn't move it.
+function lastUpdate(a) {
+  if (a.status === "submitted") return a.submitted_on || a.prepared_on || "";
+  if (a.status === "needs_jd" || a.status === "drafted") return a.prepared_on || "";
+  return a.closed_on || a.submitted_on || a.prepared_on || "";
+}
+
 async function renderApplications(main) {
   app.refresh = () => renderApplications(main);
-  const { applications, archived } = await api("/api/applications");
+  const [{ applications, archived }] = await Promise.all([api("/api/applications"), loadState()]);
   if (openApp) {
     const found = applications.find((a) => Number(a.uid) === Number(openApp))
       // Not active: an archived one, from a match link or an address.
@@ -1084,20 +1191,48 @@ async function renderApplications(main) {
     if (found) return renderApplication(main, found);
     openApp = null;
   }
+  const ready = app.state.setup.ready;
+  const empty = applications.length === 0;
+  if (wantPaste) pasteOpen = true;
+  const paste = h("input", { type: "url", placeholder: "https://…", class: "grow", value: pasteText, oninput: (e) => { pasteText = e.target.value; } });
+  const togglePaste = () => { pasteOpen = !pasteOpen; wantPaste = pasteOpen; renderApplications(main); };
+  // Newest step first within a group; a status no group names (there is none
+  // today) lands in the last one, so nothing can drop off the list.
+  const grouped = new Set(APP_GROUPS.flatMap(([, statuses]) => statuses));
+  const groups = APP_GROUPS
+    .map(([name, statuses], i) => [name, applications
+      .filter((a) => statuses.includes(a.status) || (i === APP_GROUPS.length - 1 && !grouped.has(a.status)))
+      .sort((a, b) => lastUpdate(b).localeCompare(lastUpdate(a)) || Number(b.uid) - Number(a.uid))])
+    .filter(([, rows]) => rows.length);
   put(main,
     crumbs("applications"),
-    h("h1", {}, "Applications"),
-    applications.length === 0
-      ? h("div", { class: "card" }, h("p", { class: "muted" }, "Nothing drafted yet. Press Draft CV on a match, or paste a posting’s address on the Matches page."))
-      : h("div", { class: "card" }, h("table", { class: "apps" },
-          h("thead", {}, h("tr", {}, ["#", "Role", "Status", "Drafted", "Submitted"].map((t) => h("th", {}, t)))),
-          h("tbody", {}, applications.map((a) =>
-            h("tr", { class: "clickable", onclick: () => { openApp = a.uid; go("applications"); } },
-              h("td", { class: "muted" }, a.uid),
-              h("td", {}, h("strong", {}, a.title), h("div", { class: "muted small" }, a.company)),
-              h("td", {}, h("span", { class: `pill ${STATUS[a.status]?.[1] ?? ""}` }, STATUS[a.status]?.[0] ?? a.status)),
-              h("td", { class: "small" }, a.prepared_on || ""),
-              h("td", { class: "small" }, a.submitted_on || "")))))),
+    h("div", { class: "row between page-head" },
+      h("h1", {}, "Applications"),
+      ready && !empty && h("button", { "aria-expanded": String(pasteOpen), title: "Paste the address of a posting the search didn’t find", onclick: togglePaste }, "Draft a posting you found")),
+    empty && h("div", { class: "card empty" },
+      h("h3", {}, "Nothing drafted yet"),
+      ready
+        ? [h("p", { class: "muted" }, "An application starts as a draft written for one posting: a tailored CV, a cover letter when one is asked for, and notes on fit and gaps. You edit it here, send it yourself, and record what came back. Draft one from a match, or from a posting you found yourself."),
+           h("div", { class: "row" }, h("button", { onclick: () => go("matches") }, "Draft from a match →"))]
+        : setupFirst("An application starts as a draft written for one posting: a tailored CV, a cover letter when one is asked for, and notes on fit and gaps.")),
+    // With nothing drafted yet the box is simply there, under the card that
+    // says what an application is: it is one of the two ways to the first.
+    ready && (pasteOpen || empty) && h("div", { class: "card", id: "own-posting" },
+      h("div", { class: "row between" },
+        h("h3", {}, "Found a posting yourself?"),
+        !empty && h("button", { class: "quiet", onclick: togglePaste }, "Close")),
+      h("p", { class: "muted small" }, "Paste its web address and jobradar scores it and drafts a tailored CV for it, the same as for a match."),
+      h("div", { class: "row" }, paste, draftButtons(() => paste.value))),
+    !empty && h("div", { class: "card" }, h("table", { class: "apps" },
+      h("thead", {}, h("tr", {}, ["#", "Role", "Status", "Last update"].map((t) => h("th", {}, t)))),
+      groups.map(([name, rows]) => h("tbody", {},
+        h("tr", { class: "group" }, h("th", { colSpan: 4, scope: "rowgroup" }, name, h("span", { class: "muted" }, rows.length))),
+        rows.map((a) =>
+          h("tr", { class: "clickable", onclick: () => { openApp = a.uid; go("applications"); } },
+            h("td", { class: "muted" }, a.uid),
+            h("td", {}, h("strong", {}, a.title), h("div", { class: "muted small" }, a.company)),
+            h("td", {}, h("span", { class: `pill ${STATUS[a.status]?.[1] ?? ""}` }, STATUS[a.status]?.[0] ?? a.status)),
+            h("td", { class: "small date" }, lastUpdate(a)))))))),
     h("div", { id: "rav" }),
     archiveSection(applicationArchive, {
       title: "Archived applications", count: archived, unit: "applications",
@@ -1108,12 +1243,17 @@ async function renderApplications(main) {
             h("td", { class: "muted" }, a.uid),
             h("td", {}, h("strong", {}, a.title), h("div", { class: "muted small" }, a.company)),
             h("td", {}, h("span", { class: "pill grey" }, STATUS[a.status]?.[0] ?? a.status)),
-            h("td", { class: "small" }, a.submitted_on || ""),
-            h("td", { class: "small" }, a.archived_on || "")))))),
+            h("td", { class: "small date" }, a.submitted_on || ""),
+            h("td", { class: "small date" }, a.archived_on || "")))))),
       rerender: () => renderApplications(main),
     }),
   );
   renderRav(main.querySelector("#rav"));
+  if (wantPaste) {
+    wantPaste = false;
+    paste.scrollIntoView({ block: "center" });
+    paste.focus();
+  }
 }
 
 // The RAV proof for one month, and filing it. Shown only with RAV switched on
@@ -1407,19 +1547,30 @@ async function stepSearch(box, done) {
 async function stepHealth(box, _done, fresh) {
   put(box, h("p", { class: "muted" }, "Checking…"));
   const { list, failed } = await checksList(fresh);
+  // Setup done but never searched: the check is the last stop before the
+  // first search, so it says so and leads there.
+  const first = !failed && app.state && app.state.setup.ready && !app.state.setup.has_run;
   put(box, h("h1", {}, "Setup check"), h("div", { class: "card" }, list,
     h("div", { class: `note ${failed ? "bad" : ""}` }, failed
       ? `${failed} thing${failed > 1 ? "s" : ""} to fix before a search can run.`
+      : first ? "Setup is complete and everything a search needs is in place. Next: your first search, from the workflow page."
       : "Everything a search needs is in place."),
-    h("div", { class: "row end" }, h("button", { onclick: () => stepHealth(box, _done, true) }, "Check again"))));
+    h("div", { class: "row end" },
+      h("button", { onclick: () => stepHealth(box, _done, true) }, "Check again"),
+      first && h("button", { onclick: () => go("workflow") }, "Go to your first search →"))));
 }
 
+// The tabs follow the map: the setup steps in their order, under the titles
+// the map gives them, then the check. "How much you see" is not a setup step
+// (it ships with usable values), so it comes last and stands apart.
 const SETTINGS = [
-  ["search", "How much you see", stepSearch], ["boards", "Where to search", stepBoards],
-  ["constraints", "Must-haves", stepConstraints], ["identity", "What you want", stepIdentity],
-  ["cv", "CV", stepCv], ["key", "Claude key", stepKey], ["health", "Setup check", stepHealth],
+  ["key", "Connect Claude", stepKey], ["cv", "Your CV", stepCv], ["identity", "What you want", stepIdentity],
+  ["constraints", "Must-haves", stepConstraints], ["boards", "Where to search", stepBoards],
+  ["health", "Check", stepHealth], ["search", "How much you see", stepSearch],
 ];
-let settingsTab = "search";
+const SETTING_TITLES = Object.fromEntries(SETTINGS.map(([id, label]) => [id, label]));
+// null until Settings is first opened or a link names a tab: see render().
+let settingsTab = null;
 
 // What each settings tab writes, for doing the same by hand.
 const BY_HAND = {
@@ -1435,17 +1586,40 @@ const SAVES_IN_PLACE = new Set(["search", "boards", "constraints"]);
 
 function renderSettings(main) {
   const body = h("div", {});
-  // While setup is still open, saving a step leads back to the map, which
-  // shows the next one; afterwards a save stays where it is.
-  const guiding = app.state && !app.state.setup.ready;
+  const steps = setupSteps();
+  const open = firstOpenStep();
+  const wasGuiding = guiding();
+  // While setup is still open, saving a step leads straight to the next open
+  // one, and the last to the check; afterwards a save stays where it is.
   const saved = async () => {
     await loadState().catch(() => {});
-    guiding ? go("workflow") : renderSettings(main);
+    if (!wasGuiding) return renderSettings(main);
+    const next = firstOpenStep();
+    settingsTab = next || "health";
+    if (next) toast(`Saved. Next: ${SETTING_TITLES[next]}.`);
+    go("settings");
+    window.scrollTo(0, 0);
   };
+  // A step's place and state, in the colours of the map's rail: green and a
+  // tick when done, orange for the one to do next. Shown only while setup is
+  // open; once it is done the tabs are plain names again.
+  const marker = (id) => {
+    const place = SETUP_ORDER.indexOf(id);
+    if (!wasGuiding || place < 0) return null;
+    const state = steps[id] ? "done" : id === open ? "act" : "";
+    return h("span", { class: `tab-num ${state}`, title: steps[id] ? "Done" : id === open ? "Next" : "To do" }, steps[id] ? "✓" : place + 1);
+  };
+  const done = SETUP_ORDER.filter((id) => steps[id]).length;
   put(main,
     crumbs("settings"),
-    h("div", { class: "tabs" }, SETTINGS.map(([id, label]) =>
-      h("button", { class: settingsTab === id ? "on" : "", onclick: () => { settingsTab = id; go("settings"); } }, label))),
+    wasGuiding && h("p", { class: "muted small setup-progress" },
+      h("strong", {}, `Setup: ${done} of ${SETUP_ORDER.length} steps done. `),
+      "Fill them in from left to right; a search can run once all five are done."),
+    // While setup is open the bar holds the steps and their check; "How much
+    // you see" joins it once they are done, or when a link opens it.
+    h("div", { class: "tabs settings-tabs" }, SETTINGS.filter(([id]) => !wasGuiding || id !== "search" || settingsTab === id).map(([id, label]) =>
+      h("button", { class: `${settingsTab === id ? "on" : ""} ${id === "search" ? "apart" : ""}`, onclick: () => { settingsTab = id; go("settings"); } },
+        marker(id), label))),
     body,
     alt(BY_HAND[settingsTab](),
       SAVES_IN_PLACE.has(settingsTab) && h("div", { class: "muted" }, "Saving here changes only the lines that differ. Your comments and the keys this form doesn’t show stay as you wrote them.")));
