@@ -4,16 +4,17 @@ A job-search tool for Switzerland that reads every posting so you don't have
 to. Instead of keyword alerts, it scores each posting on two things: **skill
 fit** against your CV, and **interest fit** against a page you write about
 what you actually want next. Hard requirements (canton, workload, office days)
-are filtered out before any of that. What reaches you is at most one "best"
-match a day plus a few "okay" ones, and a day with nothing is a normal day.
+are filtered out before any of that. You decide how much reaches you: only
+postings that clear the skill and interest floors you set get through, up to
+a number per day you also set, and a day with nothing is a normal day.
 
 It finds postings itself: from the company career pages you choose (a
 catalogue of 85 Swiss boards across twenty applicant-tracking systems ships
 with it, grouped by industry, and none is scanned until you pick it), and from
-Claude's web search. It never scrapes or automates LinkedIn. When you decide
-to apply, it drafts a tailored CV and cover letter in the posting's language,
-keeps a submission log, and can prepare an interview sheet from your own
-stories.
+Claude's web search. It never scrapes or automates aggregator sites such as
+LinkedIn, where that is explicitly forbidden. When you decide to apply, it
+drafts a tailored CV and cover letter in the posting's language, keeps a
+submission log, and can prepare an interview sheet from your own stories.
 
 ## What it produces
 
@@ -64,6 +65,23 @@ a floor of 40. Every posting a run scores is kept with its reasoning in
 `reports/runs.jsonl`, matched or not, so you can tell a bad call from a
 correct one and move the floors when they are wrong.
 
+## In your browser, or in a terminal
+
+Once it is installed, jobradar can be worked from a page in your browser:
+`./.venv/bin/python -m jobradar.ui`. The page opens on a map of the whole
+workflow that shows where your copy stands and what to do next, here on a
+new copy that is set up and about to run its first search:
+
+![The workflow page: setup done, the first search marked as next with a practice run beside it, then reviewing the matches and the apply stages](docs/assets/ui-workflow.png)
+
+From there you fill in the setup as forms, run a search, read the matches
+with their reasoning, draft applications, edit them, and record what came
+back. Every button runs the command the docs give for it and every form
+writes the file you would otherwise edit, so the page and the terminal can be
+mixed freely; **Show commands** puts the file or command under each stage.
+Anything that costs money asks first. The page runs on your computer only and
+leaves Git alone. [docs/UI.md](docs/UI.md) has the details.
+
 ## Who it is for
 
 Anyone looking for a job in Switzerland who would rather read four good
@@ -73,8 +91,9 @@ manager, a lab technician or a controller alike. You need:
 
 - An **Anthropic API key** (Claude does the reading). Nothing is hosted;
   the key stays on your machine or in your own GitHub repo.
-- **Python 3.11 or newer** and a terminal you are willing to paste commands
-  into. Everything below is copy-paste.
+- **Python 3.11 or newer** and a terminal for the install, which is
+  copy-paste. After that you can work from the browser page or stay in the
+  terminal.
 - Optionally a **GitHub account**, so the search runs every morning in the
   cloud and emails you, without your computer being on.
 
@@ -220,6 +239,26 @@ you apply, so nothing is paid for twice.
 - [docs/DEVELOPING.md](docs/DEVELOPING.md) — tests, adding a source
 - [docs/ROADMAP.md](docs/ROADMAP.md) — what is deliberately not built yet
 - [CHANGELOG.md](CHANGELOG.md) — what changed between versions
+
+## Feedback
+
+Two kinds are especially welcome:
+
+- **Companies to add.** A company you would like scanned that the catalogue
+  lacks, or a board in it that stopped answering: its name and the address
+  of its careers page are enough. If you already added it to your own
+  `config/companies.yaml` with an `ats` and a `slug`, include those, and it
+  can go into the shared catalogue for everyone. [Open an
+  issue](https://github.com/YingzhiVA/jobradar/issues), as for a bug.
+- **Ideas and impressions**: a setup step that confused you, a match that
+  should not have reached you (or one that should have), something you wish
+  it did. Post them under [Ideas in the
+  discussions](https://github.com/YingzhiVA/jobradar/discussions/categories/ideas),
+  where others can add to them.
+
+Or get in touch through the contact details on the maintainer's [GitHub
+profile](https://github.com/YingzhiVA). Issues and discussions are public:
+leave your CV, your identity page and anything else personal out of them.
 
 ## Tests
 
