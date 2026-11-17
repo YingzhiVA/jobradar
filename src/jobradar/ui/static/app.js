@@ -168,7 +168,9 @@ async function loadState() {
 
 // The workflow is the root of the page: its three phases each have one view
 // to work in. The bar shows that, a home entry and then the phases in their
-// order, and `crumbs` repeats it at the top of each view.
+// order. `crumbs` at the top of each view is the way back: Workflow, the
+// view, and what is open in it. The phase is left out there, as it is not a
+// place of its own to go back to.
 const PAGES = [
   ["settings", "Settings", "Set up"],
   ["matches", "Matches", "Search"],
@@ -187,9 +189,9 @@ function renderNav() {
 }
 
 function crumbs(view, ...deeper) {
-  const [, label, phase] = PAGES.find(([id]) => id === view);
+  const [, label] = PAGES.find(([id]) => id === view);
   const link = (text, fn) => h("button", { class: "quiet", onclick: fn }, text);
-  const trail = [link("Workflow", () => go("workflow")), h("span", {}, phase)];
+  const trail = [link("Workflow", () => go("workflow"))];
   if (deeper.length) trail.push(link(label, () => { if (view === "applications") openApp = null; go(view); }), ...deeper.map((d) => h("span", {}, d)));
   else trail.push(h("span", {}, label));
   return h("nav", { class: "crumbs" }, trail.flatMap((item, i) => (i ? [h("span", { class: "chev" }, "›"), item] : [item])));
@@ -254,8 +256,11 @@ function render() {
 // ── running commands ───────────────────────────────────────────────────────
 
 // `note` replaces "Done." for a command that ended cleanly without doing what
-// was asked of it (a draft whose posting could not be read).
-const job = { open: false, lines: [], data: null, timer: null, onDone: null, note: null };
+// was asked of it (a draft whose posting could not be read), or says what it
+// found (the pre-submission check). `verdict`, [text, pill class], replaces
+// the finished pill where "Stopped with a problem" would be wrong: a check
+// that finds problems has worked.
+const job = { open: false, lines: [], data: null, timer: null, onDone: null, note: null, verdict: null };
 
 // The actions that call the model, and so are billed to the user's API key.
 // `start` asks before any of them, whichever button it came from, so a new
@@ -290,9 +295,13 @@ async function start(action, params, onDone) {
   if (!result.job) return result; // a quick command: finished already
   job.lines = [];
   job.note = null;
+  job.verdict = null;
   job.data = result.job;
   job.onDone = onDone || null;
   pollJob();
+  // The view was drawn while nothing ran: draw it again, so that what may
+  // not be pressed while a command runs is switched off or left out.
+  if (app.refresh) app.refresh();
   return result;
 }
 
@@ -332,14 +341,16 @@ function renderJob() {
   el.hidden = false;
   put(el, 
     h("div", { class: "head" },
-      running ? h("span", { class: "spin" }) : h("span", { class: `pill ${data.state === "done" ? "good" : "bad"}` }, verdict),
+      running ? h("span", { class: "spin" })
+        : job.verdict ? h("span", { class: `pill ${job.verdict[1]}` }, job.verdict[0])
+        : h("span", { class: `pill ${data.state === "done" ? "good" : "bad"}` }, verdict),
       h("strong", { class: "grow" }, data.label),
       h("span", { class: "muted small" }, elapsed),
       h("button", { class: "quiet", onclick: () => { job.open = !job.open; renderJob(); } }, job.open ? "Hide details" : "Details"),
       running
         ? h("button", { class: "danger", onclick: act(async () => { await api("/api/cancel", {}); }) }, "Stop")
         : h("button", { onclick: () => { job.data = null; renderJob(); } }, "Close")),
-    h("div", { class: "line" }, running || data.state !== "done" ? last : job.note || "Done."),
+    h("div", { class: "line" }, running ? last : job.note || (data.state === "done" ? "Done." : last)),
     job.open && data.command && h("div", { class: "ran" }, "Ran: ", cmd(data.command)),
     job.open && h("pre", { class: "out" }, job.lines.join("\n")),
   );
@@ -347,6 +358,10 @@ function renderJob() {
 }
 
 const busy = () => job.data && job.data.state === "running";
+// Whether the running command works on this application: then its status
+// can't be changed until the command ends or is stopped.
+const busyWith = (a) => busy() && (
+  (job.data.uid && Number(job.data.uid) === Number(a.uid)) || (job.data.url && job.data.url === a.url));
 
 // ── setup steps (shown under Settings, reached from the workflow) ──────────
 // Each takes the element to fill and a function to call once it is saved.
@@ -1151,7 +1166,7 @@ async function renderMatches(main) {
 
 let openApp = null;
 const STATUS = {
-  needs_jd: ["Needs the job text", "warn"], drafted: ["Draft", ""], submitted: ["Submitted", "good"],
+  needs_jd: ["Needs the job text", "warn"], drafted: ["Draft", "draft"], submitted: ["Submitted", "good"],
   rejected: ["Rejected", "grey"], withdrawn: ["Withdrawn", "grey"], offer: ["Offer", "best"],
 };
 const FILE_LABELS = [
@@ -1173,12 +1188,16 @@ const APP_GROUPS = [
   ["Awaiting an answer", ["submitted"]],
   ["Closed", ["rejected", "withdrawn", "offer"]],
 ];
-// The day of the latest step an application took: the one its status names.
-// Editing its documents doesn't move it.
+// The day of the latest step an application took: the one its status names,
+// or preparing an interview sheet, if that came later. Editing its documents
+// doesn't move it.
 function lastUpdate(a) {
-  if (a.status === "submitted") return a.submitted_on || a.prepared_on || "";
-  if (a.status === "needs_jd" || a.status === "drafted") return a.prepared_on || "";
-  return a.closed_on || a.submitted_on || a.prepared_on || "";
+  let step;
+  if (a.status === "submitted") step = a.submitted_on || a.prepared_on || "";
+  else if (a.status === "needs_jd" || a.status === "drafted") step = a.prepared_on || "";
+  else step = a.closed_on || a.submitted_on || a.prepared_on || "";
+  const prepped = a.prepped_on || "";
+  return prepped > step ? prepped : step;
 }
 
 async function renderApplications(main) {
@@ -1316,7 +1335,8 @@ let wantRav = false;
 // Nothing is paid for until the text is long enough for the pipeline to use,
 // which is checked here and again on the server.
 function pasteBox(a, again) {
-  const area = h("textarea", { class: "tall", value: a.jd_text || "", placeholder: "Paste the whole job description here: tasks, requirements, what it says about the company." });
+  // While a draft runs, what was pasted is what it reads: shown, not editable.
+  const area = h("textarea", { class: "tall", value: a.jd_text || "", readOnly: busyWith(a), placeholder: "Paste the whole job description here: tasks, requirements, what it says about the company." });
   const count = h("span", { class: "muted small" });
   const size = () => area.value.trim().length;
   const recount = () => {
@@ -1355,11 +1375,27 @@ async function renderApplication(main, a) {
     again();
   });
   const long = (action) => act(async () => { await start(action, { uid: a.uid }, again); });
+  // The check reports in the bar at the bottom, as the other commands do.
+  // It exits cleanly with warnings, and with an error when it finds a
+  // mistake; either way its findings are what Details shows, unfolded.
   const lint = act(async () => {
-    const result = await api("/api/run", { action: "lint", uid: a.uid });
-    put(output, 
-      h("div", { class: `note ${result.ok ? "" : "warn"}` }, result.ok ? "No problems found." : "Have a look at these before you send it:"),
-      result.output && h("pre", { class: "out" }, result.output));
+    put(output);
+    await start("lint", { uid: a.uid }, async (data) => {
+      const clean = job.lines.includes("No issues found.");
+      if (data.state === "done" && clean) {
+        job.note = "No problems found.";
+      } else if (data.state === "done") {
+        job.verdict = ["Passes, with warnings", "warn"];
+        job.note = "Worth a look before you send it: see the list below.";
+        job.open = true;
+      } else if (data.state === "failed") {
+        job.verdict = ["Problems found", "warn"];
+        job.note = "Have a look at these before you send it: see the list below.";
+        job.open = true;
+      }
+      renderJob();
+      again();
+    });
   });
 
   // The documents are tabs, the page's way of switching what is shown, so
@@ -1417,6 +1453,9 @@ async function renderApplication(main, a) {
 
   // An archived application is the record of what was sent: read, not changed.
   const waiting = a.status === "needs_jd" && !a.archived;
+  // A command working on this application (its draft, say): its status
+  // can't be changed meanwhile. Stop, in the bar below, is the way out.
+  const working = busyWith(a);
   const id = String(Number(a.uid));
   // Two kinds of action, in two labelled rows: work on the documents, and
   // recording what happened to the application. An archived one has neither.
@@ -1424,7 +1463,7 @@ async function renderApplication(main, a) {
   const record = [];
   if (!a.archived && a.status === "drafted") {
     work.push(
-      h("button", { onclick: lint }, "Check before sending"),
+      h("button", { disabled: busy(), onclick: lint }, "Check before sending"),
       h("button", { disabled: busy(), onclick: long("pdf") }, "Make PDFs"),
       a.tier !== "full" && h("button", { disabled: busy(), onclick: long("upgrade") }, "Add a cover letter"));
     record.push(h("button", { class: "primary", onclick: quick("submitted", ["Mark as submitted?", "Do this after you have actually submitted the application on the employer’s site. jobradar never sends anything itself.", "Mark as submitted"]) }, "Submitted"));
@@ -1438,6 +1477,7 @@ async function renderApplication(main, a) {
       h("button", { onclick: quick("rejected", ["Record a rejection?", "This closes the application.", "Record rejection"]) }, "Rejected"));
   }
   if (a.open) record.push(h("button", { onclick: quick("withdrawn", ["Withdraw?", "This closes the application as withdrawn.", "Withdraw"]) }, "Withdrawn"));
+  if (working) record.length = 0;
   const group = (label, buttons) => buttons.filter(Boolean).length > 0 &&
     h("div", { class: "action-group" }, h("span", { class: "action-label" }, label), h("div", { class: "row" }, buttons));
 

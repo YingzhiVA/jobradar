@@ -123,7 +123,9 @@ Interview prep (`--prep`) maps the posting's likely questions onto your
 prepared material and names what none of it covers. Behavioural questions
 lead with a STAR story from `profile/stories/`; technical ones lead with a
 published write-up from `profile/evidence/`, and the sheet ends with the
-write-ups worth re-reading before you walk in.
+write-ups worth re-reading before you walk in. The tracker records the day
+the sheet was written (`prepped_on`), which the browser interface counts as
+the application's last update.
 
 Cost design mirrors the daily run: Haiku extracts and scores, Sonnet writes
 the documents in a single call per posting, and the profile block (CVs,

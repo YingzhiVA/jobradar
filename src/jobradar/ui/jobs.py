@@ -68,7 +68,7 @@ ACTIONS: dict[str, Action] = {
     "upgrade": Action("Re-drafting #{uid} with a cover letter", APPLY, lambda p: ["--upgrade", _uid(p)]),
     "prep": Action("Preparing the interview sheet for #{uid}", APPLY, lambda p: ["--prep", _uid(p)]),
     "pdf": Action("Making the PDFs for #{uid}", APPLY, lambda p: ["--pdf", _uid(p)]),
-    "lint": Action("Checking #{uid}", APPLY, lambda p: ["--lint", _uid(p)], background=False),
+    "lint": Action("Checking #{uid} before sending", APPLY, lambda p: ["--lint", _uid(p)]),
     "submitted": Action("", APPLY, lambda p: ["--mark-submitted", _uid(p)], background=False),
     "rejected": Action("", APPLY, lambda p: ["--mark-rejected", _uid(p)], background=False),
     "withdrawn": Action("", APPLY, lambda p: ["--mark-withdrawn", _uid(p)], background=False),
@@ -123,6 +123,10 @@ class Job:
     label: str
     process: subprocess.Popen
     command: str = ""
+    # The application or posting it works on, so the page can tell which
+    # one is busy: an id, an address, or both empty.
+    uid: str = ""
+    url: str = ""
     started: float = field(default_factory=time.time)
     ended: float | None = None
     lines: list[str] = field(default_factory=list)
@@ -143,6 +147,8 @@ class Job:
             "action": self.action,
             "label": self.label,
             "command": self.command,
+            "uid": self.uid,
+            "url": self.url,
             "state": self.state,
             "seconds": int((self.ended or time.time()) - self.started),
             "lines": self.lines[since:],
@@ -177,7 +183,10 @@ class Runner:
             )
             self._count += 1
             label = action.label.format(uid=params.get("uid", ""), url=params.get("url", ""))
-            job = Job(self._count, name, label, process, command=shown(name, params))
+            job = Job(
+                self._count, name, label, process, command=shown(name, params),
+                uid=str(params.get("uid") or ""), url=str(params.get("url") or "").strip(),
+            )
             self._job = job
         threading.Thread(target=self._read, args=(job,), daemon=True).start()
         return job

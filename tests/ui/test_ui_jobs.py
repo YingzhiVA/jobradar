@@ -77,6 +77,8 @@ def test_a_job_keeps_its_output_and_reports_failure(runner):
     assert _wait(job) == "failed"
     snapshot = job.snapshot()
     assert snapshot["label"] == "Saying hello to #7"
+    # What it works on, so the page can tell which application is busy.
+    assert snapshot["uid"] == "7" and snapshot["url"] == ""
     assert sorted(snapshot["lines"]) == ["one", "two"] and snapshot["next"] == 2
     assert job.snapshot(since=2)["lines"] == []
 
