@@ -4,6 +4,30 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.26.0 — Applications page fixes, prep counts as an update (2026-11-17)
+
+- **Browser interface:**
+  - While a command runs, the page no longer offers what can't be done
+    meanwhile. It is drawn again as soon as a command starts, so its buttons
+    (Save and draft, Draft CV, Search now, Make PDFs) are switched off at
+    once rather than after the next reload. While a draft for a posting runs,
+    the pasted job text can't be changed and the application's status
+    buttons are hidden: **Stop**, in the bar at the bottom, calls it off.
+  - **Check before sending** reports in the bar at the bottom, as drafting
+    and making PDFs do: "No problems found", or its findings unfolded under
+    Details. The two boxes that both said there was nothing wrong are gone.
+  - A **Draft** pill is an orange outline, so it can no longer be taken for
+    the green **Submitted** one, in the dark theme especially.
+  - The breadcrumbs above a view leave out the phase ("Apply"), which was
+    not a place to go back to: Workflow › Applications › #041.
+  - The RAV card has room between the month's table and the reminder of
+    drafts not yet submitted.
+- **An interview prep sheet counts as an update.** `--prep` records the day
+  in the tracker (`prepped_on`), and the Applications list's **Last update**
+  shows it when it is later than the status's own date, so an application
+  you are preparing an interview for moves to the top of its group. Sheets
+  written before this version have no date recorded.
+
 ## 1.25.0 — Guided setup, clearer matches and applications (2026-11-16)
 
 - **Browser interface, for someone opening it the first time:**

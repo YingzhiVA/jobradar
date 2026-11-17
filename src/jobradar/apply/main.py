@@ -738,13 +738,27 @@ def run_prep(keys: list[str]) -> None:
             "python -m jobradar.evidence to ingest them."
         )
     profile_block = build_profile_block(cvs, identity, stories, evidence)
-    tracker = Tracker(ROOT / "applications" / "applications.json")
+    tracker_path = ROOT / "applications" / "applications.json"
+    tracker = Tracker(tracker_path)
     usage_acc: dict = {}
+    prepped: list[str] = []
     for index, key in enumerate(keys, start=1):
-        _prep_key(
+        uid = _prep_key(
             tracker, key, profile_block, client, usage_acc,
             index=index, total=len(keys), market=market,
         )
+        if uid:
+            prepped.append(uid)
+    if prepped:
+        # Read again before saving: a sheet takes a minute, and the status of
+        # an application may have been recorded meanwhile (the page allows it).
+        fresh = Tracker(tracker_path)
+        today = date.today().isoformat()
+        for uid in prepped:
+            app = fresh.find_by_uid(uid)
+            if app is not None:
+                app.prepped_on = today
+        fresh.save()
     usage.log_summary(logger, "apply/prep", usage_acc)
 
 
@@ -758,9 +772,11 @@ def _prep_key(
     index: int = 0,
     total: int = 0,
     market: Market = CH,
-) -> None:
+) -> str | None:
     """Resolve a --prep KEY (id, tracked folder name, URL, or filesystem path)
-    and write interview_prep.md into its application folder.
+    and write interview_prep.md into its application folder. Returns the id of
+    the tracked application it was written for, or None (an untracked folder,
+    or no sheet written).
 
     `index`/`total` only label the progress line, as in process_entry."""
     pre = f"[{index}/{total}] " if total > 1 else ""
@@ -775,17 +791,17 @@ def _prep_key(
             "id the folder name starts with, a folder name, or a URL",
             key,
         )
-        return
+        return None
     jd_path = folder_path / "job_description.md"
     if not jd_path.exists():
         logger.error("%s has no job_description.md", folder_path)
-        return
+        return None
     jd_text = jd_path.read_text(encoding="utf-8")
     if STUB_MARKER in jd_text and _read_pasted_jd(jd_path) is None:
         logger.error(
             "%s is still waiting for a pasted job description; prep needs one", folder_path
         )
-        return
+        return None
 
     # The drafted notes (fit assessment, tailoring highlights, honest gaps)
     # are exactly the context the prep sheet should build on, when they exist.
@@ -814,13 +830,14 @@ def _prep_key(
         )
     if sheet is None:
         logger.error("Interview prep failed for %s", folder_path)
-        return
+        return None
     title = (app.title if app is not None and app.title else None) or folder_path.name
     company = (app.company if app is not None else None) or ""
     (folder_path / "interview_prep.md").write_text(
         render_prep_md(sheet, title, company, url, market), encoding="utf-8"
     )
     logger.info("Wrote %s", folder_path / "interview_prep.md")
+    return app.uid if app is not None else None
 
 
 def main(argv: list[str] | None = None) -> None:

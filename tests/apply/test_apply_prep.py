@@ -137,3 +137,49 @@ def test_generate_prep_asks_for_swiss_german():
     # English posting: nothing Swiss to say about it.
     prep.generate_prep("profile", "jd", _FakeClient(), language="en")
     assert "Swiss" not in captured["prompt"]
+
+
+def test_run_prep_records_the_day_in_the_tracker(tmp_path, monkeypatch):
+    """A written sheet sets prepped_on, saved on a tracker read again after the
+    sheets were written, so a status recorded meanwhile is not overwritten."""
+    from datetime import date
+
+    from jobradar.apply import main as apply_main
+    from jobradar.apply.tracker import STATUS_DRAFTED, STATUS_SUBMITTED, Application, Tracker
+
+    path = tmp_path / "applications" / "applications.json"
+    tracker = Tracker(path)
+    for uid in ("041", "042"):
+        tracker.applications.append(Application(
+            url=f"https://jobs.example.com/{uid}", folder=f"{uid}_x", uid=uid, status=STATUS_DRAFTED,
+        ))
+    tracker.save()
+
+    def fake_prep(tracker, key, *args, **kwargs):
+        # Meanwhile, 041 is marked submitted elsewhere (the page, a terminal).
+        other = Tracker(path)
+        other.find_by_uid("041").status = STATUS_SUBMITTED
+        other.save()
+        return "041" if key == "41" else None  # 042's sheet fails
+
+    class _Today(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 17)
+
+    monkeypatch.setattr(apply_main, "ROOT", tmp_path)
+    monkeypatch.setattr(apply_main, "date", _Today)
+    monkeypatch.setattr(apply_main, "_load_market", lambda: None)
+    monkeypatch.setattr(apply_main.anthropic, "Anthropic", lambda: object())
+    monkeypatch.setattr(apply_main, "_check_authentication", lambda client: None)
+    monkeypatch.setattr(apply_main, "load_profile", lambda path: ({}, "", []))
+    monkeypatch.setattr(apply_main, "load_evidence", lambda path: [])
+    monkeypatch.setattr(apply_main, "build_profile_block", lambda *a: "")
+    monkeypatch.setattr(apply_main, "_prep_key", fake_prep)
+
+    apply_main.run_prep(["41", "42"])
+
+    after = Tracker(path)
+    assert after.find_by_uid("041").prepped_on == "2026-11-17"
+    assert after.find_by_uid("041").status == STATUS_SUBMITTED
+    assert after.find_by_uid("042").prepped_on is None

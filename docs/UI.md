@@ -92,7 +92,8 @@ switched off and say why.
   (drafts not sent yet, and postings waiting for their job text),
   **Awaiting an answer** (submitted) and **Closed** (rejected, withdrawn or
   an offer, until the archive takes them). **Last update** is the day of the
-  step the status names: drafted, submitted, or closed. Open one to read and
+  step the status names (drafted, submitted, or closed), or the day an
+  interview sheet was last prepared, if that came later. Open one to read and
   edit its documents, run the pre-submission check, make the PDFs, and
   record that you submitted it or what came back. **Draft a posting you found**,
   beside the title, unfolds a box for the address of a posting the search
@@ -105,7 +106,9 @@ switched off and say why.
   cannot read them. A draft for such a posting ends with a placeholder
   application, which the page opens straight away and says so. Paste the job
   description into the box there and press **Save and draft**; the draft is
-  written from your copy. The box refuses text too short to draft from (under
+  written from your copy. While it runs, the box can't be changed and the
+  application's status can't be either: **Stop**, in the bar at the bottom,
+  is the way to call it off. The box refuses text too short to draft from (under
   200 characters) before anything is paid for. This is the same placeholder
   the terminal route uses: pasting under the marker line of its
   `job_description.md` and re-running `jobradar.apply` works as before.
@@ -131,7 +134,10 @@ status are free and start at once.
 
 A search or a draft takes minutes. A bar at the bottom shows what it is
 doing, with **Stop**, and **Details** for the command that was run and the
-same lines a terminal would show.
+same lines a terminal would show. The pre-submission check reports there
+too: "No problems found", or its findings unfolded under Details. One
+command runs at a time, so while one does, the buttons that would start
+another are switched off.
 
 ## Reading the buttons
 

@@ -58,6 +58,9 @@ class Application:
     status: str = STATUS_DRAFTED
     closed_on: str | None = None  # date a terminal outcome was recorded
     archived_on: str | None = None  # set when the entry moves to applications/archive/
+    # Date the interview prep sheet was last written (--prep). Counts as a
+    # step the application took, for the page's "Last update".
+    prepped_on: str | None = None
 
 
 class Tracker:

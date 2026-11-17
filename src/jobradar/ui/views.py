@@ -292,6 +292,7 @@ def _describe(app, folder: Path, archived: bool) -> dict:
         "prepared_on": app.prepared_on,
         "submitted_on": app.submitted_on,
         "closed_on": app.closed_on,
+        "prepped_on": app.prepped_on,
         "archived_on": app.archived_on,
         "archived": archived,
         "skill_score": app.skill_score,
