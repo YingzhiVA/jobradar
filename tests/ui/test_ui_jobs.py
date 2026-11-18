@@ -93,7 +93,7 @@ def test_one_job_at_a_time_and_it_can_be_stopped(runner):
 
 
 def test_the_command_is_shown_as_the_docs_write_it(monkeypatch):
-    monkeypatch.setattr(jobs, "PYTHON_SHOWN", jobs.python_shown("posix"))
+    monkeypatch.setattr(jobs, "PYTHON_SHOWN", jobs.python_shown("posix", uv=False))
     assert jobs.shown("search_practice", {}) == "./.venv/bin/python -m jobradar.search.main --dry-run"
     assert jobs.shown("draft", {"url": "https://jobs.example.ch/1?a=b&c=d", "full": True}) == (
         "./.venv/bin/python -m jobradar.apply --url 'https://jobs.example.ch/1?a=b&c=d' --full"
@@ -103,6 +103,12 @@ def test_the_command_is_shown_as_the_docs_write_it(monkeypatch):
 
 def test_windows_is_shown_its_own_venv_path_unquoted(monkeypatch):
     # Unquoted: PowerShell won't run a quoted path without `&` in front.
-    monkeypatch.setattr(jobs, "PYTHON_SHOWN", jobs.python_shown("nt"))
+    monkeypatch.setattr(jobs, "PYTHON_SHOWN", jobs.python_shown("nt", uv=False))
     assert jobs.shown("search_practice", {}) == r".\.venv\Scripts\python -m jobradar.search.main --dry-run"
-    assert jobs.python_shown("posix") == "./.venv/bin/python"
+    assert jobs.python_shown("posix", uv=False) == "./.venv/bin/python"
+
+
+def test_with_uv_installed_every_system_is_shown_uv_run(monkeypatch):
+    assert jobs.python_shown("nt", uv=True) == jobs.python_shown("posix", uv=True) == "uv run python"
+    monkeypatch.setattr(jobs, "PYTHON_SHOWN", jobs.python_shown("nt", uv=True))
+    assert jobs.shown("submitted", {"uid": "7"}) == "uv run python -m jobradar.apply --mark-submitted 7"

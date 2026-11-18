@@ -18,10 +18,10 @@ Discovery skips companies the catalogue already has.
 ## Run
 
 ```bash
-./.venv/bin/python -m jobradar.discovery.discover
+uv run python -m jobradar.discovery.discover
 
 # Skip the model call and probe only the seed names:
-./.venv/bin/python -m jobradar.discovery.discover --no-web-search
+uv run python -m jobradar.discovery.discover --no-web-search
 ```
 
 It pulls candidate company names from two sources, then probes each against
@@ -63,9 +63,9 @@ office, or stops hiring. A board that broke would otherwise just go quiet in
 the daily run.
 
 ```bash
-./.venv/bin/python -m jobradar.board_health                  # the boards you selected
-./.venv/bin/python -m jobradar.board_health --catalog ch     # plus a market's whole shared list
-./.venv/bin/python -m jobradar.board_health --only Squirro   # re-check one board after a fix
+uv run python -m jobradar.board_health                  # the boards you selected
+uv run python -m jobradar.board_health --catalog ch     # plus a market's whole shared list
+uv run python -m jobradar.board_health --only Squirro   # re-check one board after a fix
 ```
 
 It reads each board's listing once (no detail pages, no model calls) and

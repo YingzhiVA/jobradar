@@ -7,7 +7,7 @@ does nothing the commands don't. Use whichever suits the moment; the two can
 be mixed freely.
 
 ```bash
-./.venv/bin/python -m jobradar.ui
+uv run python -m jobradar.ui
 ```
 
 This serves the page on your own computer (`http://127.0.0.1:8765/`) and
@@ -16,7 +16,7 @@ while you use it; Ctrl+C stops it. `--port 9000` picks another port,
 `--no-browser` prints the address without opening it.
 
 You need the quick start's steps 1 to 3 first (your copy of the repo, a
-Claude API key from the Console, `pip install`). Everything after that,
+Claude API key from the Console, `uv sync`). Everything after that,
 storing the key included, can be done on the page.
 
 ## Workflow

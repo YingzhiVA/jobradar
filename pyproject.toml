@@ -1,6 +1,6 @@
 [project]
 name = "jobradar"
-version = "1.28.0"
+version = "1.29.0"
 description = "Job search for Switzerland: scores postings against your CV and career identity instead of relying on noisy keyword alerts, then drafts the application."
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,6 +18,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# For `pip install -e ".[dev]"`. uv reads the group below instead.
+dev = [
+    "pytest>=8.0",
+]
+
+[dependency-groups]
+# Installed by `uv sync` and `uv run` by default, so `uv run pytest` works.
 dev = [
     "pytest>=8.0",
 ]

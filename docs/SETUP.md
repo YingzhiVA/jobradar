@@ -59,7 +59,7 @@ with the templates that ship in the repo.
    own site, ingested rather than written by hand:
 
    ```bash
-   ./.venv/bin/python -m jobradar.evidence --site https://you.github.io/notes/
+   uv run python -m jobradar.evidence --site https://you.github.io/notes/
    ```
 
    Used by the apply pipeline only (cover letters and prep sheets), never by
