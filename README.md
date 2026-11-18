@@ -95,7 +95,7 @@ manager, a lab technician or a controller alike. You need:
   installs jobradar and the Python it needs; you don't need Python already.
   On a Mac, the first `git` command offers to install Apple's command line
   tools, which include Git; on Windows, install [Git for
-  Windows](https://git-scm.com/download/win). Step 3 installs uv. After that
+  Windows](https://git-scm.com/download/win). Step 2 installs uv. After that
   you can work from the browser page or stay in the terminal.
 - Optionally a **GitHub account**, so the search runs every morning in the
   cloud and emails you, without your computer being on.
@@ -146,24 +146,19 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    No GitHub account is needed. For the daily run in the cloud you will put
    the copy in a private repo of your own; [docs/CLOUD.md](docs/CLOUD.md)
    shows how. It must be **private**, since it will hold your CV.
-2. **Get a Claude API key.** Sign in to the [Claude
-   Console](https://platform.claude.com/), add some credit under **Billing**
-   (a new account has none, and $10 covers your first run and more than a
-   week of daily runs), then create a key under **API keys**.
-   Name it `jobradar` and set a monthly spend limit, so its usage shows on
-   its own and can never exceed what you chose. Copy the key when it is
-   shown: it starts with `sk-ant-`, and the Console won't show it again.
-3. **Install.** If you don't have [uv](https://docs.astral.sh/uv/) yet,
-   install it once. On macOS or Linux:
+2. **Install.** If you don't have [uv](https://docs.astral.sh/uv/) yet,
+   install it once, with the line for your system:
 
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-
-   On Windows, in PowerShell:
+   **Windows**, in PowerShell:
 
    ```powershell
    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+
+   **macOS or Linux**, in a terminal:
+
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
    Then open a new terminal (so it finds uv), go back into the `jobradar`
@@ -182,6 +177,13 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    `python -m venv .venv`, then `.venv/bin/pip install -e ".[dev]"`. From
    then on, wherever this README says `uv run python`, use `.venv/bin/python`.
    On Windows both paths are `.venv\Scripts\` instead of `.venv/bin/`.
+3. **Get a Claude API key.** Sign in to the [Claude
+   Console](https://platform.claude.com/), add some credit under **Billing**
+   (a new account has none, and $10 covers your first run and more than a
+   week of daily runs), then create a key under **API keys**.
+   Name it `jobradar` and set a monthly spend limit, so its usage shows on
+   its own and can never exceed what you chose. Copy the key when it is
+   shown: it starts with `sk-ant-`, and the Console won't show it again.
 
    From here there are two ways to do the rest, and you can mix them:
 
@@ -190,7 +192,7 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
      and buttons, and shows the file or command behind each one, so you can
      switch to the terminal at any point. See [docs/UI.md](docs/UI.md).
    - **In a terminal and your editor.** Read on.
-4. **Add your key.** Copy the template and paste your key from step 2 into
+4. **Add your key.** Copy the template and paste your key from step 3 into
    it, after `ANTHROPIC_API_KEY=`:
 
    ```bash

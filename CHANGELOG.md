@@ -4,6 +4,19 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## Unreleased
+
+- **The quick start installs before it asks for a Claude key.** The key is
+  needed only from step 4, and the install is where something can go wrong,
+  so nobody adds credit before the install works. The uv install lines are
+  labelled by system, Windows first: running the macOS line in PowerShell
+  fails with "sh is not recognized".
+- **`uv.lock` no longer changes on its own after you install.** The one in
+  1.29.0 still carried the previous version number, so the first `uv sync`
+  rewrote it and left your copy with a modified file. If `git status` shows
+  `uv.lock` modified, that is all it is: the update commands in the README
+  (commit, then pull) take care of it.
+
 ## 1.29.0 — Install with uv, and a copy that takes updates (2026-11-18)
 
 - **Install with uv, the same way on macOS, Windows and Linux.** The quick
