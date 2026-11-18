@@ -15,8 +15,30 @@ without your machine being on:
 3. It archives old reports and closed applications on the windows in
    `config/retention.yaml`.
 
-A repo made from the template has these workflows already. Until you add
-credentials they run for a few seconds, print a setup hint, and exit green.
+## Your private repo
+
+The workflows run in a GitHub repo of your own, which holds your CV, so it
+must be **private**. On GitHub, create a new repository: choose
+**Private**, and add no README, licence or `.gitignore`, so it starts empty.
+Then, in your copy's folder (the README's quick start made it with the public
+repo as `upstream`):
+
+```bash
+git add -A
+git commit -m "My setup"
+git remote add origin https://github.com/<you>/<your-repo>.git
+git push -u origin master
+```
+
+That puts your copy, workflows included, in the private repo; updates still
+come from `upstream` as the README describes. Push again after an update or
+an edit you want the cloud run to use. The cloud run commits its reports and
+state to this repo; `git pull origin master` brings them to your computer. If the push is refused with a message
+about the `workflow` scope, your GitHub login may not allow changing workflow
+files; with the GitHub CLI, `gh auth refresh -s workflow` fixes that.
+
+Until you add credentials the workflows run for a few seconds, print a setup
+hint, and exit green.
 
 ## Option A: an API key as a repo secret (simplest)
 

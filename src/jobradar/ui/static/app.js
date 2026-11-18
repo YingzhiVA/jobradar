@@ -819,8 +819,21 @@ const SIDE_TASKS = (o) => [
   o.rav && [o.rav_unfiled.length ? `File a RAV month (not filed: ${o.rav_unfiled.join(", ")})` : "File a RAV month", "docs/APPLY.md",
     `${PY} -m jobradar.apply --rav-filed <YYYY-MM>`, ["applications", "rav"]],
   ["Run it every morning without your computer", "docs/CLOUD.md", null],
-  ["Get updates", "docs/SETUP.md", "git pull upstream master"],
+  updatesTask(o.updates),
 ].filter(Boolean);
+
+// What getting the latest release takes from here, as the server reads it
+// from git (updates.py): the one-time setup, the one-time first merge, or a
+// pull. The commands are joined with "; ", which PowerShell and bash both
+// run in order. After a pull, the install is refreshed in case the release
+// needs a new package.
+function updatesTask(u) {
+  const commands = (u && u.commands) || [];
+  if (!u || u.state === "no_git") return ["Get updates", "README.md", null];
+  if (u.state === "ready") return ["Get updates", "README.md", [...commands, `${PY} -m pip install -e .`].join("; ")];
+  return [u.state === "first_update" ? "Get updates: finish the one-time setup (README, “Getting updates”)"
+    : "Get updates: needs a one-time setup first (README, “Getting updates”)", "README.md", commands.join("; ")];
+}
 
 function nextUp(o, phases, check) {
   const open = phases[0].stages.find((stage) => stage.state === "act");

@@ -19,7 +19,7 @@ from typing import Callable
 import yaml
 from dotenv import load_dotenv
 
-from . import boards
+from . import boards, updates
 from .apply.pdf import find_browser
 from .archive import load_retention
 from .config import ConfigError, cost_warnings, load_search_settings
@@ -252,6 +252,29 @@ def check_merge_driver(root: Path) -> Check | None:
     )
 
 
+def check_updates(root: Path) -> Check | None:
+    """Whether this copy can get jobradar's updates. See updates.py; the
+    commands are in the README's "Getting updates" and on the browser page."""
+    status = updates.update_status(root)
+    state = status["state"]
+    if state == updates.NO_GIT:
+        return None
+    if state == updates.READY:
+        how = "git pull upstream master" if status["remote"] == "upstream" else "git pull"
+        return Check("Getting updates", OK, f"set up: `{how}` brings the latest release")
+    if state == updates.FIRST_UPDATE:
+        return Check(
+            "Getting updates", WARN,
+            "the public repo is connected, but the one-time first merge is not done yet: "
+            "see \"Getting updates\" in the README",
+        )
+    return Check(
+        "Getting updates", WARN,
+        "not set up to receive updates from the public jobradar repo: "
+        "see \"Getting updates\" in the README (a one-time setup)",
+    )
+
+
 def run_checks(root: Path, connect: Callable[[], None]) -> list[Check]:
     checks = [check_python(), check_credentials(root, connect)]
     checks += check_profile(root)
@@ -259,6 +282,8 @@ def run_checks(root: Path, connect: Callable[[], None]) -> list[Check]:
     checks.append(check_browser())
     if (merge := check_merge_driver(root)) is not None:
         checks.append(merge)
+    if (update := check_updates(root)) is not None:
+        checks.append(update)
     return checks
 
 
