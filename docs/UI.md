@@ -15,8 +15,8 @@ opens it. It is reachable from that computer only. Keep the terminal open
 while you use it; Ctrl+C stops it. `--port 9000` picks another port,
 `--no-browser` prints the address without opening it.
 
-You need the quick start's steps 1 to 3 first (your copy of the repo, a
-Claude API key from the Console, `uv sync`). Everything after that,
+You need the quick start's steps 1 to 3 first (your copy of the repo,
+`uv sync`, a Claude API key from the Console). Everything after that,
 storing the key included, can be done on the page.
 
 ## Workflow
