@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -88,10 +89,16 @@ def _command(action: Action, params: dict) -> list[str]:
 
 
 # How the docs write the interpreter. The page shows each command it runs in
-# this form, so that what is learnt there can be typed in a terminal. A venv
-# on Windows keeps it under Scripts\ rather than bin/; the leading .\ makes
-# the same text run in PowerShell and in cmd.
-def python_shown(os_name: str = os.name) -> str:
+# this form, so that what is learnt there can be typed in a terminal. The docs
+# say `uv run python`, the same on every system; without uv (installed with
+# pip, see the README) it is the venv's own python. A venv on Windows keeps it
+# under Scripts\ rather than bin/; the leading .\ makes the same text run in
+# PowerShell and in cmd.
+def python_shown(os_name: str = os.name, uv: bool | None = None) -> str:
+    if uv is None:
+        uv = shutil.which("uv") is not None
+    if uv:
+        return "uv run python"
     return r".\.venv\Scripts\python" if os_name == "nt" else "./.venv/bin/python"
 
 

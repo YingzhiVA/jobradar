@@ -10,7 +10,7 @@
 # message naming it, rather than silently reverting to the default.
 #
 # Check what the program actually reads after an edit:
-#   ./.venv/bin/python -m jobradar.config
+#   uv run python -m jobradar.config
 
 thresholds:
   # Both scores are 0-100, assigned per posting by the scorer (matching.py).

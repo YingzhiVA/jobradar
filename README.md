@@ -68,7 +68,7 @@ correct one and move the floors when they are wrong.
 ## In your browser, or in a terminal
 
 Once it is installed, jobradar can be worked from a page in your browser:
-`./.venv/bin/python -m jobradar.ui`. The page opens on a map of the whole
+`uv run python -m jobradar.ui`. The page opens on a map of the whole
 workflow that shows where your copy stands and what to do next, here on a
 new copy that is set up and about to run its first search:
 
@@ -91,9 +91,12 @@ manager, a lab technician or a controller alike. You need:
 
 - An **Anthropic API key** (Claude does the reading). Nothing is hosted;
   the key stays on your machine or in your own GitHub repo.
-- **Python 3.11 or newer** and a terminal for the install, which is
-  copy-paste. After that you can work from the browser page or stay in the
-  terminal.
+- **Git**, **uv** and a terminal for the install, which is copy-paste. uv
+  installs jobradar and the Python it needs; you don't need Python already.
+  On a Mac, the first `git` command offers to install Apple's command line
+  tools, which include Git; on Windows, install [Git for
+  Windows](https://git-scm.com/download/win). Step 3 installs uv. After that
+  you can work from the browser page or stay in the terminal.
 - Optionally a **GitHub account**, so the search runs every morning in the
   cloud and emails you, without your computer being on.
 
@@ -150,16 +153,39 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    Name it `jobradar` and set a monthly spend limit, so its usage shows on
    its own and can never exceed what you chose. Copy the key when it is
    shown: it starts with `sk-ant-`, and the Console won't show it again.
-3. **Install.**
+3. **Install.** If you don't have [uv](https://docs.astral.sh/uv/) yet,
+   install it once. On macOS or Linux:
 
    ```bash
-   python3 -m venv .venv
-   ./.venv/bin/pip install -e ".[dev]"
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
+
+   On Windows, in PowerShell:
+
+   ```powershell
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+
+   Then open a new terminal (so it finds uv), go back into the `jobradar`
+   folder, and run:
+
+   ```bash
+   uv sync
+   ```
+
+   That installs jobradar and everything it needs in a `.venv` folder inside
+   your copy, and downloads a suitable Python first if your computer lacks
+   one. Every command from here on starts with `uv run`, and is the same on
+   every system.
+
+   *Prefer pip?* With Python 3.11 or newer installed, run
+   `python -m venv .venv`, then `.venv/bin/pip install -e ".[dev]"`. From
+   then on, wherever this README says `uv run python`, use `.venv/bin/python`.
+   On Windows both paths are `.venv\Scripts\` instead of `.venv/bin/`.
 
    From here there are two ways to do the rest, and you can mix them:
 
-   - **In your browser.** Run `./.venv/bin/python -m jobradar.ui`. It opens a
+   - **In your browser.** Run `uv run python -m jobradar.ui`. It opens a
      map of the whole workflow that walks you through steps 4 to 8 with forms
      and buttons, and shows the file or command behind each one, so you can
      switch to the terminal at any point. See [docs/UI.md](docs/UI.md).
@@ -211,9 +237,9 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    postings, no live sources), then a real one:
 
    ```bash
-   ./.venv/bin/python -m jobradar.doctor
-   ./.venv/bin/python -m jobradar.search.main --dry-run
-   ./.venv/bin/python -m jobradar.search.main
+   uv run python -m jobradar.doctor
+   uv run python -m jobradar.search.main --dry-run
+   uv run python -m jobradar.search.main
    ```
 
    The report lands in `reports/<date>.md`; the dry run's goes to
@@ -235,10 +261,8 @@ your copy's folder:
 git add -A
 git commit -m "My setup and results"
 git pull upstream master
-./.venv/bin/pip install -e ".[dev]"
+uv sync
 ```
-
-On Windows the last line is `.venv\Scripts\pip install -e ".[dev]"`.
 
 The first two lines record your own changes (your CV, `identity.md`, your
 settings, applications and results), so the update can keep them: the
@@ -247,7 +271,7 @@ have them. "Nothing to commit" is fine. If git asks who you are, give it any
 name and email, for this copy only:
 `git config user.name "jobradar"` and
 `git config user.email "jobradar@localhost"`. The last line picks up any new
-package a release needs.
+package a release needs (with pip: `.venv/bin/pip install -e ".[dev]"`).
 
 The setup check (`jobradar.doctor`) says whether your copy is set up for
 updates, and the "Get updates" task on the browser page shows the commands
@@ -327,7 +351,7 @@ leave your CV, your identity page and anything else personal out of them.
 ## Tests
 
 ```bash
-./.venv/bin/python -m pytest
+uv run pytest
 ```
 
 No API key needed: the tests cover the deterministic parts (filters,

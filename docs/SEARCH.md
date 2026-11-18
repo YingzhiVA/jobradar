@@ -61,7 +61,7 @@ rank, write up, report. This page covers how to steer it and what it does.
    After editing, print what the program will actually read:
 
    ```bash
-   ./.venv/bin/python -m jobradar.config
+   uv run python -m jobradar.config
    ```
 
    A *missing* key (or the whole file) falls back to the default above. A key
@@ -84,18 +84,18 @@ rank, write up, report. This page covers how to steer it and what it does.
 # record reports/practice.json (both replaced each time, neither tracked); it
 # marks nothing as seen, writes no latest.json and adds nothing to runs.jsonl,
 # so it can be repeated and never stands in for a real day's run.
-./.venv/bin/python -m jobradar.search.main --dry-run
+uv run python -m jobradar.search.main --dry-run
 
 # A real run against your configured sources.
-./.venv/bin/python -m jobradar.search.main
+uv run python -m jobradar.search.main
 
 # Skip the web_search fallback/discovery source (faster, fewer calls).
-./.venv/bin/python -m jobradar.search.main --no-web-search
+uv run python -m jobradar.search.main --no-web-search
 
 # For a machine-local cron that fires daily: exit without running unless
 # config/search.yaml's schedule says today is a run day. A run you type
 # yourself is always deliberate, so this is off by default.
-./.venv/bin/python -m jobradar.search.main --respect-schedule
+uv run python -m jobradar.search.main --respect-schedule
 ```
 
 Before doing anything else, a run checks that your Anthropic credentials

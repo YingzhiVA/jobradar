@@ -826,11 +826,12 @@ const SIDE_TASKS = (o) => [
 // from git (updates.py): the one-time setup, the one-time first merge, or a
 // pull. The commands are joined with "; ", which PowerShell and bash both
 // run in order. After a pull, the install is refreshed in case the release
-// needs a new package.
+// needs a new package: `uv sync`, or pip for an install made with pip.
 function updatesTask(u) {
   const commands = (u && u.commands) || [];
   if (!u || u.state === "no_git") return ["Get updates", "README.md", null];
-  if (u.state === "ready") return ["Get updates", "README.md", [...commands, `${PY} -m pip install -e .`].join("; ")];
+  const refresh = PY === "uv run python" ? "uv sync" : `${PY} -m pip install -e .`;
+  if (u.state === "ready") return ["Get updates", "README.md", [...commands, refresh].join("; ")];
   return [u.state === "first_update" ? "Get updates: finish the one-time setup (README, “Getting updates”)"
     : "Get updates: needs a one-time setup first (README, “Getting updates”)", "README.md", commands.join("; ")];
 }

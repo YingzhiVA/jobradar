@@ -18,10 +18,10 @@ page.
 
 ```bash
 # Process everything in applications/queue.txt:
-./.venv/bin/python -m jobradar.apply
+uv run python -m jobradar.apply
 
 # Or one ad-hoc URL:
-./.venv/bin/python -m jobradar.apply --url https://... [--full]
+uv run python -m jobradar.apply --url https://... [--full]
 
 # Every command below takes the application's short id: the number its
 # folder name starts with (007_2026-09-12_acme_product-manager), also printed
@@ -30,33 +30,33 @@ page.
 # Changed your mind about a quick draft? Re-draft it at full tier, so it
 # gets a cover letter (keeps its id, folder and report analysis; costs one
 # fresh writing call, so the tailored CV is rewritten too):
-./.venv/bin/python -m jobradar.apply --upgrade 7
+uv run python -m jobradar.apply --upgrade 7
 
 # Full-tier applications: convert the edited markdown to PDF when done
 # (quick-tier ones get their PDFs generated automatically):
-./.venv/bin/python -m jobradar.apply --pdf 7
+uv run python -m jobradar.apply --pdf 7
 
 # Pre-submission check: catch mechanical mistakes (missing deliverable, PDF
 # left stale after an edit, wrong/leftover company in a cover letter, dropped
 # contact line, tracker drift). No argument lints everything; exits non-zero
 # on any error. --strict also requires notes.md's checklist to be ticked:
-./.venv/bin/python -m jobradar.apply --lint [7 ...] [--strict]
+uv run python -m jobradar.apply --lint [7 ...] [--strict]
 
 # After submitting an application:
-./.venv/bin/python -m jobradar.apply --mark-submitted 7
+uv run python -m jobradar.apply --mark-submitted 7
 
 # Got an interview (or want to gauge one before applying)? Generate an
 # interview-prep sheet mapping likely questions to your stories:
-./.venv/bin/python -m jobradar.apply --prep 7
+uv run python -m jobradar.apply --prep 7
 
 # Record outcomes as they arrive:
-./.venv/bin/python -m jobradar.apply --mark-rejected 7
-./.venv/bin/python -m jobradar.apply --mark-withdrawn 7
-./.venv/bin/python -m jobradar.apply --mark-offer 7
+uv run python -m jobradar.apply --mark-rejected 7
+uv run python -m jobradar.apply --mark-withdrawn 7
+uv run python -m jobradar.apply --mark-offer 7
 
 # Archive sweep on demand (the cloud run does this daily). With ids,
 # archives those applications immediately:
-./.venv/bin/python -m jobradar.apply --archive [7 ...]
+uv run python -m jobradar.apply --archive [7 ...]
 ```
 
 ## While it runs
@@ -168,12 +168,12 @@ Then:
 ```bash
 # The month's table: date, company, postcode, role, how applied, result
 # (hängig / Absage / zurückgezogen / Angebot), and the link:
-./.venv/bin/python -m jobradar.apply --rav 2026-09
+uv run python -m jobradar.apply --rav 2026-09
 
 # After actually handing the month in: saves the table to
 # reports/rav/2026-09.md, records the month as filed, and runs the archive
 # sweep:
-./.venv/bin/python -m jobradar.apply --rav-filed 2026-09
+uv run python -m jobradar.apply --rav-filed 2026-09
 ```
 
 With RAV on, a submitted application stays out of the archive until the

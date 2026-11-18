@@ -4,7 +4,18 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
-## Unreleased
+## 1.29.0 — Install with uv, and a copy that takes updates (2026-11-18)
+
+- **Install with uv, the same way on macOS, Windows and Linux.** The quick
+  start's `python3 -m venv` and `./.venv/bin/pip` worked only where Python
+  3.11 or newer was already installed and the shell was a Unix one: a new Mac
+  has Python 3.9, Windows has no `python3` and no `bin/`. Now `uv sync`
+  installs jobradar and downloads the Python it needs, and every command is
+  `uv run python -m jobradar.…` on every system, in the README, the docs and
+  the browser page. New installs use Python 3.12, the version the cloud runs
+  use; `uv.lock` fixes the package versions everyone gets. pip still works
+  (the README says how). `uv sync` uses the same `.venv` folder as before,
+  rebuilding it if its Python doesn't match. After an update, run `uv sync`.
 
 - **A new copy is now a clone of the public repo, not a "Use this template"
   copy.** A template copy starts with a history of its own, so it could only

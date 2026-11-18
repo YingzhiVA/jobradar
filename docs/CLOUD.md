@@ -130,7 +130,7 @@ drops doesn't shift the whole schedule; the next day is simply already due.
 Preview the decision for any date:
 
 ```bash
-./.venv/bin/python -m jobradar.schedule --check --date 2026-09-21
+uv run python -m jobradar.schedule --check --date 2026-09-21
 ```
 
 A manual dispatch from the Actions tab ("Run workflow") is a deliberate act

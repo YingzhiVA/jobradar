@@ -3,7 +3,7 @@
 ## Tests
 
 ```bash
-./.venv/bin/python -m pytest
+uv run pytest
 ```
 
 No API key is needed. The suite covers the deterministic pieces —
