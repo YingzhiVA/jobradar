@@ -24,6 +24,7 @@ _SECTION_RE = re.compile(r"^## \[(BEST|OKAY)\] (.+?) — (.+)$")
 _LINK_RE = re.compile(r"^- Link: (\S+)")
 _SCORES_RE = re.compile(r"^- Skill score: (\d+)/100, Interest score: (\d+)/100")
 _CV_RE = re.compile(r"^- Best-fit CV: (.+)$")
+_DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 
 
 @dataclass
@@ -100,8 +101,10 @@ def load_findings(reports_dir: Path) -> dict[str, Finding]:
     if not reports_dir.exists():
         return findings
     # Sorted by filename = chronological, so later reports overwrite earlier
-    # ones and the freshest analysis wins for a re-surfaced posting.
-    for path in sorted(reports_dir.glob("*.md")):
+    # ones and the freshest analysis wins for a re-surfaced posting. Dated
+    # reports only: practice.md holds made-up postings, board_health.md no
+    # matches.
+    for path in sorted(p for p in reports_dir.glob("*.md") if _DATED.match(p.name)):
         report_date = path.stem
         try:
             for finding in parse_report(path.read_text(encoding="utf-8"), report_date):

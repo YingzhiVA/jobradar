@@ -78,8 +78,12 @@ rank, write up, report. This page covers how to steer it and what it does.
 ## Run
 
 ```bash
-# Validate the pipeline against seeded fixture postings before touching
-# live sources or your dedup history. Still makes real LLM calls.
+# A practice run: three made-up postings scored against your real profile.
+# Still makes real LLM calls. It shows every sample it scores, even one below
+# your score floors, and says which a real search would have left out. Its report is reports/practice.md and its run
+# record reports/practice.json (both replaced each time, neither tracked); it
+# marks nothing as seen, writes no latest.json and adds nothing to runs.jsonl,
+# so it can be repeated and never stands in for a real day's run.
 ./.venv/bin/python -m jobradar.search.main --dry-run
 
 # A real run against your configured sources.
@@ -102,7 +106,12 @@ matches today" report.
 
 Each run writes `reports/YYYY-MM-DD.md` (the full report) and
 `reports/latest.json` (a short summary), and tracks seen postings in
-`data/seen_postings.json`. Postings that were fully processed but didn't make
+`data/seen_postings.json`. A second run on the same day adds a "Later run at
+HH:MM" section to that day's report rather than replacing it, since the first
+run's matches are already marked seen and would not come back. Each match
+says where it was found: one of your boards, or the web search, which is
+driven by your profile rather than by `companies.yaml` and so can surface
+companies you never listed. Postings that were fully processed but didn't make
 the daily selection are left unmarked if they cleared both scoring floors —
 they'll resurface on a future run rather than being permanently dismissed.
 So is a posting the scorer never returned a verdict on (a timeout, an API

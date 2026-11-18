@@ -1066,12 +1066,20 @@ function matchCard(m, practice, fold) {
       h("button", { class: "caret", "aria-label": "Fold this match", "aria-expanded": "true" }, "▾"),
       h("div", { class: "grow" },
         h("h2", {}, m.title),
-        h("div", { class: "muted" }, [m.company, m.location].filter(Boolean).join(" · "))),
+        h("div", { class: "muted" }, [m.company, m.location].filter(Boolean).join(" · ")),
+        // Reports written before 1.28 don't say; the web search is not limited
+        // to the boards chosen, so this is what explains an unknown company.
+        !practice && m.source && h("div", { class: "muted small" }, `Found by ${m.source}`)),
       h("span", { class: `pill ${m.tier === "best" ? "best" : ""}` }, m.tier === "best" ? "Strong match" : "Okay match")),
     h("div", { class: "scores" }, scoreBar("Skill fit", m.skill_score), scoreBar("Interest fit", m.interest_score)),
+    // Practice runs show every sample they score; this says which ones a real
+    // search would have left out, and so what the floors do.
+    practice && m.below_floors && h("div", { class: "note warn" }, `Below your floors: ${m.below_floors}`),
     writeup(m),
     h("div", { class: "row gap" },
-      external(m.url, "Open the posting"),
+      practice
+        ? h("span", { class: "muted" }, "A made-up sample posting: there is no real page to open.")
+        : external(m.url, "Open the posting"),
       h("span", { class: "grow" }),
       m.application
         ? h("button", { onclick: () => { openApp = m.application; go("applications"); } },
@@ -1103,25 +1111,30 @@ async function renderMatches(main) {
   const ready = app.state.setup.ready;
   const run = data.last_run;
   const reports = data.reports;
-  if (reports.length && openedNewest !== reports[0].date) {
+  const practiceReport = data.practice;
+  if (practiceReport && openedNewest !== "practice") {
+    practiceReport.matches.forEach((m) => openMatches.add(m.url));
+    openedNewest = "practice";
+  } else if (!practiceReport && reports.length && openedNewest !== reports[0].date) {
     reports[0].matches.forEach((m) => openMatches.add(m.url));
     openedNewest = reports[0].date;
   }
   const total = reports.reduce((sum, report) => sum + report.matches.length, 0);
-  const section = (report, i) => {
-    // A practice run's report is the newest one; its postings are not real.
-    const practice = i === 0 && run && run.practice && run.date === report.date;
+  // The practice report (reports/practice.md) is its own section, above the
+  // real ones, while the practice run is the latest run; a real run retires it.
+  const section = (report, i, practice = false) => {
+    practice = practice === true;
     const count = report.matches.length;
     const set = (m, on) => () => { on ? openMatches.add(m.url) : openMatches.delete(m.url); renderMatches(main); };
     return h("section", { class: "report" },
       h("div", { class: "report-head" },
-        h("h2", {}, report.date),
-        h("span", { class: "muted" }, i === 0 ? "newest report" : "", count === 0 ? `${i === 0 ? " · " : ""}no match` : "", i < 0 ? " · archived" : ""),
+        h("h2", {}, practice ? `Practice run, ${report.date}` : report.date),
+        h("span", { class: "muted" }, i === 0 && !practice ? "newest report" : "", count === 0 ? `${i === 0 && !practice ? " · " : ""}no match` : "", i < 0 ? " · archived" : ""),
         practice && h("span", { class: "pill warn" }, "Practice"),
         report.degraded && h("span", { class: "pill warn" }, "Incomplete")),
       practice && h("div", { class: "note warn" }, "This was a practice run on made-up sample postings. These are not real jobs; press Search now for real ones."),
       report.degraded && h("div", { class: "note warn" }, "This search was incomplete: a source failed, so matches may be missing."),
-      count === 0 && i === 0 && h("p", { class: "muted" }, "Nothing worth your time in the latest search. That is a normal result; if it stays quiet for a week, lower the score floors or add companies under Settings."),
+      count === 0 && i === 0 && !practice && h("p", { class: "muted" }, "Nothing worth your time in the latest search. That is a normal result; if it stays quiet for a week, lower the score floors or add companies under Settings."),
       report.matches.map((m) => (openMatches.has(m.url) ? matchCard(m, practice, set(m, false)) : matchRow(m, set(m, true)))));
   };
   put(main,
@@ -1131,12 +1144,13 @@ async function renderMatches(main) {
       // With no report yet, the card below is where the first search starts.
       (reports.length > 0 || !ready) && h("button", { title: !ready && LOCKED, disabled: busy() || !ready, onclick: act(runSearch) }, "Search now")),
     run && h("div", { class: "funnel" },
-      h("span", {}, `Last search ${run.date}:`),
+      h("span", {}, `Last search ${run.date}${run.practice ? " (practice)" : ""}:`),
       h("span", {}, h("b", {}, (run.found ?? 0).toLocaleString()), " postings"), "→",
       h("span", {}, h("b", {}, run.new ?? 0), " new"), "→",
       h("span", {}, h("b", {}, run.passed ?? 0), " passed must-haves"), "→",
       h("span", {}, h("b", {}, run.scored ?? 0), " read in full"), "→",
       h("span", {}, h("b", {}, run.surfaced ?? 0), " worth your time")),
+    practiceReport && section(practiceReport, 0, true),
     reports.length === 0 && h("div", { class: "card empty" },
       h("h3", {}, "No report yet"),
       ready
@@ -1150,7 +1164,8 @@ async function renderMatches(main) {
       openMatches.size > 0
         ? h("button", { class: "quiet", onclick: () => { openMatches.clear(); renderMatches(main); } }, "Fold all")
         : h("button", { class: "quiet", onclick: () => { reports[0].matches.forEach((m) => openMatches.add(m.url)); renderMatches(main); } }, "Unfold the newest")),
-    reports.map(section),
+    // Not reports.map(section): map's third argument (the array) would land in `practice`.
+    reports.map((report, i) => section(report, i)),
     reports.length > 0 && h("p", { class: "muted small gap" },
       "Reports leave this list when they are archived, on the window in config/retention.yaml.",
       data.hidden > 0 && ` ${data.hidden} older report${data.hidden > 1 ? "s are" : " is"} not shown: the page reads the newest ${reports.length} at most.`),

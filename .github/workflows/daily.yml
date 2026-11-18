@@ -165,6 +165,11 @@ jobs:
                       except ValueError:
                           # A corrupt ledger line must not block the daily run.
                           continue
+                      # A practice run (--dry-run) is not the day's run: see
+                      # jobradar.schedule.is_practice_run.
+                      sources = [s.get("name") for s in record.get("sources") or []]
+                      if record.get("practice") or sources == ["fixture"]:
+                          continue
                       if record.get("date") == today:
                           print("true")
                           raise SystemExit

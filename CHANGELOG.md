@@ -4,8 +4,35 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
-## Unreleased
+## 1.28.0 — Same-day searches and practice runs keep your matches (2026-11-18)
 
+- **A second search on the same day no longer loses the first one's
+  matches.** Each run replaced the day's report, `reports/<date>.md`, and the
+  first run's postings were already marked as seen, so they never came back:
+  they vanished from the report and the Matches page. A later run now adds a
+  "Later run at HH:MM" section to the day's report instead.
+- **A practice run no longer touches your real results.** It differed from a
+  real search only in where its postings came from, so it replaced the day's
+  report (a practice run after a real one wiped that day's real matches),
+  marked its sample postings as seen (a second practice run found nothing),
+  and counted as the day's run, which could make the cloud run skip the
+  day. A practice run now writes only `reports/practice.md` and
+  `reports/practice.json`, both untracked: it marks nothing as seen, writes
+  no `latest.json`, adds nothing to the tracked `runs.jsonl`, and never
+  counts as a day's run. The Matches page shows it in its own section until
+  your next real search.
+- **A practice run always shows its sample match.** It used to apply your
+  score floors, so with a raised interest floor, or a CV far from the sample's
+  product-manager role, it often showed nothing at all. It now shows every
+  sample it scores, with a note on any that a real search would leave out
+  below your floors.
+- **Sample postings no longer link to example.com.** A practice run's
+  matches say they are made up instead of offering a link to a placeholder
+  page.
+- **Each match says where it was found:** one of your company boards, or the
+  web search. The web search runs alongside your boards and can find
+  companies you never listed, which used to look like a bug. The README's
+  board step now says so too.
 - **Constraints with non-ASCII text now read correctly on Windows.** The
   search read `config/constraints.yaml` in the system's code page instead of
   UTF-8, so on Windows an umlaut ("Zürich") came out garbled, and some
