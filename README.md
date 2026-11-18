@@ -190,7 +190,10 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    **Start with five or ten**: your first run scores every open
    posting on the boards you chose, so it costs far more than a normal day
    (see [What it costs](#what-it-costs)). You can add more later, a few at a
-   time. With none chosen, only web search runs.
+   time. The web search runs alongside your boards whatever you pick, and
+   looks for roles that fit your profile at any company, so matches can come
+   from companies you never listed; each match says where it was found.
+   With no boards chosen, only the web search runs.
 8. **Check the setup**, then do a dry run (real Claude calls on sample
    postings, no live sources), then a real one:
 
@@ -200,8 +203,10 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    ./.venv/bin/python -m jobradar.search.main
    ```
 
-   The report lands in `reports/<date>.md`. Read a few real runs before you
-   trust the schedule.
+   The report lands in `reports/<date>.md`; the dry run's goes to
+   `reports/practice.md`, and it changes nothing a real run relies on or
+   that git tracks. Read a few
+   real runs before you trust the schedule.
 
 Everything else is optional and explained in the docs below: steering how
 many matches you see, the cloud schedule, the apply pipeline.

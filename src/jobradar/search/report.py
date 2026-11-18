@@ -12,7 +12,7 @@ role from one that fell below a floor — a line this report conflated.
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from ..models import FinalPosting
@@ -36,6 +36,28 @@ _UNVERIFIED_NOTE = (
 )
 
 
+# The practice run's report: one file, replaced by each practice run, never
+# dated, so it is not a day's report, not archived, and not read for findings.
+PRACTICE_REPORT = "practice.md"
+
+# Where a match came from, as the reader should see it. The board connectors
+# name their applicant-tracking system (greenhouse, lever, …); those are the
+# boards chosen in companies.yaml. The web search is not limited to them, so a
+# match from a company never chosen comes from there, and says so.
+_SOURCE_LABELS = {
+    "web_search": "web search",
+    "eth_jobs": "ETH Zurich job board",
+    "arbeitnow": "Arbeitnow job board",
+    "fixture": "practice sample",
+}
+
+
+def source_label(source: str) -> str:
+    if source in _SOURCE_LABELS:
+        return _SOURCE_LABELS[source]
+    return f"your company boards ({source.replace('_', ' ').title()})"
+
+
 def _degraded_note(failed_sources: list[str]) -> str:
     return (
         "⚠️ This run was **incomplete** — the following source(s) failed or "
@@ -51,9 +73,55 @@ def render_markdown(
     *,
     degraded: bool = False,
     failed_sources: list[str] | None = None,
+    floors: tuple[int, int] | None = None,
 ) -> str:
     lines = [f"# Job matches — {run_date.isoformat()}", ""]
+    lines += _render_run(finals, degraded=degraded, failed_sources=failed_sources, floors=floors)
+    return "\n".join(lines)
 
+
+def below_floors(skill: int, interest: int, floors: tuple[int, int]) -> str:
+    """Which of your floors a score misses, in words; empty if none. Only a
+    practice run shows a posting below them (see search/main.py)."""
+    min_skill, min_interest = floors
+    misses = []
+    if skill < min_skill:
+        misses.append(f"skill {skill} is under your floor of {min_skill}")
+    if interest < min_interest:
+        misses.append(f"interest {interest} is under your floor of {min_interest}")
+    return " and ".join(misses)
+
+
+def render_later_run(
+    finals: list[FinalPosting],
+    run_at: datetime,
+    *,
+    degraded: bool = False,
+    failed_sources: list[str] | None = None,
+) -> str:
+    """A further run on a day that already has a report, as a section to add
+    to it. Its own "## " heading ends the last match above it for every
+    reader of the report (apply/findings.py, ui/views.py)."""
+    lines = ["", f"## Later run at {run_at.strftime('%H:%M')}", ""]
+    lines += _render_run(
+        finals, degraded=degraded, failed_sources=failed_sources,
+        empty="No new matches in this run.",
+    )
+    return "\n".join(lines)
+
+
+def _render_run(
+    finals: list[FinalPosting],
+    *,
+    degraded: bool = False,
+    failed_sources: list[str] | None = None,
+    floors: tuple[int, int] | None = None,
+    empty: str = (
+        "No matches today. This is a valid, expected outcome — not every "
+        "day has a posting worth surfacing."
+    ),
+) -> list[str]:
+    lines: list[str] = []
     if degraded:
         lines.append(_degraded_note(failed_sources or []))
         lines.append("")
@@ -62,10 +130,7 @@ def render_markdown(
     okay = [f for f in finals if f.tier == "okay"]
 
     if not finals:
-        lines.append(
-            "No matches today. This is a valid, expected outcome — not every "
-            "day has a posting worth surfacing."
-        )
+        lines.append(empty)
     else:
         # Counted rather than assumed: output.max_best in config/search.yaml can
         # be raised above 1, so "1 strong match" is no longer a given.
@@ -85,6 +150,10 @@ def render_markdown(
             if posting.liveness == LIVENESS_UNVERIFIED:
                 lines.append(_UNVERIFIED_NOTE)
             lines.append(f"- Location: {posting.location_text or 'n/a'}")
+            lines.append(f"- Found by: {source_label(posting.source)}")
+            miss = floors and below_floors(final.scored.skill_score, final.scored.interest_score, floors)
+            if miss:
+                lines.append(f"- Below your floors: {miss}, so a real search would not show it.")
             lines.append(
                 f"- Skill score: {final.scored.skill_score}/100, "
                 f"Interest score: {final.scored.interest_score}/100"
@@ -94,7 +163,7 @@ def render_markdown(
             lines.append(final.writeup)
             lines.append("")
 
-    return "\n".join(lines)
+    return lines
 
 
 def render_summary(
@@ -146,6 +215,7 @@ def render_summary(
                 # same caveat the markdown shows, instead of re-deriving it.
                 "liveness": f.scored.posting.liveness,
                 "location": f.scored.posting.location_text,
+                "source": f.scored.posting.source,
                 "skill_score": f.scored.skill_score,
                 "interest_score": f.scored.interest_score,
                 "writeup": f.writeup,
@@ -162,19 +232,55 @@ def write_report(
     *,
     degraded: bool = False,
     failed_sources: list[str] | None = None,
-) -> tuple[Path, Path]:
+    practice: bool = False,
+    run_at: datetime | None = None,
+    floors: tuple[int, int] | None = None,
+) -> tuple[Path, Path | None]:
+    """Write the day's report and latest.json.
+
+    A second run on the same day adds a section to the day's report instead of
+    replacing it: the first run's matches are already marked seen, so they
+    would not come back, and the report is the only place they are shown.
+
+    A practice run writes reports/practice.md, replaced each time, and no
+    latest.json (the daily email reads that), so its sample postings never
+    stand in for a real day's matches. Returns the summary path as None then.
+    `floors` (skill, interest) are the real ones, for a practice run's note on
+    each sample a real search would have left out.
+    """
     reports_dir.mkdir(parents=True, exist_ok=True)
 
+    if practice:
+        markdown_path = reports_dir / PRACTICE_REPORT
+        markdown_path.write_text(
+            render_markdown(
+                finals, run_date, degraded=degraded, failed_sources=failed_sources, floors=floors,
+            ),
+            encoding="utf-8",
+        )
+        return markdown_path, None
+
     markdown_path = reports_dir / f"{run_date.isoformat()}.md"
-    markdown_path.write_text(
-        render_markdown(
-            finals,
-            run_date,
-            degraded=degraded,
-            failed_sources=failed_sources,
-        ),
-        encoding="utf-8",
-    )
+    if markdown_path.exists():
+        with markdown_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                render_later_run(
+                    finals,
+                    run_at or datetime.now(),
+                    degraded=degraded,
+                    failed_sources=failed_sources,
+                )
+            )
+    else:
+        markdown_path.write_text(
+            render_markdown(
+                finals,
+                run_date,
+                degraded=degraded,
+                failed_sources=failed_sources,
+            ),
+            encoding="utf-8",
+        )
 
     summary_path = reports_dir / "latest.json"
     summary_path.write_text(

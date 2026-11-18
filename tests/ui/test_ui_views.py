@@ -36,7 +36,7 @@ def test_matches_are_read_back_from_the_report_the_search_wrote():
     assert best == {
         "tier": "best", "title": "Head of Regulatory — EMEA", "company": "Acme Pharma",
         "url": "https://acme.example/1", "location": "Basel", "best_cv": "regulatory",
-        "skill_score": 91, "interest_score": 84,
+        "source": "your company boards (Test)", "below_floors": "", "skill_score": 91, "interest_score": 84,
         "writeup": "**Why it fits.** Ten years of it.\n\n**Concerns.** None.",
     }
     assert (okay["tier"], okay["title"], okay["skill_score"]) == ("okay", "RA Manager", 70)
@@ -156,7 +156,7 @@ def test_only_the_newest_reports_are_read_where_nothing_archives_them(root, monk
 
 
 def test_no_report_yet(tmp_path):
-    assert views.report(tmp_path) == {"reports": [], "hidden": 0, "archived": 0, "last_run": None}
+    assert views.report(tmp_path) == {"reports": [], "practice": None, "hidden": 0, "archived": 0, "last_run": None}
     assert views.applications(tmp_path) == []
 
 

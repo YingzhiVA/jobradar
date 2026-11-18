@@ -48,6 +48,16 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNS_FILENAME = "runs.jsonl"
 
 
+def is_practice_run(record: dict) -> bool:
+    """A practice run (--dry-run) scores made-up postings and is not a day's
+    run. Practice runs now write reports/practice.json, not the ledger, but a
+    ledger from before that still holds them: known by their only source,
+    "fixture" (or the "practice" flag the record in practice.json carries)."""
+    if record.get("practice"):
+        return True
+    return [s.get("name") for s in record.get("sources") or []] == ["fixture"]
+
+
 @dataclass(frozen=True)
 class Decision:
     run: bool
@@ -56,6 +66,7 @@ class Decision:
 
 def last_run_date(reports_dir: Path) -> date | None:
     """The date of the most recent recorded run, or None if there is none.
+    Practice runs don't count: one must not stand in for the day's real run.
 
     Reads the whole ledger rather than just the last line: records are appended
     in run order, but a rebase or a manual edit can leave them out of date
@@ -73,8 +84,10 @@ def last_run_date(reports_dir: Path) -> date | None:
             continue
         try:
             record = json.loads(line)
+            if is_practice_run(record):
+                continue
             recorded = date.fromisoformat(record["date"])
-        except (ValueError, TypeError, KeyError):
+        except (ValueError, TypeError, KeyError, AttributeError):
             continue
         if latest is None or recorded > latest:
             latest = recorded

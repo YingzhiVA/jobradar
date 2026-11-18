@@ -17,6 +17,7 @@ constants in this package.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import os
 from datetime import date
@@ -45,6 +46,7 @@ from .normalize import fill_gaps, heuristic_normalize
 from .observability import (
     CORPUS_DIR_VAR,
     append_run_record,
+    write_practice_record,
     build_run_record,
     dump_scoring_corpus,
 )
@@ -376,7 +378,10 @@ def run(
     postings = [heuristic_normalize(raw, market) for raw in raw_postings]
 
     with SeenStore(ROOT / "data" / "seen_postings.json") as seen_store:
-        unseen = seen_store.filter_unseen(postings)
+        # A practice run neither reads nor updates what real runs have seen:
+        # its made-up postings are new every time, so it can be repeated, and
+        # nothing about them reaches a real run.
+        unseen = postings if dry_run else seen_store.filter_unseen(postings)
         logger.info("%d/%d postings are new", len(unseen), len(postings))
 
         # Drop postings with no identifiable employer (e.g. web_search's
@@ -431,7 +436,15 @@ def run(
             )
 
         scored = score_postings(kept, profile_block, client) if kept else []
-        ranked = select_with_settings(scored, thresholds, output)
+        # A practice run shows every sample it scores, whatever your floors:
+        # it is there to show the scores and the write-up, the samples are
+        # made up and nothing is marked seen, so a floor protects nothing.
+        # The report says which ones a real search would have left out.
+        ranked = select_with_settings(
+            scored,
+            dataclasses.replace(thresholds, min_skill=0, min_interest=0) if dry_run else thresholds,
+            output,
+        )
         finals = write_rationales(ranked, profile_block, client) if ranked else []
 
         tier_by_id = {f.scored.posting.id: f.tier for f in finals}
@@ -444,6 +457,8 @@ def run(
             ROOT / "reports",
             degraded=degraded,
             failed_sources=failed_sources,
+            practice=dry_run,
+            floors=(thresholds.min_skill, thresholds.min_interest) if dry_run else None,
         )
 
         # Postings to score again on a later run rather than write off: the
@@ -460,8 +475,9 @@ def run(
         # later runs before being written off; see ranking.near_floor_ids.
         near_floor = near_floor_ids(scored, thresholds.min_skill, thresholds.min_interest)
         to_mark_seen = [p for p in unseen if p.id not in leave_unmarked]
-        seen_store.mark_seen(to_mark_seen, tier_by_id, retryable_ids=near_floor)
-        if near_floor:
+        if not dry_run:
+            seen_store.mark_seen(to_mark_seen, tier_by_id, retryable_ids=near_floor)
+        if near_floor and not dry_run:
             logger.info(
                 "%d posting(s) scored just under the floor and will be scored again",
                 len(near_floor),
@@ -501,11 +517,15 @@ def run(
             min_skill=thresholds.min_skill,
             min_interest=thresholds.min_interest,
         )
-        runs_path = append_run_record(run_record, ROOT / "reports")
+        if dry_run:
+            runs_path = write_practice_record(run_record, ROOT / "reports")
+        else:
+            runs_path = append_run_record(run_record, ROOT / "reports")
 
     logger.info("Selected %d match(es): %s", len(finals), [f.tier for f in finals])
     logger.info("Report: %s", markdown_path)
-    logger.info("Summary: %s", summary_path)
+    if summary_path:
+        logger.info("Summary: %s", summary_path)
     logger.info("Run log: %s", runs_path)
 
 

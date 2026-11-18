@@ -21,6 +21,9 @@ from ..apply.tracker import (
     TERMINAL_STATUSES,
     Tracker,
 )
+from ..schedule import is_practice_run
+from ..search.observability import PRACTICE_RECORD
+from ..search.report import PRACTICE_REPORT
 from .setup import SetupError
 
 _UNSAFE_HREF = re.compile(r'(href|src)="(?!https?://|mailto:|#)[^"]*"', re.IGNORECASE)
@@ -40,8 +43,7 @@ def _tracker(root: Path) -> Tracker:
     return Tracker(root / "applications" / "applications.json")
 
 
-def _last_run(root: Path) -> dict | None:
-    """The funnel of the most recent run, from the last line of the run log."""
+def _last_ledger_record(root: Path) -> dict | None:
     path = root / "reports" / "runs.jsonl"
     try:
         with path.open("rb") as handle:
@@ -51,8 +53,29 @@ def _last_run(root: Path) -> dict | None:
             # enough to hold the final line without reading the whole log.
             handle.seek(max(0, size - 4_000_000))
             tail = handle.read().decode("utf-8", errors="replace")
-        record = json.loads(tail.rstrip().rsplit("\n", 1)[-1])
+        return json.loads(tail.rstrip().rsplit("\n", 1)[-1])
     except (OSError, ValueError, IndexError):
+        return None
+
+
+def _when(record: dict) -> str:
+    # run_at is an ISO timestamp; a record without one sorts by its date,
+    # which as a prefix sorts before any time on that day.
+    return str(record.get("run_at") or record.get("date") or "")
+
+
+def _last_run(root: Path) -> dict | None:
+    """The funnel of the most recent run: the last line of the run log, or the
+    practice run's record (reports/practice.json, kept out of the tracked log)
+    if that is newer."""
+    record = _last_ledger_record(root)
+    try:
+        practice = json.loads((root / "reports" / PRACTICE_RECORD).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        practice = None
+    if isinstance(practice, dict) and (record is None or _when(practice) > _when(record)):
+        record = practice
+    if record is None:
         return None
     funnel = record.get("funnel") or {}
     return {
@@ -63,15 +86,18 @@ def _last_run(root: Path) -> dict | None:
         "scored": funnel.get("scored"),
         "surfaced": funnel.get("surfaced"),
         "failed_sources": record.get("failed_sources") or [],
-        # A practice run (--dry-run) reads sample postings from one source
-        # called "fixture"; its report must not be taken for real matches.
-        "practice": [s.get("name") for s in record.get("sources") or []] == ["fixture"],
+        # A practice run (--dry-run) scores made-up postings; its report is
+        # reports/practice.md, shown apart from the real ones.
+        "practice": is_practice_run(record),
     }
 
 
 _REPORT_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 _MATCH_HEADING = re.compile(r"^## \[(BEST|OKAY)\] (.+)$", re.MULTILINE)
-_FIELD = re.compile(r"^- (Link|Location|Best-fit CV): (.*)$", re.MULTILINE)
+_FIELD = re.compile(r"^- (Link|Location|Best-fit CV|Found by|Below your floors): (.*)$", re.MULTILINE)
+# Any other section ends a match: a later run's "## Later run at …" heading
+# must not end up inside the write-up of the match above it.
+_SECTION = re.compile(r"^## ", re.MULTILINE)
 _SCORES = re.compile(r"^- Skill score: (\d+)/100, Interest score: (\d+)/100$", re.MULTILINE)
 
 
@@ -83,6 +109,7 @@ def parse_report(text: str) -> list[dict]:
     parts = _MATCH_HEADING.split(text)
     matches = []
     for tier, heading, body in zip(parts[1::3], parts[2::3], parts[3::3]):
+        body = _SECTION.split(body, 1)[0]
         title, _, company = heading.strip().rpartition(" — ")
         fields = dict(_FIELD.findall(body))
         scores = _SCORES.search(body)
@@ -96,6 +123,8 @@ def parse_report(text: str) -> list[dict]:
             "url": fields.get("Link", "").strip(),
             "location": fields.get("Location", "").strip(),
             "best_cv": fields.get("Best-fit CV", "").strip(),
+            "source": fields.get("Found by", "").strip(),  # absent before 1.28
+            "below_floors": fields.get("Below your floors", "").strip(),  # practice runs only
             "skill_score": int(scores.group(1)) if scores else None,
             "interest_score": int(scores.group(2)) if scores else None,
             "writeup": writeup,
@@ -158,11 +187,21 @@ def report(root: Path) -> dict:
     drafted for it, if any."""
     dated = _dated(root / "reports")
     find = _application_finder(root)
+    last_run = _last_run(root)
+    # The practice report is shown while the practice run is the latest run,
+    # above the real reports and apart from them; a real run retires it.
+    practice_path = root / "reports" / PRACTICE_REPORT
+    practice = (
+        _read_report(practice_path, find)
+        if last_run and last_run["practice"] and practice_path.is_file()
+        else None
+    )
     return {
         "reports": [_read_report(path, find) for path in dated[:MAX_REPORTS]],
+        "practice": practice,
         "hidden": max(0, len(dated) - MAX_REPORTS),
         "archived": len(_dated(root / "reports" / "archive")),
-        "last_run": _last_run(root),
+        "last_run": last_run,
     }
 
 

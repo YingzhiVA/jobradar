@@ -66,6 +66,11 @@ from .sources.base import FetchResult, RawPosting
 #    read as 5 office days) could only be explained by replaying the run.
 SCHEMA_VERSION = 6
 RUNS_FILENAME = "runs.jsonl"
+# A practice run's record. runs.jsonl is tracked and appended to by the cloud
+# run, so a practice record there would sit in the history for good and make
+# a local copy diverge from the cloud's; this file is ignored (reports/*.json)
+# and replaced by each practice run.
+PRACTICE_RECORD = "practice.json"
 
 
 def _posting_outcome(
@@ -246,6 +251,15 @@ def dump_scoring_corpus(scored: list[ScoredPosting], directory: Path, run_date: 
                 "interest": s.interest_score,
                 "unmet_hard_requirements": list(s.unmet_hard_requirements),
             }, ensure_ascii=False) + "\n")
+    return path
+
+
+def write_practice_record(record: dict, reports_dir: Path) -> Path:
+    """Write a practice run's record to reports/practice.json, replacing the
+    last one. See PRACTICE_RECORD."""
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    path = reports_dir / PRACTICE_RECORD
+    path.write_text(json.dumps({**record, "practice": True}, ensure_ascii=False), encoding="utf-8")
     return path
 
 
