@@ -15,9 +15,11 @@ where the user edits the markdown first and converts when done.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import markdown as md
@@ -33,6 +35,30 @@ _BROWSERS = (
     "chrome",
     "msedge",
     "brave-browser",
+)
+
+# Where the browsers install when they are not on PATH, which on Windows and
+# macOS is the usual case. Windows: under Program Files, or the user's own
+# AppData for a per-user Chrome; Edge comes with every Windows 10 and 11, so
+# a Windows machine always has one. macOS: the app bundles in /Applications
+# or ~/Applications. Same order of preference as above.
+_CHROME = ("Google", "Chrome", "Application", "chrome.exe")
+_EDGE = ("Microsoft", "Edge", "Application", "msedge.exe")
+_BRAVE = ("BraveSoftware", "Brave-Browser", "Application", "brave.exe")
+_WINDOWS_INSTALLS = (
+    ("PROGRAMFILES", _CHROME),
+    ("PROGRAMFILES(X86)", _CHROME),
+    ("LOCALAPPDATA", _CHROME),
+    ("PROGRAMFILES(X86)", _EDGE),
+    ("PROGRAMFILES", _EDGE),
+    ("PROGRAMFILES", _BRAVE),
+    ("LOCALAPPDATA", _BRAVE),
+)
+_MAC_APPS = (
+    "Chromium.app/Contents/MacOS/Chromium",
+    "Google Chrome.app/Contents/MacOS/Google Chrome",
+    "Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "Brave Browser.app/Contents/MacOS/Brave Browser",
 )
 
 _CONVERT_TIMEOUT = 120.0  # snap browsers can be slow to cold-start
@@ -212,11 +238,31 @@ def markdown_to_html(md_text: str, title: str) -> str:
     return _HTML_TEMPLATE.format(title=title, css=_CSS, body=body)
 
 
+def _installed_browsers() -> list[Path]:
+    """The standard install locations on this platform, in order."""
+    if sys.platform == "win32":
+        return [
+            Path(os.environ[var], *parts)
+            for var, parts in _WINDOWS_INSTALLS
+            if os.environ.get(var)
+        ]
+    if sys.platform == "darwin":
+        return [
+            folder / app
+            for app in _MAC_APPS
+            for folder in (Path("/Applications"), Path.home() / "Applications")
+        ]
+    return []
+
+
 def find_browser() -> str | None:
     for name in _BROWSERS:
         path = shutil.which(name)
         if path:
             return path
+    for path in _installed_browsers():
+        if path.is_file():
+            return str(path)
     return None
 
 
@@ -276,7 +322,7 @@ def convert_markdown_file(md_path: Path, browser: str | None = None) -> Path | N
 
     if browser is None:
         logger.warning(
-            "No Chromium/Chrome found; kept %s - open it in a browser and print to PDF",
+            "No Chrome, Edge or Chromium found; kept %s - open it in a browser and print to PDF",
             html_path.name,
         )
         return html_path

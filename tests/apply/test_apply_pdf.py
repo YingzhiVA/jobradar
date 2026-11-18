@@ -160,3 +160,31 @@ def test_a_print_that_leaves_the_old_pdf_in_place_is_a_failure(tmp_path, monkeyp
 
     monkeypatch.setattr(subprocess, "run", writes)
     assert pdf._print_to_pdf("chromium", html, old) is True
+
+
+def test_a_browser_off_path_is_found_where_windows_installs_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(pdf.shutil, "which", lambda name: None)
+    monkeypatch.setattr(pdf.sys, "platform", "win32")
+    for var in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+        monkeypatch.setenv(var, str(tmp_path / var))
+    assert pdf.find_browser() is None
+    edge = tmp_path / "PROGRAMFILES(X86)" / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+    edge.parent.mkdir(parents=True)
+    edge.touch()
+    assert pdf.find_browser() == str(edge)
+    chrome = tmp_path / "LOCALAPPDATA" / "Google" / "Chrome" / "Application" / "chrome.exe"
+    chrome.parent.mkdir(parents=True)
+    chrome.touch()
+    assert pdf.find_browser() == str(chrome)  # Chrome first, as on PATH
+
+
+def test_a_browser_off_path_is_found_in_the_mac_applications_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(pdf.shutil, "which", lambda name: None)
+    monkeypatch.setattr(pdf.sys, "platform", "darwin")
+    monkeypatch.setattr(pdf.Path, "home", lambda: tmp_path)
+    app = tmp_path / "Applications" / "Google Chrome.app" / "Contents" / "MacOS" / "Google Chrome"
+    found = pdf.find_browser()
+    if found is None or not found.startswith("/Applications/"):  # a real Mac may have one
+        app.parent.mkdir(parents=True)
+        app.touch()
+        assert pdf.find_browser() == str(app)

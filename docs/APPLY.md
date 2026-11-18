@@ -114,8 +114,10 @@ instead of being re-analyzed. Pages that can't be scraped (JavaScript-only
 career sites like Workday) get a stub folder to paste the posting text into;
 the next run picks it up from there.
 
-PDFs are produced by a headless Chromium/Chrome print (the first of
-`chromium`, `google-chrome` etc. found on PATH). Without one, the tool writes
+PDFs are produced by a headless print in Chrome, Edge, Chromium or Brave:
+the first found on PATH (`chromium`, `google-chrome`, …), else in the usual
+install folders on Windows (Program Files, AppData) and macOS
+(`/Applications`). Every Windows 10 and 11 has Edge. Without one, the tool writes
 a styled `.html` next to the Markdown instead: open it in any browser and
 print to PDF.
 

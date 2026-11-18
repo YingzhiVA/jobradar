@@ -14,6 +14,11 @@ version numbers exist to give changes a name.
   command it displays for copying used to start with `./.venv/bin/python`,
   which doesn't exist on Windows. There it now reads
   `.\.venv\Scripts\python`. The buttons were not affected.
+- **PDFs on Windows and macOS without any setup.** The apply step looked for
+  Chrome or Chromium only on PATH, where Windows and macOS don't put them, so
+  there it wrote `.html` files to print by hand. It now also looks in the
+  usual install folders, and so finds the Edge that comes with every Windows
+  10 and 11, or Chrome, Edge, Chromium or Brave in `/Applications` on a Mac.
 
 ## 1.27.0 — Travel and bonus figures no longer read as the workload (2026-11-18)
 

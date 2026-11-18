@@ -1,4 +1,5 @@
 import io
+import os
 import zipfile
 from pathlib import Path
 
@@ -112,6 +113,7 @@ def test_key_is_written_once_and_never_returned(root, monkeypatch):
     assert first["works"] and second == {"set": True, "hint": "sk-ant-…wxyz", "works": True, "error": ""}
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows has no POSIX file modes; the profile's ACL keeps .env private")
 def test_the_key_file_is_private_to_its_owner(root, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     env = root / ".env"
