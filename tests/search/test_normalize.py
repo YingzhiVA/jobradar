@@ -3,11 +3,13 @@ from jobradar.search.normalize import _ExtractedFields, heuristic_normalize, nor
 from jobradar.search.sources.base import RawPosting
 
 
-def make_raw(description: str, location: str | None = "Zurich") -> RawPosting:
+def make_raw(
+    description: str, location: str | None = "Zurich", title: str = "Test Role"
+) -> RawPosting:
     return RawPosting(
         source="test",
         url="https://example.com/job",
-        title="Test Role",
+        title=title,
         company="Test Co",
         description=description,
         location=location,
@@ -26,9 +28,72 @@ def test_percent_sign_after_both_numbers_still_works():
     assert (posting.employment_pct_min, posting.employment_pct_max) == (80, 100)
 
 
-def test_single_percentage_value():
-    posting = heuristic_normalize(make_raw("This is a 100% role."))
-    assert (posting.employment_pct_min, posting.employment_pct_max) == (100, 100)
+def _pct(posting):
+    return (posting.employment_pct_min, posting.employment_pct_max)
+
+
+def test_single_percentage_value_next_to_a_workload_word():
+    assert _pct(heuristic_normalize(make_raw("Pensum: 100%. Start: asap."))) == (100, 100)
+    assert _pct(heuristic_normalize(make_raw("Taux d'activité 60 %"))) == (60, 60)
+
+
+def test_bare_single_percentage_is_left_to_the_llm():
+    # "100%" alone says nothing about what it is a share of.
+    assert _pct(heuristic_normalize(make_raw("This is a 100% role."))) == (None, None)
+
+
+def test_travel_share_is_not_a_workload():
+    # The 2026-11-18 drop: On's "Lead - Sports Engineer" read as a 10% job.
+    for text in (
+        "Availability to travel up to 10% of the time.",
+        "Ability to travel approx.  30%",
+        "Bereitschaft zu Reisetätigkeit 40-60% innerhalb der Deutschschweiz",
+        "Up to ~30% international travel within EMEA.",
+    ):
+        assert _pct(heuristic_normalize(make_raw(text))) == (None, None), text
+
+
+def test_other_shares_are_not_a_workload():
+    for text in (
+        "€128000 - €131000 (EUR) + 15% bonus target + equity",
+        "We expect all staff to be in one of our offices at least 25% of the time.",
+        "Trusted by 70% of the Fortune 500.",
+        "Fully remote or hybrid (20% remote).",
+        "Pension fund: contributions paid 60% by us and 40% by you",
+        "Director, Supply Chain: deliver 150% of plan.",
+    ):
+        assert _pct(heuristic_normalize(make_raw(text))) == (None, None), text
+
+
+def test_workload_found_past_a_non_workload_figure():
+    text = "Travel up to 20%. Pensum 80 - 100 %, Zurich."
+    assert _pct(heuristic_normalize(make_raw(text))) == (80, 100)
+
+
+def test_range_in_other_languages():
+    assert _pct(heuristic_normalize(make_raw("Pensum 80 bis 100%"))) == (80, 100)
+    assert _pct(heuristic_normalize(make_raw("Taux 60 à 80%"))) == (60, 80)
+
+
+def test_small_range_without_a_workload_word_is_unknown():
+    # More likely a raise than a workload.
+    assert _pct(heuristic_normalize(make_raw("Salary review 5-10% each year"))) == (None, None)
+
+
+def test_workload_in_the_title_wins_over_the_description():
+    # Hitachi Energy's "Tender Specialist 80-100% (f/m/d)" read as 15% from
+    # the description; the title was never looked at.
+    raw = make_raw(
+        "Some travel (15%) may be required.", title="Tender Specialist 80-100% (f/m/d)"
+    )
+    assert _pct(heuristic_normalize(raw)) == (80, 100)
+    raw = make_raw("A role in Zurich.", title="Market Risk Controller 100% (f/m/d)")
+    assert _pct(heuristic_normalize(raw)) == (100, 100)
+
+
+def test_full_time_still_used_when_the_only_figure_is_not_a_workload():
+    text = "Job type Full-time. You will spend at least 50% of your time with customers."
+    assert _pct(heuristic_normalize(make_raw(text))) == (100, 100)
 
 
 def test_full_time_keyword_without_percentage():

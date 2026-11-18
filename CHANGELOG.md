@@ -4,6 +4,29 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.27.0 — Travel and bonus figures no longer read as the workload (2026-11-18)
+
+- **A percentage counts as the workload only when the posting says it is
+  one.** Any "N%" in a description used to be taken as the job's workload,
+  so "travel up to 15% of the time" made a full-time role a 15% job, and the
+  workload filter dropped it. 172 postings were dropped that way or
+  similarly, among them On's LightSpray and Sports Engineer roles, Roche and
+  Hitachi Energy roles whose titles say "80-100%", and Google roles read off
+  a "15% bonus target". Now:
+  - The title is read first, as Swiss boards put the workload there
+    ("Tender Specialist 80-100% (f/m/d)"); it was not looked at before.
+  - In the description, a figure counts when a workload word is in the same
+    sentence (Pensum, Teilzeit, part-time, taux d'activité, "(m/w/d)", …),
+    or when it is a range from 20% up ("70-90%"). Never when the sentence
+    makes it travel, a bonus, remote work, a pension share and the like, and
+    never below 10% or above 100%.
+  - Ranges written "80 bis 100%" and "60 à 80%" are read.
+  - A figure that can't be placed is left unknown for the gap-fill model to
+    read, as a posting with no figure always was. A bare "100% role" is now
+    one of those.
+- Postings already dropped this way stay settled in
+  `data/seen_postings.json`; remove their entries to have them checked again.
+
 ## 1.26.0 — Applications page fixes, prep counts as an update (2026-11-17)
 
 - **Browser interface:**

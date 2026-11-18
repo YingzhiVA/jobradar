@@ -43,8 +43,42 @@ _EXTRACTION_MODEL = "claude-haiku-5-5"
 _EXTRACTION_MAX_TOKENS = 4096
 _EXTRACTION_EFFORT = "low"
 
-_PCT_RANGE_RE = re.compile(r"(\d{1,3})\s*(?:%|\bpercent\b)?\s*(?:-|to|–)\s*(\d{1,3})\s*%")
-_PCT_SINGLE_RE = re.compile(r"(\d{1,3})\s*%")
+_PCT_RANGE_RE = re.compile(
+    r"(?<![\d.,])(\d{1,3})\s*(?:%|\bpercent\b)?\s*(?:-|–|—|\bto\b|\bbis\b|\bà\b|\ba\b)\s*(\d{1,3})\s*%",
+    re.I,
+)
+_PCT_SINGLE_RE = re.compile(r"(?<![\d.,])(\d{1,3})\s*%")
+# A percentage in a description is a workload only when the text around it
+# says so. Read bare, "Ability to travel up to 15% of the time" became a 15%
+# job and the 80-100% filter dropped it (On, Google, J&J, Roche: 2026-11-18).
+# How far either side of a figure to look for these words, in characters.
+_PCT_CONTEXT_CHARS = 40
+_PCT_WORKLOAD_CUES = re.compile(
+    r"pensum|workload|work[\s-]load|beschäftigungsgrad|anstellungsgrad|arbeitszeit"
+    r"|teilzeit|vollzeit|part[\s-]?time|full[\s-]?time|\bfte\b|employment\s+(?:level|rate)"
+    r"|taux|temps\s+(?:partiel|plein)|grado\s+di\s+occupazione|tempo\s+(?:parziale|pieno)"
+    r"|job\s*shar|\((?:[mwfdhx]\s*/\s*){1,3}[mwfdhx]\)|all\s+genders",
+    re.I,
+)
+# Words that make the figure something other than a workload, even when a
+# workload word is near too ("100% remote", "up to 20% travel", "10% bonus").
+_PCT_OTHER_CUES = re.compile(
+    r"travel|reise|déplacement|voyage|viagg|trasfert|of\s+(?:the|your|their)\s+time"
+    r"|bonus|commission|discount|rabatt|growth|revenue|increase|reduc|faster|improv"
+    r"|remote|home\s*office|equity|\bshare\s+of|market\s+share|budget|accuracy|uptime"
+    r"|\btop\b|for\s+the\s+planet|\binterest\b|\btax\b|\bvat\b|mwst|probability"
+    r"|incentive|pension|contribution|reimburs",
+    re.I,
+)
+# A workload is a share of a full week: anything outside is not one ("150%",
+# "1% for the planet").
+_PCT_MIN, _PCT_MAX = 10, 100
+# A range read without a workload word nearby must start at least this high:
+# "70-90%" in a description is a workload, "5-10%" more likely a raise.
+_PCT_RANGE_MIN = 20
+# A sentence ends at a stop before a capital, a line break or a bullet; not at
+# an abbreviation before a figure ("travel approx. 30%").
+_SENTENCE_BREAK_RE = re.compile(r"[.!?;]\s+(?=[A-ZÄÖÜÀÉ])|\n|•")
 _OFFICE_DAYS_RE = re.compile(
     r"(\d)\s*days?\s*(?:a|per)?\s*week[^.]{0,40}?(?:office|on-?site)"
     r"|(?:office|on-?site)[^.]{0,40}?(\d)\s*days?\s*(?:a|per)?\s*week",
@@ -75,21 +109,63 @@ def _resolve_remote(raw: RawPosting) -> bool | None:
     return _heuristic_remote(raw.location or "", raw.description)
 
 
-def _heuristic_employment_pct(text: str) -> tuple[int, int] | None:
+def _pct_candidates(text: str) -> list[tuple[re.Match, int, int]]:
+    """Every percentage figure in the text as (match, min, max), ranges before
+    single figures, each in reading order. A single figure inside a range
+    ("100%" of "80-100%") is not listed again on its own."""
+    found = []
+    spans = []
+    for m in _PCT_RANGE_RE.finditer(text):
+        lo, hi = sorted((int(m.group(1)), int(m.group(2))))
+        found.append((m, lo, hi))
+        spans.append(m.span())
+    for m in _PCT_SINGLE_RE.finditer(text):
+        if not any(start <= m.start() < end for start, end in spans):
+            value = int(m.group(1))
+            found.append((m, value, value))
+    return found
+
+
+def _pct_context(text: str, m: re.Match) -> str:
+    """The words either side of a figure, up to _PCT_CONTEXT_CHARS each and no
+    further than the sentence it is in: in "Travel up to 20%. Pensum 80-100%",
+    the travel belongs to the first figure only."""
+    before = text[max(0, m.start() - _PCT_CONTEXT_CHARS) : m.start()]
+    after = text[m.end() : m.end() + _PCT_CONTEXT_CHARS]
+    breaks = list(_SENTENCE_BREAK_RE.finditer(before))
+    if breaks:
+        before = before[breaks[-1].end() :]
+    first = _SENTENCE_BREAK_RE.search(after)
+    if first:
+        after = after[: first.start()]
+    return f"{before}{m.group(0)}{after}"
+
+
+def _heuristic_employment_pct(text: str, title: str = "") -> tuple[int, int] | None:
     """Returns (min, max) workload percentage the posting offers, e.g.
     "80-100%" -> (80, 100); a single figure or "full-time" -> (x, x).
+
+    A figure in the title is read as given: Swiss boards put the workload
+    there ("Tender Specialist 80-100% (f/m/d)"). A figure in the description
+    is read only when the words around it say it is a workload, or for a range
+    from 20% up ("70-90%"), which is hardly ever anything else; never
+    when they say it is something else (travel, a bonus, remote work). Anything
+    left unread stays unknown, for the LLM gap-fill to resolve.
     """
-    # A percentage range/figure is more precise than the bare "full-time"
-    # keyword, so check for it first and only fall back to the keyword.
-    range_match = _PCT_RANGE_RE.search(text)
-    if range_match:
-        lo, hi = int(range_match.group(1)), int(range_match.group(2))
-        return (min(lo, hi), max(lo, hi))
-    single_match = _PCT_SINGLE_RE.search(text)
-    if single_match:
-        value = int(single_match.group(1))
-        return (value, value)
-    if re.search(r"\bfull[\s-]?time\b", text, re.I):
+    for m, lo, hi in _pct_candidates(title):
+        if _PCT_MIN <= lo <= hi <= _PCT_MAX and not _PCT_OTHER_CUES.search(_pct_context(title, m)):
+            return (lo, hi)
+    for m, lo, hi in _pct_candidates(text):
+        if not _PCT_MIN <= lo <= hi <= _PCT_MAX:
+            continue
+        context = _pct_context(text, m)
+        if _PCT_OTHER_CUES.search(context):
+            continue
+        if _PCT_WORKLOAD_CUES.search(context) or _PCT_RANGE_MIN <= lo < hi:
+            return (lo, hi)
+    # A percentage is more precise than the bare "full-time" keyword, so the
+    # keyword is only the fallback.
+    if re.search(r"\bfull[\s-]?time\b", f"{title} {text}", re.I):
         return (100, 100)
     return None
 
@@ -112,7 +188,7 @@ def _heuristic_sponsorship(text: str) -> bool | None:
 
 def heuristic_normalize(raw: RawPosting, market: Market = CH) -> Posting:
     full_text = f"{raw.location or ''} {raw.description}"
-    pct_range = _heuristic_employment_pct(full_text)
+    pct_range = _heuristic_employment_pct(full_text, raw.title)
     return Posting(
         id=posting_id(raw.url, raw.title, raw.company, raw.source),
         source=raw.source,
