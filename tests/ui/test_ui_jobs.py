@@ -98,3 +98,8 @@ def test_the_command_is_shown_as_the_docs_write_it():
         "./.venv/bin/python -m jobradar.apply --url 'https://jobs.example.ch/1?a=b&c=d' --full"
     )
     assert jobs.shown("submitted", {"uid": "7"}) == "./.venv/bin/python -m jobradar.apply --mark-submitted 7"
+
+
+def test_windows_is_shown_its_own_venv_path():
+    assert jobs.python_shown("nt") == r".\.venv\Scripts\python"
+    assert jobs.python_shown("posix") == "./.venv/bin/python"

@@ -105,7 +105,8 @@ const fileUrl = (uid, name) => `/files/${uid}/${encodeURIComponent(name)}?t=${TO
 const external = (href, text) => h("a", { href, target: "_blank", rel: "noopener noreferrer" }, text);
 
 // A command or path as it would be typed, with a button that copies it.
-const PY = "./.venv/bin/python";
+// The server says which form fits this computer (Windows differs); set by loadState.
+let PY = "./.venv/bin/python";
 function cmd(text) {
   const copy = h("button", { class: "copy", title: "Copy", onclick: async (event) => {
     event.stopPropagation();
@@ -162,6 +163,7 @@ const app = { state: null, view: "workflow", refresh: null };
 
 async function loadState() {
   app.state = await api("/api/state");
+  if (app.state.python) PY = app.state.python;
   $("version").textContent = app.state.version ? `v${app.state.version}` : "";
   return app.state;
 }

@@ -93,6 +93,7 @@ class App:
             "setup": setup.status(self.root),
             "key": setup.key_status(self.root),
             "job": job.snapshot(len(job.lines)) if job else None,
+            "python": jobs.PYTHON_SHOWN,
         }
 
     def overview(self, _q: dict) -> dict:
