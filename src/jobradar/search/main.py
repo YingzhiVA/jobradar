@@ -323,7 +323,7 @@ def run(
     selection = load_companies(ROOT, market)
     for note in selection.notes:
         logger.warning("companies.yaml: %s", note.message)
-    constraints_config = yaml.safe_load((ROOT / "config" / "constraints.yaml").read_text()) or {}
+    constraints_config = yaml.safe_load((ROOT / "config" / "constraints.yaml").read_text(encoding="utf-8")) or {}
     constraints = Constraints.from_dict(constraints_config)
 
     cvs, identity, stories = load_profile(ROOT / "profile")

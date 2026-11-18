@@ -4,6 +4,17 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## Unreleased
+
+- **Constraints with non-ASCII text now read correctly on Windows.** The
+  search read `config/constraints.yaml` in the system's code page instead of
+  UTF-8, so on Windows an umlaut ("Zürich") came out garbled, and some
+  characters stopped the run.
+- **The browser interface shows Windows commands in Windows form.** Each
+  command it displays for copying used to start with `./.venv/bin/python`,
+  which doesn't exist on Windows. There it now reads
+  `.\.venv\Scripts\python`. The buttons were not affected.
+
 ## 1.27.0 — Travel and bonus figures no longer read as the workload (2026-11-18)
 
 - **A percentage counts as the workload only when the posting says it is

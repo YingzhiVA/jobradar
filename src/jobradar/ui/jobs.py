@@ -88,8 +88,14 @@ def _command(action: Action, params: dict) -> list[str]:
 
 
 # How the docs write the interpreter. The page shows each command it runs in
-# this form, so that what is learnt there can be typed in a terminal.
-PYTHON_SHOWN = "./.venv/bin/python"
+# this form, so that what is learnt there can be typed in a terminal. A venv
+# on Windows keeps it under Scripts\ rather than bin/; the leading .\ makes
+# the same text run in PowerShell and in cmd.
+def python_shown(os_name: str = os.name) -> str:
+    return r".\.venv\Scripts\python" if os_name == "nt" else "./.venv/bin/python"
+
+
+PYTHON_SHOWN = python_shown()
 
 
 def shown(name: str, params: dict) -> str:
