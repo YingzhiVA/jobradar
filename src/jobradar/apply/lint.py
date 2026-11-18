@@ -311,7 +311,7 @@ def _check_pdfs(folder: Path, app: Application | None) -> list[LintFinding]:
                     "html-leftover",
                     f"{html_path.name} is present, so the PDF print fell back to HTML: "
                     f"there is no submittable {pdf_path.name}. Re-run --pdf on a machine "
-                    "with Chromium/Chrome, or print the HTML by hand.",
+                    "with Chrome, Edge or Chromium, or print the HTML by hand.",
                     folder.name,
                 )
             )

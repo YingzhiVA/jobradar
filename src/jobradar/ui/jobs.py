@@ -101,7 +101,9 @@ PYTHON_SHOWN = python_shown()
 def shown(name: str, params: dict) -> str:
     """The command an action runs, as one would type it."""
     action = ACTIONS[name]
-    return shlex.join([PYTHON_SHOWN, "-m", action.module, *action.args(params)])
+    # The interpreter stays outside shlex: it would quote the Windows form for
+    # its backslashes, and PowerShell won't run a quoted path without `&`.
+    return f"{PYTHON_SHOWN} {shlex.join(['-m', action.module, *action.args(params)])}"
 
 
 def _env() -> dict:

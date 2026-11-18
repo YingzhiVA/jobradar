@@ -228,7 +228,7 @@ def check_browser() -> Check:
         return Check("PDF export", OK, browser)
     return Check(
         "PDF export", WARN,
-        "no Chromium/Chrome on PATH — the apply step will write .html files to print yourself",
+        "no Chrome, Edge or Chromium found — the apply step will write .html files to print yourself",
     )
 
 
