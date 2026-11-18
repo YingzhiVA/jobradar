@@ -4,8 +4,13 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
-## Unreleased
+## 1.30.0 — Python 3.14 (2026-11-18)
 
+- **jobradar now runs on Python 3.14.** New installs get 3.14 instead of
+  3.12, and so do the daily and monthly cloud runs. An existing install
+  moves at its next `uv sync` (uv rebuilds `.venv` on 3.14 by itself). The
+  full test suite passes on 3.11, 3.12, 3.13 and 3.14, and 3.11 or newer
+  stays enough for a pip install.
 - **The quick start installs before it asks for a Claude key.** The key is
   needed only from step 4, and the install is where something can go wrong,
   so nobody adds credit before the install works. The uv install lines are
