@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, urlsplit
 
-from .. import boards, doctor
+from .. import boards, doctor, updates
 from . import jobs, setup, views
 from .setup import SetupError
 
@@ -111,6 +111,7 @@ class App:
             "boards": selected,
             "rav": rav,
             "rav_unfiled": views.rav(self.root)["unfiled"] if rav else [],
+            "updates": updates.update_status(self.root),
         }
 
     def get_cvs(self, q: dict) -> dict:
@@ -122,6 +123,8 @@ class App:
         """What the setup check reads, as (path, time changed) pairs: an edit
         to any of it, here or in an editor, makes an earlier result stale."""
         paths = [self.root / ".env", self.root / "profile" / "identity.md"]
+        # The update check reads git: a remote added, a fetch, a merge.
+        paths += [self.root / ".git" / name for name in ("config", "FETCH_HEAD", "ORIG_HEAD")]
         for pattern in ("profile/cvs/*", "config/*.yaml", "config/boards/*.yaml"):
             paths += sorted(self.root.glob(pattern))
         return tuple((str(p), p.stat().st_mtime_ns) for p in paths if p.exists())

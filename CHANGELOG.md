@@ -4,6 +4,26 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## Unreleased
+
+- **A new copy is now a clone of the public repo, not a "Use this template"
+  copy.** A template copy starts with a history of its own, so it could only
+  take updates after a one-time merge that the docs got wrong (it stopped
+  with a conflict on every program file changed since the copy was made), and
+  a release that renames one of your files would leave your text behind in
+  the old one. A clone shares the public history: every update is
+  `git pull upstream master`, and your files follow a rename. The quick start
+  now clones, and no GitHub account is needed until you want the cloud run;
+  docs/CLOUD.md shows how to put your copy in a private repo for it. Not a
+  fork: GitHub keeps a fork of a public repo public.
+- **How to get updates is in the README**, under "Getting updates", including
+  the one-time step for a copy made with "Use this template" (now with the
+  `-X theirs` it needed, after the setting that keeps your files). The
+  browser page's "Get updates" task, which showed only
+  `git pull upstream master`, now shows the commands for where your copy
+  stands, committing your own changes first; the setup check says whether
+  updates are set up.
+
 ## 1.28.0 — Same-day searches and practice runs keep your matches (2026-11-18)
 
 - **A second search on the same day no longer loses the first one's

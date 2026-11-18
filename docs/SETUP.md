@@ -7,10 +7,12 @@ up to date.
 ## Your private copy
 
 jobradar runs from a Git repository that holds your profile, your
-application drafts and the state between runs. Make a **private** repo from
-the template (GitHub: *Use this template → Create a new repository →
-Private*). If you prefer not to use GitHub at all, a plain clone works too;
-you just lose the cloud schedule.
+application drafts and the state between runs: a clone of the public repo,
+made as in the README's quick start, step 1. It shares the public repo's
+history, which is what makes every update a plain pull. It needs no GitHub
+account; for the cloud schedule you put it in a **private** repo of your own
+([CLOUD.md](CLOUD.md#your-private-repo)). Not a fork: GitHub keeps a fork of
+a public repo public.
 
 ## Credentials
 
@@ -90,30 +92,32 @@ you wrote. The one exception is `config/boards/`, the shared catalogue of
 company boards: it merges like code, so a board that moved to another ATS is
 fixed in your copy by the next pull. Don't edit it for your own needs; a board
 of your own goes in `config/companies.yaml` with its `ats` and `slug`.
-The protection needs a one-time git setting:
+The commands are in the README, under [Getting
+updates](../README.md#getting-updates). What the pieces are for:
 
-```bash
-git config merge.ours.driver true          # honour the .gitattributes rules
-git config pull.rebase false               # pull by merging, not rebasing
-git remote add upstream https://github.com/<public-owner>/jobradar.git
-```
+- `git config merge.ours.driver true` makes git honour those `.gitattributes`
+  rules. Without it a merge treats your files like any other.
+- `git config pull.rebase false` makes a pull merge; without it, git refuses
+  a pull with "Need to specify how to reconcile divergent branches".
+- `git remote rename origin upstream` names the public repo as the source of
+  updates, and leaves `origin` free for a private repo of your own.
+- Committing before each pull: the protection works on what is committed.
+  Git refuses to pull over an uncommitted change to a file the update also
+  touches.
 
-Both settings are per-repository and only needed once. Without the second one,
-git refuses the first pull with "Need to specify how to reconcile divergent
-branches"; without the first, an upstream edit to a template file can overwrite
-your own copy of it.
+A copy made with GitHub's *Use this template*, the README's way up to 1.28,
+has no history in common with the public repo, so it needs a one-time merge
+first: `git merge --allow-unrelated-histories -X theirs upstream/master`,
+after the two settings above and `git remote add upstream …` (README, under
+Getting updates). With no common history git compares every file with
+nothing, so each program file changed since the copy was made would be a
+conflict; `-X theirs` settles those in the public version's favour, and the
+merge driver still keeps your own files. Without the driver, `-X theirs`
+would replace them with the templates. From then on the histories are joined
+and `git pull upstream master` merges normally.
 
-A repo made with *Use this template* has no history in common with the
-public one, so the first pull needs one extra flag; after that it is a plain
-pull:
-
-```bash
-git fetch upstream
-git merge --allow-unrelated-histories upstream/master   # first time only
-git pull upstream master                                 # from then on
-```
-
-`python -m jobradar.doctor` reminds you if the merge driver is not set.
+`python -m jobradar.doctor` reports whether updates are set up ("Getting
+updates") and whether the merge driver is configured.
 
 ## Where things end up
 

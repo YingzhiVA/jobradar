@@ -126,9 +126,23 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
 
 ## Quick start (about ten minutes)
 
-1. **Make your own private copy.** Click **Use this template → Create a new
-   repository** on GitHub and choose **Private**. Your CV and application
-   drafts will live in that repo, so it must not be public.
+1. **Get your copy.** In a terminal (PowerShell on Windows), one line at a
+   time:
+
+   ```bash
+   git clone https://github.com/YingzhiVA/jobradar.git
+   cd jobradar
+   git remote rename origin upstream
+   git config merge.ours.driver true
+   git config pull.rebase false
+   ```
+
+   Your copy is on your computer, and your CV and application drafts stay
+   there. The last three lines are what let you take updates later without
+   ever touching your own files (see [Getting updates](#getting-updates)).
+   No GitHub account is needed. For the daily run in the cloud you will put
+   the copy in a private repo of your own; [docs/CLOUD.md](docs/CLOUD.md)
+   shows how. It must be **private**, since it will hold your CV.
 2. **Get a Claude API key.** Sign in to the [Claude
    Console](https://platform.claude.com/), add some credit under **Billing**
    (a new account has none, and $10 covers your first run and more than a
@@ -136,10 +150,9 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    Name it `jobradar` and set a monthly spend limit, so its usage shows on
    its own and can never exceed what you chose. Copy the key when it is
    shown: it starts with `sk-ant-`, and the Console won't show it again.
-3. **Clone and install.**
+3. **Install.**
 
    ```bash
-   git clone https://github.com/<you>/jobradar.git && cd jobradar
    python3 -m venv .venv
    ./.venv/bin/pip install -e ".[dev]"
    ```
@@ -211,6 +224,52 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
 Everything else is optional and explained in the docs below: steering how
 many matches you see, the cloud schedule, the apply pipeline.
 
+## Getting updates
+
+Your copy doesn't update itself. New releases are listed on the [releases
+page](https://github.com/YingzhiVA/jobradar/releases), and
+[CHANGELOG.md](CHANGELOG.md) says what each one changed. To take one, in
+your copy's folder:
+
+```bash
+git add -A
+git commit -m "My setup and results"
+git pull upstream master
+./.venv/bin/pip install -e ".[dev]"
+```
+
+On Windows the last line is `.venv\Scripts\pip install -e ".[dev]"`.
+
+The first two lines record your own changes (your CV, `identity.md`, your
+settings, applications and results), so the update can keep them: the
+settings from quick start step 1 make every update leave those files as you
+have them. "Nothing to commit" is fine. If git asks who you are, give it any
+name and email, for this copy only:
+`git config user.name "jobradar"` and
+`git config user.email "jobradar@localhost"`. The last line picks up any new
+package a release needs.
+
+The setup check (`jobradar.doctor`) says whether your copy is set up for
+updates, and the "Get updates" task on the browser page shows the commands
+for where your copy stands.
+
+**Made your copy with "Use this template"?** That was the README's way up to
+1.28. Such a copy has a history of its own, so it needs this once instead
+(after committing your changes as above):
+
+```bash
+git config merge.ours.driver true
+git config pull.rebase false
+git remote add upstream https://github.com/YingzhiVA/jobradar.git
+git fetch upstream
+git merge --allow-unrelated-histories -X theirs upstream/master
+```
+
+Run the first line before the merge, never skip it: it is what keeps your
+files. The merge takes the public version of every program file (`-X
+theirs`), so any change you made to jobradar's own code is replaced. After
+that, updates work as above.
+
 ## How it fits together
 
 Three phases, each its own module, sharing the profile you set up once:
@@ -230,8 +289,8 @@ you apply, so nothing is paid for twice.
 
 ## Documentation
 
-- [docs/SETUP.md](docs/SETUP.md) — the profile in full, credentials, getting
-  updates from this repo later
+- [docs/SETUP.md](docs/SETUP.md) — the profile in full, credentials, how
+  updates leave your own files alone
 - [docs/UI.md](docs/UI.md) — the browser interface: the workflow on one
   page, as an alternative to the terminal for daily use
 - [docs/SEARCH.md](docs/SEARCH.md) — the daily run: configuration dials, how
