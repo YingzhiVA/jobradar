@@ -84,7 +84,7 @@ rav:
 
 sources:
   # Sources that need no per-company setup. The ATS boards in companies.yaml
-  # and the profile-driven web search are always on.
+  # are always scanned.
   eth_jobs:
     # jobs.ethz.ch, ETH Zurich's own board, scraped one job-type category at a
     # time. Which categories fit is a property of your role, so this is off
@@ -94,3 +94,10 @@ sources:
     # value. [false] [management, administration]
     enabled: false
     job_types: [management, administration]
+
+  web_search:
+    # One profile-driven web search per run, for postings beyond your boards:
+    # built from identity.md and constraints.yaml, about $0.06 a run. Off
+    # means only the boards (and ETH's, if on) are searched. The search's
+    # --no-web-search flag switches it off for a single run. [true]
+    enabled: true
