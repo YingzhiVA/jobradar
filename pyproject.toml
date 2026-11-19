@@ -3,7 +3,7 @@ name = "jobradar"
 version = "1.31.0"
 description = "Job search for Switzerland: scores postings against your CV and career identity instead of relying on noisy keyword alerts, then drafts the application."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     # >=0.109.2: the CI workflows authenticate by workload identity
@@ -30,7 +30,8 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=68"]
+# >=77: the SPDX `license = "MIT"` form above.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
