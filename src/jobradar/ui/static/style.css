@@ -78,6 +78,7 @@ label.check input { margin-top: .35em; accent-color: var(--accent); }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; } .row.between { justify-content: space-between; }
 .grow { flex: 1; } .gap { margin-top: 22px; }
+.indent { margin: 2px 0 8px 26px; } .indent > .hint { margin: 5px 0 0; }
 
 /* surfaces */
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 18px; }
@@ -182,7 +183,6 @@ button.small { padding: 4px 12px; font-size: .9rem; }
 /* Settings while setup is open: each step's tab carries its place and state,
    in the colours of the map's rail. "How much you see" is not a step. */
 .settings-tabs { gap: 4px 20px; }
-.settings-tabs .apart { margin-left: auto; }
 .tab-num { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 6px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--card); color: var(--soft); font-size: .72rem; font-weight: 600; vertical-align: 1px; }
 .tab-num.done { background: var(--good); border-color: var(--good); color: var(--card); }
 .tab-num.act { background: var(--act); border-color: var(--act); color: var(--card); }

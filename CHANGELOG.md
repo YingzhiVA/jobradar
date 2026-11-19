@@ -4,6 +4,30 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.31.0 — Fuller setup: remote options, match volume, web search (2026-11-19)
+
+- **The must-haves form now has every remote option.** It used to offer a
+  single "fully remote jobs within Switzerland" box. Now you choose between
+  no remote jobs, fully remote jobs based in the countries you list, or
+  fully remote jobs anywhere (`remote_ok`). The country list shows what
+  `constraints.yaml` says, so countries you added by hand can now be seen and
+  edited in the browser.
+- **"How much you see" is now a setup step, the last one before the check.**
+  The score floors, the number of matches per search, and the RAV switch
+  used to sit outside setup, where it was easy to never find them. Saving the
+  form unchanged completes the step, since the shipped values suit most
+  people. A copy that has already run a search counts it as done. A copy set
+  up in the browser that has never searched shows 5 of 6 steps done after
+  updating, until that form is saved once.
+- **The web search can be switched off.** "Where to search" has a box for
+  it, on by default. It is `sources.web_search.enabled` in
+  `config/search.yaml`; your copy of that file keeps its own text on update,
+  so the key isn't there until you set it, and leaving it out keeps the web
+  search on. `--no-web-search` still switches it off for a single run.
+  With no company selected and the web search off, a search would find
+  nothing, so the form refuses that and the setup check reports it as a
+  problem.
+
 ## 1.30.0 — Python 3.14 (2026-11-18)
 
 - **jobradar now runs on Python 3.14.** New installs get 3.14 instead of

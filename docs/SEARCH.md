@@ -57,6 +57,7 @@ rank, write up, report. This page covers how to steer it and what it does.
    | `rav.enabled` | `false` | Swiss RAV registrants: turns on the monthly proof-of-applications table and the archive gate that keeps submitted applications until their month is filed. See [APPLY.md](APPLY.md). |
    | `sources.eth_jobs.enabled` | `false` | Also scan ETH Zurich's own job board, by category. |
    | `sources.eth_jobs.job_types` | `[management, administration]` | Which of the board's job-type categories to scan; the board's numeric ids work too. |
+   | `sources.web_search.enabled` | `true` | The profile-driven web search, which finds postings beyond your boards. `false` searches only the boards (and ETH's, if on). `--no-web-search` switches it off for one run. |
 
    After editing, print what the program will actually read:
 
@@ -89,7 +90,9 @@ uv run python -m jobradar.search.main --dry-run
 # A real run against your configured sources.
 uv run python -m jobradar.search.main
 
-# Skip the web_search fallback/discovery source (faster, fewer calls).
+# Skip the web_search source for this run, whatever search.yaml says
+# (faster, fewer calls). To switch it off for good, set
+# sources.web_search.enabled: false.
 uv run python -m jobradar.search.main --no-web-search
 
 # For a machine-local cron that fires daily: exit without running unless
@@ -137,7 +140,8 @@ record shape and `jq` examples.
 
 1. **Fetch** — pull postings from the boards selected in
    `config/companies.yaml`, the ETH job board if enabled, and (unless
-   `--no-web-search`) a profile-driven web-search discovery query. A
+   `sources.web_search.enabled` is false or the run has `--no-web-search`) a
+   profile-driven web-search discovery query. A
    web-search lead is kept only if its link is the posting's own page and
    came back in the search results. Careers landing pages (`/careers`,
    `/jobs`), job-board search pages and links the model wrote itself are

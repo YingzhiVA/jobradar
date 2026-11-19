@@ -63,7 +63,7 @@ its stage says whether the setup holds now, however it was last checked. It
 is the same check as `python -m jobradar.doctor`, including the free call
 that tests the key.
 
-Once every setup step is done and the check passes, the six setup stages
+Once every setup step is done and the check passes, the seven setup stages
 fold into one line, since they are done once; **Show the steps** unfolds
 them. On a new copy they are open and the first one to do is marked. Its
 button opens that step in Settings, and from there saving a step leads
@@ -113,12 +113,12 @@ switched off and say why.
   the terminal route uses: pasting under the marker line of its
   `job_description.md` and re-running `jobradar.apply` works as before.
 - **Settings**: the setup steps as forms, in the order and under the titles
-  the map gives them, then the check, then the score floors and the number
-  of matches per run ("How much you see"). While setup is still open, each
+  the map gives them, then the check. While setup is still open, each
   step's tab shows its number, or a tick once it is done; Settings opens on
-  the first open step, a line above the tabs counts the steps done, and
-  "How much you see" stays out of the way until they all are. That last
-  form keeps strong matches to 1–5 and okay
+  the first open step, and a line above the tabs counts the steps done. The
+  last step, "How much you see", sets the score floors and the number of
+  matches per run. It ships with values that suit most people, so saving it
+  unchanged completes it. The form keeps strong matches to 1–5 and okay
   ones to 0–10 per search, and warns as you type when a value will make
   searches noticeably dearer (a low skill floor, a low strong-match bar,
   many matches per search); saving such values asks first.
@@ -166,7 +166,7 @@ the file you would otherwise edit:
 | Your CV | `profile/cvs/` |
 | What you want | `profile/identity.md` |
 | Must-haves | `config/constraints.yaml` |
-| Where to search | `config/companies.yaml` |
+| Where to search | `config/companies.yaml`; the web-search box writes `sources.web_search.enabled` in `config/search.yaml` |
 | How much you see | `config/search.yaml` |
 
 Saving a form changes only the lines whose values changed. Comments, the

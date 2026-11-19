@@ -458,18 +458,36 @@ class EthSource:
 
 
 @dataclass(frozen=True)
+class WebSearch:
+    """The profile-driven web search: one model call per run that looks for
+    postings beyond the selected boards. On unless switched off here; the
+    search's ``--no-web-search`` flag switches it off for one run."""
+
+    enabled: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "WebSearch":
+        data = data or {}
+        _unknown_keys(data, {"enabled"}, section="sources.web_search")
+        return cls(enabled=_bool(data.get("enabled", cls.enabled), key="sources.web_search.enabled"))
+
+
+@dataclass(frozen=True)
 class Sources:
     """Sources that need no per-company configuration and can be switched on
-    or off here. The ATS boards in companies.yaml and the profile-driven web
-    search are always on."""
+    or off here. The ATS boards in companies.yaml are always scanned."""
 
     eth_jobs: EthSource = EthSource()
+    web_search: WebSearch = WebSearch()
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "Sources":
         data = data or {}
-        _unknown_keys(data, {"eth_jobs"}, section="sources")
-        return cls(eth_jobs=EthSource.from_dict(data.get("eth_jobs")))
+        _unknown_keys(data, {"eth_jobs", "web_search"}, section="sources")
+        return cls(
+            eth_jobs=EthSource.from_dict(data.get("eth_jobs")),
+            web_search=WebSearch.from_dict(data.get("web_search")),
+        )
 
 
 def _market(value: object) -> Market:
@@ -551,6 +569,7 @@ class SearchSettings:
                     if eth.enabled
                     else "off"
                 ),
+                f"  web_search:      {'on' if self.sources.web_search.enabled else 'off'}",
             ]
         )
 

@@ -227,6 +227,14 @@ def test_eth_job_types_accept_names_and_ints(tmp_path):
     assert eth.job_types == (4, 7)  # names resolve, duplicates collapse
 
 
+def test_web_search_defaults_on_and_can_be_switched_off(tmp_path):
+    assert load_search_settings(tmp_path).sources.web_search.enabled is True
+    write_config(tmp_path, {"sources": {"web_search": {"enabled": False}}})
+    settings = load_search_settings(tmp_path)
+    assert settings.sources.web_search.enabled is False
+    assert "web_search:      off" in settings.describe()
+
+
 def test_eth_empty_job_types_is_fine_while_disabled(tmp_path):
     write_config(tmp_path, {"sources": {"eth_jobs": {"job_types": []}}})
     assert load_search_settings(tmp_path).sources.eth_jobs.job_types == ()

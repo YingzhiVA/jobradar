@@ -154,7 +154,7 @@ requests beyond the trial credit.
 | To spend less | Where |
 | --- | --- |
 | Select fewer boards, and add them a few at a time | `config/companies.yaml` |
-| Skip web search (about $0.06 a run) | `--no-web-search`, or `JOBRADAR_WEB_SEARCH_MAX_USES` in `.env` |
+| Skip web search (about $0.06 a run) | `sources.web_search.enabled: false` in `config/search.yaml` (or the box under Where to search), `--no-web-search` for one run, or fewer searches with `JOBRADAR_WEB_SEARCH_MAX_USES` in `.env` |
 | Search less often | `schedule.frequency` in `config/search.yaml` |
 | Surface fewer finalists (fewer Sonnet write-ups) | `output.max_best`, `output.max_okay` |
 | Score fewer postings | prune `config/companies.yaml`; tighten `config/constraints.yaml` |

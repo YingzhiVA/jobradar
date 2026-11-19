@@ -103,12 +103,14 @@ class App:
             selected = 0
         try:
             rav = setup.read_search(self.root)["rav"]
+            web_search = setup.read_boards_sources(self.root)["web_search"]
         except SetupError:
-            rav = False
+            rav, web_search = False, True
         return {
             **views.overview(self.root),
             "setup": setup.status(self.root),
             "boards": selected,
+            "web_search": web_search,
             "rav": rav,
             "rav_unfiled": views.rav(self.root)["unfiled"] if rav else [],
             "updates": updates.update_status(self.root),
@@ -230,7 +232,7 @@ class App:
             "/api/cvs": self.post_cv,
             "/api/identity": lambda b: setup.save_identity(r, b.get("sections") or []) or {},
             "/api/constraints": lambda b: setup.save_constraints(r, b) or {},
-            "/api/boards": lambda b: {"selected": setup.save_boards(r, b.get("names") or [])},
+            "/api/boards": lambda b: {"selected": setup.save_boards(r, b.get("names") or [], b.get("web_search"))},
             "/api/search": lambda b: setup.save_search(r, b) or {},
             "/api/run": self.post_run,
             "/api/file": self.post_file,

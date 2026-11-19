@@ -516,6 +516,26 @@ def _known_regions(regions: tuple[str, ...], written: list[str]) -> list[str]:
     return [r for r in regions if _canton_key(r) in keys]
 
 
+REMOTE_CHOICES = ("none", "countries", "anywhere")
+
+
+def _country_key(name: str) -> str:
+    return name.strip().casefold()
+
+
+def _countries(value: object) -> list[str]:
+    """Country names from the form: a list, or text split on commas and
+    lines, without blanks or repeats."""
+    items = re.split(r"[,\n]", value) if isinstance(value, str) else (value or [])
+    out, seen = [], set()
+    for item in items:
+        name = str(item).strip()
+        if name and _country_key(name) not in seen:
+            seen.add(_country_key(name))
+            out.append(name)
+    return out
+
+
 def read_constraints(root: Path) -> dict:
     market = _market(root)
     c = Constraints.from_dict(_read_yaml(root / "config" / "constraints.yaml"))
@@ -524,7 +544,10 @@ def read_constraints(root: Path) -> dict:
         "regions_word": market.regions_word,
         "country": market.country,
         "allowed_regions": _known_regions(market.regions, c.allowed_cantons),
-        "remote_in_country": any(market.mentions_country(x) for x in c.remote_countries),
+        "remote": "anywhere" if c.remote_ok else ("countries" if c.remote_countries else "none"),
+        # Shown as written, so a hand-typed "Schweiz" stays "Schweiz". Offered
+        # pre-filled with the market's country when the list is empty.
+        "remote_countries": [str(x) for x in c.remote_countries] or [market.country],
         "min_percentage": c.min_percentage,
         "max_percentage": c.max_percentage,
         "max_office_days": c.max_office_days_per_week,
@@ -536,8 +559,13 @@ def save_constraints(root: Path, form: dict) -> None:
     market = _market(root)
     chosen = set(form.get("allowed_regions") or [])
     regions = [r for r in market.regions if r in chosen]
-    remote = bool(form.get("remote_in_country"))
-    if not chosen and not remote:
+    remote = form.get("remote") or "none"
+    if remote not in REMOTE_CHOICES:
+        raise SetupError(f"Unknown remote choice: {remote}.")
+    remote_countries = _countries(form.get("remote_countries"))
+    if remote == "countries" and not remote_countries:
+        raise SetupError("Name at least one country for remote jobs, or pick another remote option.")
+    if not chosen and remote == "none":
         raise SetupError(
             f"Choose at least one of the {market.regions_word}, or allow remote "
             f"roles. With neither, no posting can pass."
@@ -556,17 +584,22 @@ def save_constraints(root: Path, form: dict) -> None:
     # as both Basel cantons) was written by hand and is kept.
     known = {_canton_key(r) for r in market.regions}
     by_hand = [str(w) for w in locations.get("allowed_cantons") or [] if _canton_key(str(w)) not in known]
-    others = [str(x) for x in locations.get("remote_countries") or [] if not market.mentions_country(str(x))]
-    was_remote = [str(x) for x in locations.get("remote_countries") or [] if market.mentions_country(str(x))]
-    countries = (was_remote[:1] or [market.country] if remote else []) + others
+    # "Anywhere" supersedes the country list without clearing it, so switching
+    # back later finds the countries still there. "None" empties it: a list
+    # left in place would still let those countries' remote roles through.
+    countries = [] if remote == "none" else remote_countries
     changes = [
         (("locations", "allowed_cantons"), regions + by_hand, _canton_key, _keep),
-        (("locations", "remote_countries"), countries, str, _keep),
+        (("locations", "remote_countries"), countries, _country_key, _keep),
         (("employment", "min_percentage"), low),
         (("employment", "max_percentage"), high),
         (("office_days", "max_per_week"), days),
         (("other_dealbreakers",), _lines(form.get("dealbreakers")), str, _keep),
     ]
+    # An absent remote_ok already means false: only write the line when the
+    # answer changes, so an untouched file stays byte for byte.
+    if bool(locations.get("remote_ok")) != (remote == "anywhere"):
+        changes.append((("locations", "remote_ok"), remote == "anywhere"))
     _save_yaml(path, data, changes, "Hard requirements: a posting that fails one is never scored.")
     Constraints.from_dict(_read_yaml(path))
     confirm_step(root, "constraints")
@@ -624,14 +657,27 @@ def read_boards(root: Path) -> dict:
         "selected": len(selection.boards),
         "many": MANY_BOARDS,
         "first_run": not _has_run_before(root),
+        **read_boards_sources(root),
     }
 
 
-def save_boards(root: Path, names: list[str]) -> int:
-    """Make companies.yaml scan `names` from the catalogue. Entries that
+def read_boards_sources(root: Path) -> dict:
+    """Whether the sources that need no board selection are on."""
+    try:
+        sources = load_search_settings(root).sources
+    except ConfigError as exc:
+        raise SetupError(str(exc)) from exc
+    return {"web_search": sources.web_search.enabled, "eth_jobs": sources.eth_jobs.enabled}
+
+
+def save_boards(root: Path, names: list[str], web_search: bool | None = None) -> int:
+    """Make companies.yaml scan `names` from the catalogue, and switch the web
+    search on or off in search.yaml (None leaves it as it is). Entries that
     carry their own ats and slug are the user's and stay as they are, except
     one for a catalogue board that was deselected."""
     market = _market(root)
+    current_sources = read_boards_sources(root)
+    web = current_sources["web_search"] if web_search is None else bool(web_search)
     config = root / "config"
     path = config / boards.COMPANIES_FILE
     try:
@@ -653,10 +699,19 @@ def save_boards(root: Path, names: list[str]) -> int:
     # as that entry: its name must not be added a second time beside it.
     own = {boards._key(e.get("name") or "") for e in current if isinstance(e, dict) and keep_entry(e)}
     listed = [catalog[k]["name"] for k in catalog if k in wanted and k not in own]
+    kept_own = [e for e in current if isinstance(e, dict) and keep_entry(e)]
+    if not (listed or kept_own or web or current_sources["eth_jobs"]):
+        raise SetupError("With no company selected and the web search off, a search would find nothing.")
     _save_yaml(
         path, data, [(("companies",), listed, boards._key, keep_entry)],
         "The company boards to scan, by the name config/boards/ gives them.",
     )
+    if web != current_sources["web_search"]:
+        search = root / "config" / "search.yaml"
+        _save_yaml(
+            search, _read_yaml(search), [(("sources", "web_search", "enabled"), web)],
+            "How the search is steered; docs/SEARCH.md explains each value.",
+        )
     confirm_step(root, "boards")
     return len(_read_yaml(path).get("companies") or [])
 
@@ -723,11 +778,12 @@ def save_search(root: Path, form: dict) -> None:
         if _get(data, where) is not None or current[names.get(where[-1], where[-1])] != value
     ]
     _save_yaml(path, data, changes, "How the search is steered; docs/SEARCH.md explains each value.")
+    confirm_step(root, "search")
 
 
 # ── Where setup stands ──────────────────────────────────────────────────────
 
-STEPS = ("key", "cv", "identity", "constraints", "boards")
+STEPS = ("key", "cv", "identity", "constraints", "boards", "search")
 
 
 def status(root: Path) -> dict:
@@ -744,9 +800,10 @@ def status(root: Path) -> dict:
         "key": ran or key_status(root)["set"],
         "cv": any(not _has_marker(p) for p in cvs),
         "identity": identity.exists() and not _has_marker(identity),
-        # These two ship with values that parse, so only the user going
+        # These three ship with values that parse, so only the user going
         # through the step, or a run having happened, says they are theirs.
         "constraints": ran or "constraints" in confirmed,
         "boards": ran or "boards" in confirmed,
+        "search": ran or "search" in confirmed,
     }
     return {"steps": done, "ready": all(done.values()), "has_run": ran}

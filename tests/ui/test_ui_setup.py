@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from jobradar.config import load_search_settings
 from jobradar.doctor import TEMPLATE_MARKER
 from jobradar.models import Constraints
 from jobradar.ui import setup
@@ -87,13 +88,18 @@ def test_an_instance_that_has_run_from_the_terminal_has_nothing_left_to_set_up(r
     assert setup.status(root)["ready"]
 
 
-def test_the_two_steps_that_ship_with_working_values_count_once_saved(root):
+def test_the_steps_that_ship_with_working_values_count_once_saved(root):
     setup.save_key(root, "sk-ant-" + "x" * 30, lambda: None)
     setup.save_cv_text(root, "mine", CV_TEXT)
     setup.save_identity(root, IDENTITY)
     assert setup.status(root)["steps"]["constraints"] is False
     setup.save_constraints(root, {"allowed_regions": ["Zurich"], "min_percentage": 80, "max_percentage": 100})
     setup.save_boards(root, [])
+    # "How much you see" is the last step: saving its shipped values unchanged
+    # is what completes setup.
+    assert setup.status(root)["steps"]["search"] is False
+    assert not setup.status(root)["ready"]
+    setup.save_search(root, setup.read_search(root))
     assert setup.status(root)["ready"]
 
 
@@ -260,12 +266,14 @@ def test_a_thin_identity_is_refused(root):
 def test_hand_spelled_cantons_tick_their_checkbox(root):
     form = setup.read_constraints(root)
     assert form["allowed_regions"] == ["Zurich", "St. Gallen"]
-    assert form["remote_in_country"]
+    assert form["remote"] == "countries"
+    assert form["remote_countries"] == ["Switzerland", "Germany"]
 
 
 def test_saving_constraints_keeps_what_the_form_does_not_show(root):
     setup.save_constraints(root, {
-        "allowed_regions": ["Zug", "Zurich", "Atlantis"], "remote_in_country": False,
+        "allowed_regions": ["Zug", "Zurich", "Atlantis"],
+        "remote": "countries", "remote_countries": "Germany, ",
         "min_percentage": "60", "max_percentage": "100", "max_office_days": "", "dealbreakers": "Internships\n\n",
     })
     data = yaml.safe_load((root / "config" / "constraints.yaml").read_text(encoding="utf-8"))
@@ -279,8 +287,34 @@ def test_saving_constraints_keeps_what_the_form_does_not_show(root):
     assert parsed.other_dealbreakers == ["Internships"]
 
 
+def test_remote_anywhere_sets_remote_ok_and_keeps_the_country_list(root):
+    setup.save_constraints(root, {**setup.read_constraints(root), "remote": "anywhere"})
+    data = yaml.safe_load((root / "config" / "constraints.yaml").read_text(encoding="utf-8"))
+    assert data["locations"]["remote_ok"] is True
+    assert data["locations"]["remote_countries"] == ["Switzerland", "Germany"]
+    form = setup.read_constraints(root)
+    assert form["remote"] == "anywhere"
+    # Back to countries: remote_ok goes off and the list is still there.
+    setup.save_constraints(root, {**form, "remote": "countries", "remote_countries": "Switzerland, Austria"})
+    parsed = Constraints.from_dict(yaml.safe_load((root / "config" / "constraints.yaml").read_text(encoding="utf-8")))
+    assert (parsed.remote_ok, parsed.remote_countries) == (False, ["Switzerland", "Austria"])
+
+
+def test_no_remote_clears_both_remote_settings(root):
+    setup.save_constraints(root, {**setup.read_constraints(root), "remote": "anywhere"})
+    setup.save_constraints(root, {**setup.read_constraints(root), "remote": "none"})
+    parsed = Constraints.from_dict(yaml.safe_load((root / "config" / "constraints.yaml").read_text(encoding="utf-8")))
+    assert (parsed.remote_ok, parsed.remote_countries) == (False, [])
+    form = setup.read_constraints(root)
+    # Offered pre-filled with the market's country for the next time it's chosen.
+    assert (form["remote"], form["remote_countries"]) == ("none", ["Switzerland"])
+
+
 @pytest.mark.parametrize("form", [
-    {"allowed_regions": [], "remote_in_country": False, "min_percentage": 80, "max_percentage": 100},
+    {"allowed_regions": [], "remote": "none", "min_percentage": 80, "max_percentage": 100},
+    {"allowed_regions": [], "min_percentage": 80, "max_percentage": 100},
+    {"allowed_regions": ["Zurich"], "remote": "countries", "remote_countries": " , ", "min_percentage": 80, "max_percentage": 100},
+    {"allowed_regions": ["Zurich"], "remote": "sometimes", "min_percentage": 80, "max_percentage": 100},
     {"allowed_regions": ["Zurich"], "min_percentage": 100, "max_percentage": 80},
     {"allowed_regions": ["Zurich"], "min_percentage": "lots", "max_percentage": 100},
     {"allowed_regions": ["Zurich"], "min_percentage": 80, "max_percentage": 100, "max_office_days": 9},
@@ -326,6 +360,30 @@ def test_saving_boards_keeps_hand_added_ones(root):
 def test_a_board_the_catalogue_lacks_is_refused(root):
     with pytest.raises(SetupError, match="Nope"):
         setup.save_boards(root, ["Acme Pharma", "Nope"])
+
+
+def test_the_web_search_is_on_by_default_and_saving_it_on_writes_nothing(root):
+    assert setup.read_boards(root)["web_search"] is True
+    setup.save_boards(root, ["Acme Pharma"], True)
+    assert not (root / "config" / "search.yaml").exists()
+
+
+def test_switching_the_web_search_off_and_on_again(root):
+    setup.save_boards(root, ["Acme Pharma"], False)
+    assert load_search_settings(root).sources.web_search.enabled is False
+    assert setup.read_boards(root)["web_search"] is False
+    setup.save_boards(root, ["Acme Pharma"])  # not sent: left as it is
+    assert setup.read_boards(root)["web_search"] is False
+    setup.save_boards(root, ["Acme Pharma"], True)
+    assert load_search_settings(root).sources.web_search.enabled is True
+
+
+def test_no_board_and_no_web_search_is_refused_and_nothing_is_written(root):
+    before = (root / "config" / "companies.yaml").read_text(encoding="utf-8")
+    with pytest.raises(SetupError, match="find nothing"):
+        setup.save_boards(root, [], False)
+    assert (root / "config" / "companies.yaml").read_text(encoding="utf-8") == before
+    assert not (root / "config" / "search.yaml").exists()
 
 
 # ── search dials ────────────────────────────────────────────────────────────
