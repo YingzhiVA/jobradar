@@ -91,12 +91,9 @@ manager, a lab technician or a controller alike. You need:
 
 - An **Anthropic API key** (Claude does the reading). Nothing is hosted;
   the key stays on your machine or in your own GitHub repo.
-- **Git**, **uv** and a terminal for the install, which is copy-paste. uv
-  installs jobradar and the Python it needs; you don't need Python already.
-  On a Mac, the first `git` command offers to install Apple's command line
-  tools, which include Git; on Windows, install [Git for
-  Windows](https://git-scm.com/download/win). Step 2 installs uv. After that
-  you can work from the browser page or stay in the terminal.
+- A computer with **Windows, macOS or Linux**, and a terminal for the
+  install, which is copy-paste; you don't need Python already. After that you
+  can work from the browser page or stay in the terminal.
 - Optionally a **GitHub account**, so the search runs every morning in the
   cloud and emails you, without your computer being on.
 
@@ -129,8 +126,23 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
 
 ## Quick start (about ten minutes)
 
-1. **Get your copy.** In a terminal (PowerShell on Windows), one line at a
-   time:
+Tested on Windows 11 and Linux (Ubuntu, Debian, Fedora). It should work the
+same way on a Mac, but no clean Mac install has been tested yet: if you try
+one, please say how it went in an
+[issue](https://github.com/YingzhiVA/jobradar/issues).
+
+1. **Get your copy.** This needs Git:
+
+   - **Windows:** install [Git for Windows](https://git-scm.com/download/win).
+   - **Mac:** nothing to do; the first `git` command offers to install
+     Apple's command line tools, which include it.
+   - **Linux:** most distributions don't include it:
+     `sudo apt install git` (Ubuntu, Debian) or `sudo dnf install git`
+     (Fedora). That needs administrator rights. On a Debian set up with a
+     separate root password, use `su -c "apt install git"`; on a computer
+     someone else manages, ask them.
+
+   Then, in a terminal (PowerShell on Windows), one line at a time:
 
    ```bash
    git clone https://github.com/YingzhiVA/jobradar.git
@@ -161,6 +173,9 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
+   If that says `curl: command not found` (Ubuntu and Debian don't always
+   have it), use `wget -qO- https://astral.sh/uv/install.sh | sh` instead.
+
    Then open a new terminal (so it finds uv), go back into the `jobradar`
    folder, and run:
 
@@ -174,9 +189,12 @@ limit, so the tool's usage shows on its own and cannot exceed what you chose.
    every system.
 
    *Prefer pip?* With Python 3.11 or newer installed, run
-   `python -m venv .venv`, then `.venv/bin/pip install -e ".[dev]"`. From
-   then on, wherever this README says `uv run python`, use `.venv/bin/python`.
-   On Windows both paths are `.venv\Scripts\` instead of `.venv/bin/`.
+   `python -m venv .venv`, then `.venv/bin/python -m pip install --upgrade pip`,
+   then `.venv/bin/pip install -e ".[dev]"`. Upgrade pip first: an older pip
+   on too old a Python doesn't refuse, it spends hours trying package
+   versions. From then on, wherever this README says `uv run python`, use
+   `.venv/bin/python`. On Windows the paths are `.venv\Scripts\` instead of
+   `.venv/bin/`.
 3. **Get a Claude API key.** Sign in to the [Claude
    Console](https://platform.claude.com/), add some credit under **Billing**
    (a new account has none, and $10 covers your first run and more than a

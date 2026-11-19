@@ -4,6 +4,20 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## Unreleased
+
+- **The README now covers Linux and says where macOS stands.** Most Linux
+  distributions don't include Git, so the quick start's first command failed
+  with "git: command not found"; the README now says how to install it (and
+  what to do without administrator rights), and gives a `wget` line for uv
+  where `curl` is missing. Tested on clean Ubuntu 24.04 and 22.04, Debian 12
+  and Fedora 41. macOS is untested so far; reports are welcome.
+- **The pip route upgrades pip first.** On Python 3.10 the pip that comes with
+  it doesn't refuse jobradar, it tries package versions for hours; a current
+  pip says at once that 3.11 or newer is needed.
+- **Package metadata uses the current licence format**, which setuptools
+  will soon require.
+
 ## 1.31.0 — Fuller setup: remote options, match volume, web search (2026-11-19)
 
 - **The must-haves form now has every remote option.** It used to offer a
