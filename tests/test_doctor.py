@@ -209,6 +209,21 @@ def test_all_commented_list_warns_and_points_at_the_catalogue(tmp_path):
     assert "config/boards/" in check.message
 
 
+def test_no_boards_and_the_web_search_off_fails(tmp_path):
+    root = _setup(tmp_path)
+    (root / "config" / "search.yaml").write_text("sources:\n  web_search:\n    enabled: false\n", encoding="utf-8")
+    (root / "config" / "companies.yaml").write_text("companies:\n", encoding="utf-8")
+    check = next(c for c in doctor.check_config(root) if c.name == "companies.yaml")
+    assert check.level == FAIL
+    assert "finds nothing" in check.message
+    # With the ETH board on there is still something to read.
+    (root / "config" / "search.yaml").write_text(
+        "sources:\n  web_search:\n    enabled: false\n  eth_jobs:\n    enabled: true\n", encoding="utf-8"
+    )
+    check = next(c for c in doctor.check_config(root) if c.name == "companies.yaml")
+    assert check.level == WARN and "only the ETH board runs" in check.message
+
+
 def test_a_name_missing_from_the_catalogue_fails_with_its_name(tmp_path):
     root = _setup(tmp_path)
     check = _companies(root, "companies:\n  - Acme\n  - Acmee\n")

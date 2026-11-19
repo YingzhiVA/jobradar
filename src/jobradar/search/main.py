@@ -290,7 +290,7 @@ def run(
     thresholds, output, market = settings.thresholds, settings.output, settings.market
     logger.info(
         "Settings: market %s, skill floor %d, interest floor %d, best bar %d, "
-        "cap %d best + %d okay, eth_jobs %s",
+        "cap %d best + %d okay, eth_jobs %s, web_search %s",
         market.code,
         thresholds.min_skill,
         thresholds.min_interest,
@@ -298,6 +298,7 @@ def run(
         output.max_best,
         output.max_okay,
         "on" if settings.sources.eth_jobs.enabled else "off",
+        "on" if use_web_search and settings.sources.web_search.enabled else "off",
     )
 
     # Only when asked (a machine-local cron, say): an invocation someone typed
@@ -339,7 +340,8 @@ def run(
         # of what they list on any given day.
         known = KnownPostings(SeenStore(ROOT / "data" / "seen_postings.json").settled_urls())
         sources = _build_sources(
-            selection.boards, constraints, identity, client, use_web_search,
+            selection.boards, constraints, identity, client,
+            use_web_search and settings.sources.web_search.enabled,
             sources_settings=settings.sources,
             known=known,
             market=market,

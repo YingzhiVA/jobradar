@@ -159,18 +159,31 @@ def check_boards(root: Path, market: Market = DEFAULT_MARKET) -> Check:
     )
 
 
-def check_companies(root: Path, market: Market = DEFAULT_MARKET) -> Check:
-    """The selection, config/companies.yaml, resolved against the catalogue."""
+def check_companies(
+    root: Path, market: Market = DEFAULT_MARKET, *, others: tuple[str, ...] = ("web search",)
+) -> Check:
+    """The selection, config/companies.yaml, resolved against the catalogue.
+    `others` names the sources that run without a selection (search.yaml's
+    sources); with none of them on, an empty selection searches nothing."""
     try:
         selection = boards.load_companies(root, market)
     except boards.BoardsError as exc:
         return Check("companies.yaml", FAIL, str(exc)[:220])
     if not selection.selected:
+        add = (
+            "add names from config/boards/ to config/companies.yaml "
+            "(start with a handful, see docs/COSTS.md)"
+        )
+        if not others:
+            return Check(
+                "companies.yaml", FAIL,
+                f"no company boards selected and the web search is off, so a search "
+                f"finds nothing — {add}, or switch sources.web_search on in config/search.yaml",
+            )
         return Check(
             "companies.yaml", WARN,
-            "no company boards selected yet — add names from config/boards/ to "
-            "config/companies.yaml (start with a handful, see docs/COSTS.md). "
-            "Until then only web search runs.",
+            f"no company boards selected yet — {add}. Until then only the "
+            f"{' and the '.join(others)} run{'s' if len(others) == 1 else ''}.",
         )
     if selection.errors:
         return Check("companies.yaml", FAIL, "; ".join(selection.errors))
@@ -189,7 +202,14 @@ def check_companies(root: Path, market: Market = DEFAULT_MARKET) -> Check:
 
 def check_config(root: Path) -> list[Check]:
     market = _market(root)
-    checks: list[Check] = [check_boards(root, market), check_companies(root, market)]
+    try:
+        sources = load_search_settings(root).sources
+        others = tuple(
+            name for name, on in (("web search", sources.web_search.enabled), ("ETH board", sources.eth_jobs.enabled)) if on
+        )
+    except ConfigError:
+        others = ("web search",)  # search.yaml's own check below names the problem
+    checks: list[Check] = [check_boards(root, market), check_companies(root, market, others=others)]
     constraints = root / "config" / "constraints.yaml"
     try:
         Constraints.from_dict(yaml.safe_load(constraints.read_text(encoding="utf-8")) or {})
@@ -203,6 +223,8 @@ def check_config(root: Path) -> list[Check]:
             extras.append("RAV reporting on")
         if settings.sources.eth_jobs.enabled:
             extras.append("ETH board on")
+        if not settings.sources.web_search.enabled:
+            extras.append("web search off")
         costly = cost_warnings(settings.thresholds, settings.output)
         if costly:
             checks.append(Check(

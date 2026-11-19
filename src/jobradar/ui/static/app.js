@@ -204,11 +204,11 @@ function go(view) {
   render();
 }
 
-// Setup as a newcomer meets it: the five steps in the order the map numbers
+// Setup as a newcomer meets it: the six steps in the order the map numbers
 // them. While any is open the page is "guiding": Settings opens on the first
 // open step, shows each step's state in its tab, and saving one leads to the
 // next instead of back to the map.
-const SETUP_ORDER = ["key", "cv", "identity", "constraints", "boards"];
+const SETUP_ORDER = ["key", "cv", "identity", "constraints", "boards", "search"];
 const setupSteps = () => (app.state && app.state.setup.steps) || {};
 const guiding = () => Boolean(app.state) && !app.state.setup.ready;
 const firstOpenStep = () => SETUP_ORDER.find((id) => !setupSteps()[id]) || null;
@@ -528,7 +528,14 @@ async function stepConstraints(box, done) {
     c.regions.forEach((r) => (on ? chosen.add(r) : chosen.delete(r)));
     boxes.querySelectorAll("input").forEach((i) => (i.checked = on));
   };
-  const remote = h("input", { type: "checkbox", checked: c.remote_in_country });
+  let remote = c.remote;
+  const countries = h("input", { type: "text", value: c.remote_countries.join(", "), placeholder: c.country });
+  const showCountries = () => (countries.disabled = remote !== "countries");
+  const remoteChoice = (value, label) =>
+    h("label", { class: "check" },
+      h("input", { type: "radio", name: "remote", value, checked: remote === value, onchange: () => { remote = value; showCountries(); } }),
+      h("span", {}, label));
+  showCountries();
   const low = h("input", { type: "number", min: 10, max: 100, step: 10, value: c.min_percentage });
   const high = h("input", { type: "number", min: 10, max: 100, step: 10, value: c.max_percentage });
   const days = h("select", {},
@@ -537,7 +544,7 @@ async function stepConstraints(box, done) {
   const breakers = h("textarea", { value: c.dealbreakers.join("\n"), placeholder: "e.g. Internship or student role" });
   const save = act(async () => {
     await api("/api/constraints", {
-      allowed_regions: [...chosen], remote_in_country: remote.checked,
+      allowed_regions: [...chosen], remote, remote_countries: countries.value,
       min_percentage: low.value, max_percentage: high.value,
       max_office_days: days.value, dealbreakers: breakers.value,
     });
@@ -552,8 +559,16 @@ async function stepConstraints(box, done) {
         h("span", { class: "label" }, `Where the job may be (${c.regions_word})`),
         h("span", {}, h("button", { class: "quiet", onclick: () => setAll(true) }, "All"), h("button", { class: "quiet", onclick: () => setAll(false) }, "None"))),
       h("span", { class: "hint" }, "Tick every one you could commute to. A posting in a small town is matched to its canton for you."),
-      boxes,
-      h("div", { class: "gap" }, h("label", { class: "check" }, remote, h("span", {}, `Also show fully remote jobs within ${c.country}`)))),
+      boxes),
+    h("div", { class: "card" },
+      h("span", { class: "label" }, "Remote jobs"),
+      h("span", { class: "hint" }, "Fully remote roles have no office to commute to, so the regions above can’t judge them. Choose which ones to let through."),
+      remoteChoice("none", "Only jobs in the regions above"),
+      remoteChoice("countries", "Also fully remote jobs based in these countries:"),
+      h("div", { class: "indent" }, countries,
+        h("span", { class: "hint" }, "Separate several with commas. Read off the job’s location line, not its description. A remote job that still names a town has to be in one of your regions.")),
+      remoteChoice("anywhere", "Also fully remote jobs anywhere in the world"),
+      h("span", { class: "hint indent" }, "Every job marked remote passes, wherever it is based or whatever town it names: a remote US role included, which you may not be allowed to work from here.")),
     h("div", { class: "card" },
       h("span", { class: "label" }, "Workload"),
       h("span", { class: "hint" }, "A posting passes if its range overlaps yours. 80 to 100 means part-time at 80% or full-time."),
@@ -566,8 +581,11 @@ async function stepConstraints(box, done) {
   );
 }
 
+// `data.web_search` and `data.eth_jobs`: the sources that run without a
+// company selected.
 function boardCost(count, data) {
-  if (count === 0) return ["", "No company selected: only the web search runs, about 5 to 10 cents a day."];
+  if (count === 0 && !data.web_search && !data.eth_jobs) return ["warn", "No company selected and the web search is off: a search would find nothing."];
+  if (count === 0) return ["", data.web_search ? "No company selected: only the web search runs, about 5 to 10 cents a day." : "No company selected: only the ETH board is read."];
   if (!data.first_run) return ["", `${count} selected. Each newly added company costs one catch-up read of its open postings, the first time only.`];
   if (count <= 10) return ["", `${count} selected. Your first search reads every open posting at these companies: usually $1 to $2. After that, a day costs cents.`];
   if (count <= data.many) return ["warn", `${count} selected. Your first search reads every open posting at all of them and may cost a few dollars. Starting with five to ten is cheaper.`];
@@ -578,6 +596,7 @@ async function stepBoards(box, done) {
   const data = await api("/api/boards");
   const chosen = new Set(data.sections.flatMap((s) => s.boards.filter((b) => b.selected).map((b) => b.name)));
   const cost = h("div", {});
+  const web = h("input", { type: "checkbox", checked: data.web_search, onchange: () => { data.web_search = web.checked; updateCost(); } });
   const updateCost = () => {
     const [kind, message] = boardCost(chosen.size + data.own.length, data);
     cost.className = `grow small ${kind === "warn" ? "note warn" : "muted"}`;
@@ -614,14 +633,18 @@ async function stepBoards(box, done) {
     list.querySelectorAll("section").forEach((s) => (s.hidden = !s.querySelector("label.check:not([hidden])")));
   } });
   const save = act(async () => {
-    await api("/api/boards", { names: [...chosen] });
+    await api("/api/boards", { names: [...chosen], web_search: web.checked });
     toast("Saved.");
     done();
   });
   updateCost();
   put(box, 
     h("h1", {}, "Where to search"),
-    h("p", {}, "jobradar reads the careers pages of the companies you tick, every time it searches. It also runs a web search based on your profile, which finds postings elsewhere, so this list doesn’t have to be complete."),
+    h("p", {}, "jobradar reads the careers pages of the companies you tick, every time it searches. With the web search on, it also looks for postings elsewhere, so this list doesn’t have to be complete."),
+    h("div", { class: "card" },
+      h("label", { class: "check" }, web, h("span", {}, h("strong", {}, "Also search the web. "),
+        "One search per run, built from what you want and your must-haves, finds postings at companies you didn’t tick. About 6 cents a run. Turn it off to see only the companies below.")),
+    ),
     h("div", { class: "note" }, h("strong", {}, "Start with five to ten companies you would really like to work for. "), "The first search reads everything currently open at each one, so a long list makes the first day expensive. You can add more at any time."),
     data.problems.length > 0 && h("div", { class: "note warn" }, data.problems.join(" · ")),
     h("div", { class: "card" },
@@ -668,7 +691,7 @@ async function checksList(fresh) {
 
 function searchCost(boards) {
   if (boards.first_run) return boardCost(boards.selected, boards)[1];
-  if (boards.selected === 0) return "With no company selected only the web search runs: about 5 to 10 cents.";
+  if (boards.selected === 0) return boardCost(0, boards)[1];
   return `With ${boards.selected} ${boards.selected === 1 ? "company" : "companies"} selected, a normal day is about 10 to 20 cents. Companies added since the last run cost one catch-up read of everything open there.`;
 }
 
@@ -751,8 +774,8 @@ function workflow(o, check) {
   const run = o.last_run;
   const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
   // Only the first open setup step is "next"; the ones after it are merely
-  // not done yet, and five highlighted boxes would point nowhere.
-  const firstOpen = ["key", "cv", "identity", "constraints", "boards"].find((id) => !step[id]);
+  // not done yet, and six highlighted boxes would point nowhere.
+  const firstOpen = SETUP_ORDER.find((id) => !step[id]);
   const setupStage = (id, title, what, where, detail) => ({
     id, title, what, detail, files: [where], open: ["settings", id],
     state: step[id] ? "done" : id === firstOpen ? "act" : "info",
@@ -769,8 +792,9 @@ function workflow(o, check) {
       setupStage("cv", "Your CV", "What postings are scored against, and what tailored CVs are cut from. Markdown or Word, one per kind of role.", "profile/cvs/"),
       setupStage("identity", "What you want", "A page in your own words on where you are heading and what you are leaving. It is what the interest score means.", "profile/identity.md"),
       setupStage("constraints", "Must-haves", "Cantons, workload, office days. A posting that fails one is dropped before anything is read or paid for.", "config/constraints.yaml"),
-      setupStage("boards", "Where to search", "The company career pages to scan, picked by name from the shipped catalogue. A web search runs besides.", "config/companies.yaml",
-        `${n(o.boards, "company", "companies")} selected`),
+      setupStage("boards", "Where to search", "The company career pages to scan, picked by name from the shipped catalogue, and whether a web search runs besides.", "config/companies.yaml",
+        `${n(o.boards, "company", "companies")} selected, web search ${o.web_search ? "on" : "off"}`),
+      setupStage("search", "How much you see", "The score floors a posting must clear and how many matches a search shows, which together set what a search costs. It ships with values that suit most people.", "config/search.yaml"),
       { id: "health", title: "Check", what: "Tests the key and reads through the profile and config, so a mistake is named before a run is spent on it. This page runs it on every visit.",
         command: `${PY} -m jobradar.doctor`, open: ["settings", "health"], button: "See the check",
         // Until the steps above are filled in, it can only repeat that they
@@ -810,7 +834,6 @@ function workflow(o, check) {
 }
 
 const SIDE_TASKS = (o) => [
-  ["Steer how much you see", "Score floors and matches per run", null, ["settings", "search"]],
   ["Find more companies to scan", "docs/DISCOVERY.md", `${PY} -m jobradar.discovery.discover`],
   ["Check that your boards still answer", "docs/DISCOVERY.md", `${PY} -m jobradar.board_health`],
   ["Add interview stories", "profile/stories/README.md", null],
@@ -1599,6 +1622,7 @@ async function stepSearch(box, done) {
   put(box,
     h("h1", {}, "How much you see"),
     h("p", { class: "muted" }, "Every posting gets two scores from 0 to 100. These decide which ones reach you, and so what a search costs: every match shown is written up, about 3 cents each."),
+    guiding() && h("div", { class: "note" }, "The values below suit most people, and saving them unchanged is fine. Come back after a few searches if you see too much or too little."),
     h("div", { class: "card" },
       field("Skill floor", "Postings scoring lower on skill fit are dropped for good. Lower it if you see too little, raise it if what you see isn’t worth opening. Usual: 60.", skill),
       slots.min_skill,
@@ -1610,7 +1634,7 @@ async function stepSearch(box, done) {
       slots.combined),
     h("div", { class: "card" },
       h("label", { class: "check" }, rav, h("span", {}, h("strong", {}, "I am registered with a RAV. "), "Adds the monthly proof-of-applications table to the Applications page."))),
-    h("div", { class: "row end" }, h("button", { class: "primary", onclick: save }, "Save")),
+    h("div", { class: "row end" }, h("button", { class: "primary", onclick: save }, saveLabel())),
   );
   check();
 }
@@ -1632,12 +1656,11 @@ async function stepHealth(box, _done, fresh) {
 }
 
 // The tabs follow the map: the setup steps in their order, under the titles
-// the map gives them, then the check. "How much you see" is not a setup step
-// (it ships with usable values), so it comes last and stands apart.
+// the map gives them, then the check.
 const SETTINGS = [
   ["key", "Connect Claude", stepKey], ["cv", "Your CV", stepCv], ["identity", "What you want", stepIdentity],
   ["constraints", "Must-haves", stepConstraints], ["boards", "Where to search", stepBoards],
-  ["health", "Check", stepHealth], ["search", "How much you see", stepSearch],
+  ["search", "How much you see", stepSearch], ["health", "Check", stepHealth],
 ];
 const SETTING_TITLES = Object.fromEntries(SETTINGS.map(([id, label]) => [id, label]));
 // null until Settings is first opened or a link names a tab: see render().
@@ -1646,7 +1669,7 @@ let settingsTab = null;
 // What each settings tab writes, for doing the same by hand.
 const BY_HAND = {
   search: () => ["Edit ", file("config/search.yaml"), "; every key is explained there and in ", file("docs/SEARCH.md"), ". What the program reads: ", cmd(`${PY} -m jobradar.config`)],
-  boards: () => ["List the names in ", file("config/companies.yaml"), ", as ", file("config/boards/"), " spells them. A board the catalogue lacks goes there with its own ats and slug."],
+  boards: () => ["List the names in ", file("config/companies.yaml"), ", as ", file("config/boards/"), " spells them. A board the catalogue lacks goes there with its own ats and slug. The web search is ", file("sources: web_search: enabled:"), " in ", file("config/search.yaml"), "."],
   constraints: () => ["Edit ", file("config/constraints.yaml"), ". It also takes cities and countries, which this form leaves as they are."],
   identity: () => ["Edit ", file("profile/identity.md"), ". Any headings work; the whole page is read."],
   cv: () => ["Put ", file(".md"), " or ", file(".docx"), " files in ", file("profile/cvs/"), ". The file name is the CV’s label in reports."],
@@ -1685,11 +1708,9 @@ function renderSettings(main) {
     crumbs("settings"),
     wasGuiding && h("p", { class: "muted small setup-progress" },
       h("strong", {}, `Setup: ${done} of ${SETUP_ORDER.length} steps done. `),
-      "Fill them in from left to right; a search can run once all five are done."),
-    // While setup is open the bar holds the steps and their check; "How much
-    // you see" joins it once they are done, or when a link opens it.
-    h("div", { class: "tabs settings-tabs" }, SETTINGS.filter(([id]) => !wasGuiding || id !== "search" || settingsTab === id).map(([id, label]) =>
-      h("button", { class: `${settingsTab === id ? "on" : ""} ${id === "search" ? "apart" : ""}`, onclick: () => { settingsTab = id; go("settings"); } },
+      "Fill them in from left to right; a search can run once all six are done."),
+    h("div", { class: "tabs settings-tabs" }, SETTINGS.map(([id, label]) =>
+      h("button", { class: settingsTab === id ? "on" : "", onclick: () => { settingsTab = id; go("settings"); } },
         marker(id), label))),
     body,
     alt(BY_HAND[settingsTab](),
