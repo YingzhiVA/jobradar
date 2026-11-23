@@ -4,8 +4,17 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
-## Unreleased
+## 1.32.0 — Ashby locations, Overstory board (2026-11-23)
 
+- **Ashby postings now list every location they are open in.** jobradar
+  used to read only an Ashby posting's main location. A remote-first employer
+  that lists "United States" first and Switzerland among the other countries
+  it hires in was therefore rejected as a US role by `remote_countries`.
+  Now all of a posting's locations are read, as for Workday and Oracle.
+- **New board: Overstory** (in `global.yaml`), vegetation intelligence for
+  electricity utilities, built on satellite imagery and machine learning. It
+  has no Swiss office but hires remotely in Switzerland. Add `Overstory` to
+  your `config/companies.yaml` to scan it.
 - **The README now covers Linux and says where macOS stands.** Most Linux
   distributions don't include Git, so the quick start's first command failed
   with "git: command not found"; the README now says how to install it (and

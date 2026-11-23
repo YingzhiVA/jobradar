@@ -243,7 +243,7 @@ one, please say how it went in an
 7. **Pick the company boards to scan.** None are selected.
    `config/boards/` lists the boards jobradar knows: `ch.yaml` for
    Switzerland, grouped by industry with the list of sections at the top,
-   and `global.yaml` for big employers whose one board serves every country.
+   and `global.yaml` for employers whose one board serves every country.
    Add the name of each board you want to `config/companies.yaml`, one per
    line.
    **Start with five or ten**: your first run scores every open

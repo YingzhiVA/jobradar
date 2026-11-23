@@ -30,3 +30,11 @@ boards:
   - name: OpenAI
     ats: ashby
     slug: openai
+  # Vegetation intelligence for utilities (satellite imagery + ML), remote-
+  # first with no Swiss office. Each posting names "United States" as its
+  # location and the countries it hires in as secondary locations,
+  # Switzerland among them; the location gate passes those via
+  # remote_countries.
+  - name: Overstory
+    ats: ashby
+    slug: overstory

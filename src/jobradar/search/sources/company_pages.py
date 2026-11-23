@@ -207,6 +207,15 @@ def _fetch_lever(company_name: str, slug: str, client: httpx.Client) -> list[Raw
     return postings
 
 
+def _ashby_location(job: dict) -> str | None:
+    """Every location a posting is open in, ";"-joined, as for Workday: the
+    primary and its secondaryLocations. A remote-first employer (Overstory)
+    gives "United States" as the primary and lists Switzerland among a dozen
+    secondaries; the primary alone would fail remote_countries."""
+    names = [job.get("location"), *((loc or {}).get("location") for loc in job.get("secondaryLocations") or [])]
+    return "; ".join(dict.fromkeys(n.strip() for n in names if isinstance(n, str) and n.strip())) or None
+
+
 def _fetch_ashby(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
     url = f"https://api.ashbyhq.com/posting-api/job-board/{slug}"
     resp = client.get(url)
@@ -222,7 +231,7 @@ def _fetch_ashby(company_name: str, slug: str, client: httpx.Client) -> list[Raw
                 title=job.get("title", ""),
                 company=company_name,
                 description=description,
-                location=job.get("location"),
+                location=_ashby_location(job),
                 remote=job.get("isRemote") if isinstance(job.get("isRemote"), bool) else None,
                 raw=job,
             )
