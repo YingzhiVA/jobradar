@@ -12,6 +12,7 @@ from jobradar.search.sources.company_pages import (
     LISTING_ONLY,
     CompanyPagesSource,
     KnownPostings,
+    _fetch_ashby,
     _fetch_avature,
     _fetch_bamboohr,
     _fetch_brassring,
@@ -2225,6 +2226,41 @@ def test_eightfold_registered():
 
 
 # --- Lever: workplaceType carries the remote flag the location text lacks ---
+
+
+def test_ashby_location_lists_secondary_locations():
+    # Overstory's board: a remote role with "United States" as the primary and
+    # Switzerland among the secondaries. remote_countries reads the location
+    # line, so the secondaries have to be on it.
+    payload = {
+        "jobs": [
+            {
+                "title": "Staff Product Manager",
+                "jobUrl": "https://jobs.ashbyhq.com/acme/1",
+                "descriptionPlain": "A remote role.",
+                "location": "United States",
+                "secondaryLocations": [{"location": "Canada"}, {"location": "Switzerland"}, {"location": "Canada"}],
+                "isRemote": True,
+            },
+            {
+                "title": "Office Role",
+                "jobUrl": "https://jobs.ashbyhq.com/acme/2",
+                "descriptionPlain": "An office role.",
+                "location": "Zurich",
+                "isRemote": False,
+            },
+            {
+                "title": "Unplaced Role",
+                "jobUrl": "https://jobs.ashbyhq.com/acme/3",
+                "descriptionPlain": "A role.",
+                "secondaryLocations": [],
+            },
+        ]
+    }
+    postings = _fetch_ashby("Acme", "acme", _JsonClient(payload))
+
+    assert [p.location for p in postings] == ["United States; Canada; Switzerland", "Zurich", None]
+    assert [p.remote for p in postings] == [True, False, None]
 
 
 def test_lever_reads_remote_from_workplace_type():
