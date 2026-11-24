@@ -123,6 +123,7 @@ def lint_folder(
     findings += _check_style(folder, docs)
     if app is not None and cvs_dir is not None:
         findings += _check_bullet_cuts(folder, app, cvs_dir)
+    findings += _check_cv_length(folder, cv_docs)
     if cover_text is not None:
         findings += _check_cover_letter_length(folder, cover_text)
     if strict and app is not None:
@@ -367,6 +368,14 @@ _FILLER_PHRASES = (
     "think outside the box", "go-getter", "detail-oriented", "self-starter", "synergy",
 )
 _COVER_LETTER_WORD_CAP = 400  # ~300-word body plus salutation/sign-off, with headroom
+# The tailoring prompt asks for ~700 words, two A4 pages. Measured on the
+# rendered PDFs (2026-11-24): 509 and 581 words came out at two pages, 761 and
+# up at three, so the warning sits just under the first three-page CV.
+_CV_WORD_CAP = 750
+# Tokens with no letter or digit in them (bullet stars, "|" separators, "·")
+# are markup, not words. A link's target is glued to its text, so
+# "[GitHub](https://...)" counts once, as the reader sees it.
+_HAS_WORD_CHAR_RE = re.compile(r"\w")
 
 
 def _company_tokens(name: str) -> list[str]:
@@ -620,6 +629,33 @@ def _check_style(folder: Path, docs: dict[Path, str]) -> list[LintFinding]:
                     )
                 )
     return findings
+
+
+def _cv_words(text: str) -> int:
+    """Words a reader sees in a markdown CV, markup-only tokens left out."""
+    return sum(1 for token in text.split() if _HAS_WORD_CHAR_RE.search(token))
+
+
+def _check_cv_length(folder: Path, cv_docs: dict[Path, str]) -> list[LintFinding]:
+    """Only the English original is measured, as in _check_bullet_cuts: a
+    translation is a structural copy, and German runs to fewer, longer words,
+    so its count would say little about the page count."""
+    text = cv_docs.get(folder / "tailored_cv.md")
+    if text is None:
+        return []
+    words = _cv_words(text)
+    if words <= _CV_WORD_CAP:
+        return []
+    return [
+        LintFinding(
+            Severity.WARN,
+            "cv-length",
+            f"tailored_cv.md is {words} words; the target is two pages, about 700 "
+            f"(soft cap {_CV_WORD_CAP}). Shorten long bullets and cut the weakest "
+            "ones of the oldest roles",
+            folder.name,
+        )
+    ]
 
 
 def _check_cover_letter_length(folder: Path, cover_text: str) -> list[LintFinding]:

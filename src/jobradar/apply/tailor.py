@@ -157,22 +157,47 @@ based on the candidate's CV "{base_cv}" (also in the system prompt).
   has nothing to do with, tooling the role never touches: these go, however
   good they sound. If you reach the end having kept nearly everything, you
   judged quality instead of relevance - go back through it.
+- Then fit the length budget: two A4 pages, at most about 700 words in all,
+  contact lines included. Relevance decides what comes first; the budget
+  decides where to stop. On a posting that matches the candidate well, nearly
+  every bullet is relevant and the budget is what cuts. Go first for bullets
+  that state a responsibility without a result ("responsible for
+  stakeholder communication", "owned the release calendar"), then for the weakest bullets of the oldest
+  roles.
+- Keep each bullet to one or two printed lines, about 25 words at most: the
+  result first, then the one detail that makes it credible. Keep the figures;
+  cut the chain of activities around them ("by identifying X, collaborating
+  on Y, and establishing Z").
+- Say each thing once. Drop a project, skill, or summary line that repeats an
+  experience bullet. Skills is two or three lines, with no line that restates
+  the profile.
 - What is never deleted: contact details, the professional summary, and the
   list of employers with their titles and dates. Cut bullets within a role,
   never a role itself - an omitted employer reads as an employment gap, which
   costs far more than a weak bullet. Leave every role at least one bullet and
   the two most recent roles at least two, so no position looks abandoned.
-  Education, certifications, and languages stay.
+  Education, certifications, and languages stay, compressed.
+- Education and certifications take a few lines: each degree on one line
+  ("**Example University**: MSc in Mechanical Engineering, 2015", the year it
+  was completed), then every course and certificate together on one line
+  ("**Certifications:** Course, Provider (year) · Course, Provider (year)"),
+  with no description under them. A course is no evidence of doing the work
+  in a job, so none is expanded, however relevant to the posting.
 - Reorder what survives so the most posting-relevant achievement leads each
   role and each section.
 - Rephrase surviving bullets to use the posting's own terminology where the
   underlying experience genuinely matches (this is what recruiters and ATS
-  scans look for), but keep each claim traceable to the base CV.
+  scans look for), but keep each claim traceable to the base CV and do not
+  make the bullet longer. Rephrasing changes words, never facts: do not add a
+  team, function, tool, figure, or scope the candidate profile does not state,
+  even when the posting names it. If the posting lists "Finance, Legal, and
+  Procurement" and the base CV says "the operations and IT teams", the bullet
+  keeps "the operations and IT teams".
 - Adjust the professional summary to speak directly to this role's core
-  requirements.
-- Give each role and degree a two-line heading: employer and title on the
-  first line, then dates and location alone on the next line in italics,
-  e.g. "**Acme AG** *- Product Owner*" then "*May 2024 - August 2026, Zurich*".
+  requirements, in at most three lines (about 50 words).
+- Give each role a two-line heading: employer and title on the first line,
+  then dates and location alone on the next line in italics, e.g.
+  "**Acme AG** *- Product Manager*" then "*March 2019 - June 2023, Basel*".
 - Output the COMPLETE tailored CV as markdown, including contact details and
   every section that survived, ready to be exported to PDF.
 

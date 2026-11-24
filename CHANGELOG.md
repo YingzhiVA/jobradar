@@ -4,6 +4,29 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.33.0 — Two-page tailored CVs (2026-11-24)
+
+- **Tailored CVs now fit on two pages.** They used to run to three: the
+  tailoring step cut only bullets it judged irrelevant to the posting, so a
+  posting that matched you well kept nearly all of a three-page base CV. It
+  now works to a budget of about 700 words. Bullets are a result plus one
+  detail, at most two lines, with no long list of activities. A responsibility
+  stated with no result ("responsible for stakeholder communication") is cut
+  before an achievement, and nothing is said twice. Tried on three earlier applications,
+  the CVs went from 1,050 to 617, 1,060 to 625 and 509 to 461 words, all
+  on two pages. Your base CVs stay complete; only the tailored copy is
+  shortened.
+- **Education and certifications are compressed.** Each degree takes one
+  line, and all courses and certificates share one line with no description.
+- **Rephrasing no longer adds facts.** Bullets are reworded in the posting's
+  terms, and that sometimes slipped in things the posting names but your CV
+  doesn't, such as a team you never worked with. The tailoring step is now
+  told to change only the wording, never a team, function, tool, figure or
+  scope. Still read the CV before you submit: this makes such slips rarer,
+  but can't rule them out.
+- **The pre-submission check warns about a CV over 750 words** (`cv-length`),
+  the length at which earlier CVs ran onto a third page.
+
 ## 1.32.0 — Ashby locations, Overstory board (2026-11-23)
 
 - **Ashby postings now list every location they are open in.** jobradar
