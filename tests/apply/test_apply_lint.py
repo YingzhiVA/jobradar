@@ -367,6 +367,30 @@ def test_long_cover_letter_warns(tmp_path):
     assert any(f.code == "cover-letter-length" and f.severity is Severity.WARN for f in findings)
 
 
+def test_long_cv_warns(tmp_path):
+    folder = _draft(tmp_path, cv=_CV_BODY + "\n* " + ("word " * 800) + "\n")
+    findings = lint_folder(folder, _app())
+    assert [f.severity for f in findings if f.code == "cv-length"] == [Severity.WARN]
+
+
+def test_cv_length_counts_links_once_and_skips_markup(tmp_path):
+    # 700 words of which 100 are links with long targets, among separators and
+    # bullet stars that a reader never sees as words: under the cap.
+    links = " | ".join(f"[GitHub](https://github.com/x/repo-{i})" for i in range(100))
+    folder = _draft(tmp_path, cv=_CV_BODY + "\n* " + ("word " * 600) + "\n* " + links + "\n")
+    findings = lint_folder(folder, _app())
+    assert [f for f in findings if f.code == "cv-length"] == []
+
+
+def test_cv_length_skips_the_translation(tmp_path):
+    # Only the English original is measured; a long translated copy alone
+    # does not warn.
+    folder = _draft(tmp_path)
+    _fresh_pdf(_touch(folder / "tailored_cv_de.md", _CV_BODY + ("Wort " * 900)))
+    findings = lint_folder(folder, _app(cv_translation_language="de"))
+    assert [f for f in findings if f.code == "cv-length"] == []
+
+
 # --- strict-only checklist gate ---------------------------------------------
 
 
