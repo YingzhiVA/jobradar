@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from jobradar.apply.pdf import pdf_path_for
 from jobradar.apply.lint import (
     PDF_STALENESS_CODES,
     LintFinding,
@@ -43,8 +44,9 @@ def _touch(path: Path, content: str = "x", mtime: float | None = None) -> Path:
 
 
 def _fresh_pdf(md: Path) -> Path:
-    """A PDF at least as new as its markdown (the not-stale case)."""
-    pdf = md.with_suffix(".pdf")
+    """A PDF at least as new as its markdown (the not-stale case), under the
+    name the conversion gives it for _app()'s title."""
+    pdf = pdf_path_for(md, _app().title)
     _touch(pdf, "%PDF")
     m = md.stat().st_mtime
     os.utime(pdf, (m + 1, m + 1))

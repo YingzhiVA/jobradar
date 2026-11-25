@@ -188,3 +188,66 @@ def test_a_browser_off_path_is_found_in_the_mac_applications_folder(tmp_path, mo
         app.parent.mkdir(parents=True)
         app.touch()
         assert pdf.find_browser() == str(app)
+
+
+# --- CV PDF name and link styling -------------------------------------------
+
+
+def _cv(tmp_path, name="tailored_cv.md", first_line="**Jane van Doe**"):
+    md_path = tmp_path / name
+    md_path.write_text(f"{first_line}\n\njane@example.com | [LinkedIn](https://example.com)\n", encoding="utf-8")
+    return md_path
+
+
+def test_cv_pdf_is_named_for_family_name_and_position(tmp_path):
+    md_path = _cv(tmp_path)
+    assert pdf.pdf_path_for(md_path, "Staff Product Manager, Machine Learning").name == (
+        "CV_van_Doe_Staff_Product_Manager_Machine_Learning.pdf"
+    )
+    # A heading works as well as a bold line.
+    assert pdf.pdf_path_for(_cv(tmp_path, first_line="# Jane Doe"), "PM").name == "CV_Doe_PM.pdf"
+
+
+def test_cv_pdf_name_drops_title_noise_and_folds_umlauts(tmp_path):
+    name = pdf.pdf_path_for(_cv(tmp_path), "Data Scientist (m/w/d) 80-100% Zürich & Genève").name
+    assert name == "CV_van_Doe_Data_Scientist_Zuerich_Geneve.pdf"
+
+
+def test_translated_cv_pdf_ends_in_its_language(tmp_path):
+    md_path = _cv(tmp_path, "tailored_cv_de.md")
+    assert pdf.pdf_path_for(md_path, "Produktmanager").name == "CV_van_Doe_Produktmanager_DE.pdf"
+
+
+def test_pdf_name_falls_back_to_the_markdown_name(tmp_path):
+    md_path = _cv(tmp_path)
+    assert pdf.pdf_path_for(md_path, None).name == "tailored_cv.pdf"  # no title known
+    contact_first = _cv(tmp_path, first_line="jane@example.com | +41 79 000 00 00")
+    assert pdf.pdf_path_for(contact_first, "PM").name == "tailored_cv.pdf"  # no name line
+    cover = tmp_path / "cover_letter.md"
+    cover.write_text("# Jane Doe\n", encoding="utf-8")
+    assert pdf.pdf_path_for(cover, "PM").name == "cover_letter.pdf"  # only the CV is renamed
+
+
+def test_convert_writes_named_cv_and_removes_the_generic_pdf(tmp_path, monkeypatch):
+    md_path = _cv(tmp_path)
+    old = md_path.with_suffix(".pdf")
+    old.write_bytes(b"%PDF-old")
+    printed = []
+
+    def fake_print(browser, html_path, pdf_path):
+        assert "<title>CV van Doe PM</title>" in html_path.read_text(encoding="utf-8")
+        pdf_path.write_bytes(b"%PDF")
+        printed.append(pdf_path)
+        return True
+
+    monkeypatch.setattr(pdf, "_print_to_pdf", fake_print)
+    out = pdf.convert_markdown_file(md_path, browser="chromium", title="PM")
+    assert out == tmp_path / "CV_van_Doe_PM.pdf" == printed[0]
+    assert out.exists() and not old.exists()
+
+
+def test_links_stand_out_in_the_pdf():
+    html = pdf.markdown_to_html("[Portfolio](https://example.com/)\n", title="cv")
+    style = html.split("<style>")[1].split("</style>")[0]
+    rule = next(line for line in style.splitlines() if line.startswith("a {"))
+    assert "text-decoration: underline" in rule and "#1a1a1a" not in rule

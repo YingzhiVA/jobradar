@@ -522,7 +522,7 @@ def process_entry(
     # away; full-tier ones are edited first, then converted via --pdf.
     if app.tier == "quick":
         with progress.step(f"{pre}rendering the PDFs"):
-            pdf.convert_folder(folder_path)
+            pdf.convert_folder(folder_path, title=app.title)
 
     logger.info("Drafted %s: applications/%s", uid, folder)
     return True
@@ -1222,12 +1222,15 @@ def _convert_key(tracker: Tracker, key: str) -> None:
     or a path to a single .md file."""
     path = Path(key)
     if path.suffix == ".md" and path.exists():
-        out = pdf.convert_markdown_file(path)
+        # The job title names the CV's PDF; a tracked folder supplies it.
+        known = tracker.find(path.resolve().parent.name)
+        out = pdf.convert_markdown_file(path, title=known.title if known else None)
         if out is None:
             logger.error("Conversion failed for %s", path)
         return
     if path.is_dir():
-        if not pdf.convert_folder(path):
+        known = tracker.find(path.resolve().name)
+        if not pdf.convert_folder(path, title=known.title if known else None):
             logger.error("Nothing convertible in %s (expected tailored_cv.md / cover_letter.md)", path)
         return
     app = tracker.find(key)
@@ -1238,7 +1241,7 @@ def _convert_key(tracker: Tracker, key: str) -> None:
     if not folder.is_dir():
         logger.error("Tracked folder is missing on disk: %s", folder)
         return
-    if not pdf.convert_folder(folder):
+    if not pdf.convert_folder(folder, title=app.title):
         logger.error("Nothing convertible in %s", folder)
 
 

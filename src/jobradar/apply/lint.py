@@ -303,7 +303,7 @@ def _check_pdfs(folder: Path, app: Application | None) -> list[LintFinding]:
     # What the user would type to fix it: the short id when we know it.
     key = app.uid if app is not None and app.uid else folder.name
     for md_path in pdf.convertible_files(folder):
-        pdf_path = md_path.with_suffix(".pdf")
+        pdf_path = pdf.pdf_path_for(md_path, app.title if app is not None else None)
         html_path = md_path.with_suffix(".html")
         if html_path.exists():
             findings.append(

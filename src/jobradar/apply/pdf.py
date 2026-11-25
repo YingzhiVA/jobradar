@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 import markdown as md
@@ -83,7 +84,10 @@ h3 { font-size: 11pt; margin: 4mm 0 1mm; }
 p { margin: 1.5mm 0; }
 ul { margin: 1.5mm 0 2.5mm; padding-left: 5mm; }
 li { margin: 0.8mm 0; }
-a { color: #1a1a1a; text-decoration: none; }
+/* Links are what a reader acts on (a portfolio, a GitHub repo), so they
+   must stand out at a glance: a muted blue, underlined so they still read as
+   links on a black-and-white print. */
+a { color: #1f4e9c; text-decoration: underline; text-underline-offset: 1.5px; }
 strong { font-weight: 600; }
 hr { border: none; border-top: 1px solid #ccc; margin: 4mm 0; }
 /* The dates-and-place line under a CV role or degree heading. */
@@ -301,19 +305,87 @@ def _print_to_pdf(browser: str, html_path: Path, pdf_path: Path) -> bool:
     return True
 
 
-def convert_markdown_file(md_path: Path, browser: str | None = None) -> Path | None:
-    """Convert one .md file to a sibling .pdf. Returns the PDF path, or the
-    kept .html path (styled, print-ready) when no browser could do the print,
-    or None when even writing the HTML failed.
+_CV_STEM = "tailored_cv"
+# Umlauts as Swiss and German readers spell them without the dots; anything
+# else is folded to its plain letter. Filenames stay ASCII because upload
+# portals and mail clients still mangle the rest.
+_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue"})
+# Noise a job title carries that says nothing in a filename: "(m/w/d)",
+# "80-100%", "80%".
+_TITLE_NOISE = re.compile(r"\([^)]*\)|\b\d+\s*(?:[-–]\s*\d+\s*)?%")
+_MAX_POSITION_CHARS = 60
+
+
+def _filename_words(text: str) -> list[str]:
+    text = unicodedata.normalize("NFKD", text.translate(_UMLAUTS))
+    text = text.encode("ascii", "ignore").decode("ascii")
+    return re.findall(r"[A-Za-z0-9]+", text)
+
+
+def family_name(md_path: Path) -> str | None:
+    """The family name on a CV, read from its first line: the name heading
+    ("# Jane Doe" or "**Jane Doe**"). Everything after the first given name
+    counts, so a two-part family name ("Vilimelis Aceituno") is kept whole.
+    None when the first line does not look like a name."""
+    try:
+        text = md_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    first = next((line for line in text.splitlines() if line.strip()), "")
+    if re.search(r"[|@:/\d_]|\.\w", first):
+        return None  # a contact line, a filename or a sentence, not a name
+    words = _filename_words(first)
+    if not 2 <= len(words) <= 5:
+        return None
+    return "_".join(words[1:])
+
+
+def _position(title: str) -> str:
+    words = _filename_words(_TITLE_NOISE.sub(" ", title))
+    out = ""
+    for word in words:
+        candidate = f"{out}_{word}" if out else word
+        if len(candidate) > _MAX_POSITION_CHARS:
+            break
+        out = candidate
+    return out
+
+
+def pdf_path_for(md_path: Path, title: str | None = None) -> Path:
+    """Where a document's PDF goes. A tailored CV is named for the person who
+    receives it, CV_<FamilyName>_<Position>.pdf (a translated one ends in its
+    language, _DE), given the job title from the tracker. Anything else, or a
+    CV whose name or title can't be read, is the markdown's own name as .pdf.
+
+    The linter and the page use this too, so they look for the PDF where the
+    conversion put it."""
+    stem = md_path.stem
+    if title and (stem == _CV_STEM or stem.startswith(_CV_STEM + "_")):
+        family = family_name(md_path)
+        position = _position(title)
+        if family and position:
+            lang = stem[len(_CV_STEM):].lstrip("_")
+            parts = ["CV", family, position] + ([lang.upper()] if lang else [])
+            return md_path.with_name("_".join(parts) + ".pdf")
+    return md_path.with_suffix(".pdf")
+
+
+def convert_markdown_file(
+    md_path: Path, browser: str | None = None, title: str | None = None
+) -> Path | None:
+    """Convert one .md file to a sibling PDF, named by pdf_path_for (pass the
+    application's job title for a CV). Returns the PDF path, or the kept .html
+    path (styled, print-ready) when no browser could do the print, or None
+    when even writing the HTML failed.
     """
     if browser is None:
         browser = find_browser()
     md_path = md_path.resolve()  # as_uri() below needs an absolute path
     html_path = md_path.with_suffix(".html")
-    pdf_path = md_path.with_suffix(".pdf")
+    pdf_path = pdf_path_for(md_path, title)
     try:
         html = markdown_to_html(
-            md_path.read_text(encoding="utf-8"), title=md_path.stem.replace("_", " ")
+            md_path.read_text(encoding="utf-8"), title=pdf_path.stem.replace("_", " ")
         )
         html_path.write_text(html, encoding="utf-8")
     except OSError as exc:
@@ -334,6 +406,9 @@ def convert_markdown_file(md_path: Path, browser: str | None = None) -> Path | N
     if not ok:
         return html_path  # keep the HTML as the manual-print fallback
     html_path.unlink(missing_ok=True)
+    if pdf_path != md_path.with_suffix(".pdf"):
+        # A PDF under the old generic name would now be a second, stale copy.
+        md_path.with_suffix(".pdf").unlink(missing_ok=True)
     return pdf_path
 
 
@@ -359,13 +434,14 @@ def convertible_files(folder: Path) -> list[Path]:
     return ordered
 
 
-def convert_folder(folder: Path) -> list[Path]:
+def convert_folder(folder: Path, title: str | None = None) -> list[Path]:
     """Convert an application folder's submission documents. Returns the
-    produced files (PDFs, or kept HTMLs when printing wasn't possible)."""
+    produced files (PDFs, or kept HTMLs when printing wasn't possible).
+    `title` is the application's job title, which names the CV's PDF."""
     produced: list[Path] = []
     browser = find_browser()
     for md_path in convertible_files(folder):
-        out = convert_markdown_file(md_path, browser=browser)
+        out = convert_markdown_file(md_path, browser=browser, title=title)
         if out is not None:
             produced.append(out)
             logger.info("Wrote %s", out)

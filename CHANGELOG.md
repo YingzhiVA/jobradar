@@ -4,6 +4,23 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.34.0 — CV PDF named for the recruiter, visible links (2026-11-25)
+
+- **The CV's PDF is named `CV_<FamilyName>_<Position>.pdf`** instead of
+  `tailored_cv.pdf`, for example `CV_Doe_Senior_Product_Manager.pdf`, so it
+  reads well in a recruiter's downloads folder. The family name is everything
+  after the first word of the CV's name line, so a two-part family name stays
+  whole; the position is the posting's job title, without "(m/w/d)" or a
+  workload percentage. A translated CV ends in its language (`_DE`). The
+  markdown keeps its name (`tailored_cv.md`), and the cover letter's PDF is
+  unchanged. Making the PDF again removes an old `tailored_cv.pdf`. A folder
+  drafted before this has its PDF under the old name, so `--lint` reports it
+  missing until you run `--pdf` again.
+- **Links in the PDFs are blue and underlined.** They used to look like the
+  text around them, so a reader could miss that LinkedIn, a portfolio or a
+  GitHub project could be clicked. The underline keeps them visible on a
+  black-and-white print.
+
 ## 1.33.0 — Two-page tailored CVs (2026-11-24)
 
 - **Tailored CVs now fit on two pages.** They used to run to three: the
