@@ -4,6 +4,15 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.36.0 — Boards by industry on the setup page (2026-11-25)
+
+- **The setup page lists every board by industry.** Global employers such as
+  Google, NVIDIA and Schroders used to sit together under "Global employers"
+  at the top, ahead of the Swiss boards' industries. `global.yaml` now uses
+  the same industry headings as `ch.yaml`, and the page shows one list, so
+  Schroders appears under finance beside UBS. Boards are sorted
+  alphabetically within each industry.
+
 ## 1.35.0 — Finance and insurance boards (2026-11-25)
 
 - **Five new boards in finance and insurance.** Add any of these names to

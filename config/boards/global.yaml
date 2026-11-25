@@ -3,9 +3,18 @@
 # one the location filter trims (Anthropic, Databricks, OpenAI). Every search
 # reads this file together with its market's own (ch.yaml for Switzerland).
 # README.md in this folder explains the entry format.
+#
+# Grouped by industry under the same section headings as the market files,
+# spelled the same: the setup UI merges this file with the market's into one
+# list by industry, so a heading spelled differently shows as a section of
+# its own. Sections, in the market files' order (boards in each):
+#   Big tech & AI labs (5)
+#   AI & data products (1)
+#   Banking, insurance & finance data (2)
 
 boards:
 
+  # ── Big tech & AI labs ─────────────────────────────────────────────────────
   # Google, YouTube and DeepMind. In Switzerland: Google's largest engineering
   # office outside the US is in Zurich. Meta is left out on purpose: its
   # careers site forbids automated collection (see docs/ROADMAP.md).
@@ -30,6 +39,8 @@ boards:
   - name: OpenAI
     ats: ashby
     slug: openai
+
+  # ── AI & data products ─────────────────────────────────────────────────────
   # Vegetation intelligence for utilities (satellite imagery + ML), remote-
   # first with no Swiss office. Each posting names "United States" as its
   # location and the countries it hires in as secondary locations,
@@ -38,6 +49,8 @@ boards:
   - name: Overstory
     ats: ashby
     slug: overstory
+
+  # ── Banking, insurance & finance data ──────────────────────────────────────
   # UK-HQ asset manager. An Oracle Recruiting Cloud site (~65 postings, a
   # third of them in London); the connector keeps the market's country in
   # code. In Switzerland: Schroders Capital (ex-Adveq) and wealth management

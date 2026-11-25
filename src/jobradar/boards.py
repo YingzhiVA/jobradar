@@ -22,6 +22,7 @@ The search logs the notes and scans what it can; ``doctor`` reports them.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -89,6 +90,30 @@ def _read_list(path: Path, key: str) -> list:
 def _key(name: str) -> str:
     """How names are matched: case and spacing don't count."""
     return " ".join(str(name).split()).casefold()
+
+
+# Each catalogue file groups its boards by industry under comment rules
+# ("  # ── Pharma & biotech ───…"), which a YAML parser throws away, so they are
+# read off the text. Every file uses the same headings, spelled the same.
+_SECTION_LINE = re.compile(r"^\s*#\s*──\s*(.+?)\s*─+\s*$")
+_NAME_LINE = re.compile(r"^\s*-\s*name:\s*(.+?)\s*$")
+
+
+def catalog_sections(path: Path) -> dict[str, str]:
+    """Which industry section each board in a catalogue file sits under, keyed
+    as names are matched, in file order (so the sections' order can be read
+    off the values). A board above the first heading gets ""."""
+    section, out = "", {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        if m := _SECTION_LINE.match(line):
+            section = m.group(1)
+        elif m := _NAME_LINE.match(line):
+            out[_key(m.group(1).split(" #")[0].strip().strip("\"'"))] = section
+    return out
 
 
 def _known_ats() -> set[str]:

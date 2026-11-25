@@ -607,25 +607,26 @@ def save_constraints(root: Path, form: dict) -> None:
 
 # ── Boards ──────────────────────────────────────────────────────────────────
 
-_SECTION_LINE = re.compile(r"^\s*#\s*──\s*(.+?)\s*─+\s*$")
-_NAME_LINE = re.compile(r"^\s*-\s*name:\s*(.+?)\s*$")
-GLOBAL_SECTION = "Global employers"
+OTHER_SECTION = "Other"
 
 
-def _sections_by_name(path: Path) -> dict[str, str]:
-    """Which section heading each board sits under. The catalogue groups its
-    boards by industry with comment rules, which a YAML parser throws away."""
-    section, out = "", {}
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return out
-    for line in lines:
-        if m := _SECTION_LINE.match(line):
-            section = m.group(1)
-        elif m := _NAME_LINE.match(line):
-            out[boards._key(m.group(1).split(" #")[0].strip().strip("\"'"))] = section
-    return out
+def _board_sections(config: Path, market: boards.Market) -> tuple[dict[str, str], list[str]]:
+    """Each catalogue board's industry section, and the sections in display
+    order. global.yaml and the market's file share one set of headings, so a
+    global employer is listed under its industry beside the market's own: the
+    UI makes no distinction between the two files. The market file is read
+    first, so its order of industries leads; a section only global.yaml has
+    follows, and boards under no heading come last, as "Other"."""
+    section_of: dict[str, str] = {}
+    order: list[str] = []
+    for path in reversed(boards.catalog_files(config, market)):
+        for key, section in boards.catalog_sections(path).items():
+            section = section or OTHER_SECTION
+            section_of.setdefault(key, section)
+            if section not in order:
+                order.append(section)
+    order.sort(key=lambda name: name == OTHER_SECTION)  # stable: only moves Other last
+    return section_of, order
 
 
 def read_boards(root: Path) -> dict:
@@ -637,21 +638,23 @@ def read_boards(root: Path) -> dict:
         selection = boards.load_companies(root, market)
     except boards.BoardsError as exc:
         raise SetupError(str(exc)) from exc
-    sections_of: dict[str, str] = {}
-    for path in boards.catalog_files(config, market):
-        default = GLOBAL_SECTION if path.stem == boards.GLOBAL_BOARDS else "Other"
-        for key, section in _sections_by_name(path).items():
-            sections_of.setdefault(key, section or default)
+    section_of, order = _board_sections(config, market)
     chosen = {boards._key(b["name"]) for b in selection.boards if b["origin"] != "local"}
-    groups: dict[str, list[dict]] = {}
+    groups: dict[str, list[dict]] = {name: [] for name in order}
     for entry in boards.index_catalog(entries).values():
         key = boards._key(entry["name"])
-        groups.setdefault(sections_of.get(key, "Other"), []).append(
+        groups.setdefault(section_of.get(key, OTHER_SECTION), []).append(
             {"name": entry["name"], "selected": key in chosen}
         )
     own = [b["name"] for b in selection.boards if b["origin"] == "local"]
     return {
-        "sections": [{"name": name, "boards": items} for name, items in groups.items()],
+        # Alphabetical within a section, so a global employer doesn't sort
+        # ahead of the market's own just because its file is read first.
+        "sections": [
+            {"name": name, "boards": sorted(items, key=lambda b: b["name"].casefold())}
+            for name, items in groups.items()
+            if items
+        ],
         "own": own,
         "problems": selection.errors + selection.warnings,
         "selected": len(selection.boards),

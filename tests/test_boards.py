@@ -6,6 +6,7 @@ from jobradar.markets import MARKETS
 from jobradar.boards import (
     BoardsError,
     catalog_problems,
+    catalog_sections,
     index_catalog,
     load_companies,
     read_catalog,
@@ -195,6 +196,20 @@ def test_the_shipped_catalogue_is_well_formed():
     # and the market's file.
     for market in MARKETS.values():
         assert catalog_problems(read_catalog(_ROOT / "config", market)) == []
+
+
+def test_the_shipped_catalogue_sorts_every_board_into_a_shared_industry():
+    # The setup UI lists global.yaml's boards under the market file's
+    # industries, so a heading spelled differently in global.yaml would show
+    # as a section of its own. A new industry for global.yaml gets the same
+    # heading in each market file.
+    config = _ROOT / "config"
+    global_sections = catalog_sections(config / "boards" / "global.yaml")
+    for market in MARKETS.values():
+        market_sections = catalog_sections(config / "boards" / f"{market.code}.yaml")
+        for sections in (global_sections, market_sections):
+            assert "" not in sections.values(), "a board above the first heading"
+        assert set(global_sections.values()) <= set(market_sections.values())
 
 
 def test_every_market_has_a_catalogue_file_and_no_stray_ones():
