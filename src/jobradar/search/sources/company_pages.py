@@ -26,6 +26,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 import httpx
 
 from ...markets import CH, Market
+from .backoff import BackoffTransport
 from .base import FetchResult, RawPosting, parse_workplace_type, strip_html
 
 logger = logging.getLogger(__name__)
@@ -2364,7 +2365,9 @@ class CompanyPagesSource:
         # Swiss relevance, so a board full of foreign ads still reads as alive.
         company_counts: dict[str, int] = {}
         listing_only_total = 0
-        with httpx.Client(timeout=_TIMEOUT) as client:
+        # BackoffTransport retries a 429/503 instead of losing the board to
+        # its first refusal (Workday, from the Actions runner, 2026-11-16 on).
+        with httpx.Client(timeout=_TIMEOUT, transport=BackoffTransport()) as client:
             for company in self.companies:
                 name = company.get("name") or "?"
                 # An entry uncommented only partly (a name with no slug, or the
