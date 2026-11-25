@@ -11,7 +11,8 @@
 #   AI & data products (9) — Swiss start-ups and scale-ups selling AI or data
 #   Software, SaaS & telecom (9)
 #   Consulting & IT services (8)
-#   Banking, insurance & finance data (7)
+#   Banking, insurance & finance data (10) — Schroders and Partners Group
+#     are in global.yaml
 #   Pharma & biotech (5)
 #   Medtech & digital health (8)
 #   Robotics, drones & aerospace (13)
@@ -167,6 +168,21 @@ boards:
   - name: Julius Baer
     ats: workday
     slug: juliusbaer:wd3:External
+  # Zurich-based wealth and asset manager. A Workday board with Swiss, German
+  # and a few US/Asian postings; its country facet is named `Location`, which
+  # the connector doesn't read as one, so it fetches the whole board (~45
+  # postings) and the location gate trims. Locations read "Zürich /
+  # Bleicherweg 21" (city / office address).
+  - name: Vontobel
+    ats: workday
+    slug: vontobel:wd3:Vontobel_External_Career
+  # Geneva private bank. Its Workday location facet lists bare cities
+  # (Geneva, Zürich, Lausanne, Luxembourg, Bermuda, ...), so the board (~70
+  # postings, three quarters of them Geneva) is fetched whole and the
+  # location gate trims; Zurich has only a handful.
+  - name: Lombard Odier
+    ats: workday
+    slug: lombardodier:wd3:Lombard_Odier_Careers
   - name: Swiss Re
     ats: successfactors
     slug: careers.swissre.com
@@ -200,6 +216,16 @@ boards:
   - name: AXA Switzerland
     ats: icims
     slug: careers.axa.com
+  # Swiss Life Switzerland. jobs.swisslife.ch is a Prospective career center
+  # (1005584) in the card template rather than Sensirion's list one; the
+  # connector reads both. About 100 postings, most of them advisor and sales
+  # roles at the regional general agencies ("Swiss Life GA Basel", named as
+  # the employer); the head-office roles (Swiss Life AG, Swiss Life Wealth
+  # Management) are in Zurich. Swiss Life Asset Managers is not on this
+  # center. Workload is in the title ("80-100%").
+  - name: Swiss Life
+    ats: prospective
+    slug: "1005584"
   # Zurich-based ESG/business-intelligence data provider.
   - name: RepRisk AG
     ats: smartrecruiters

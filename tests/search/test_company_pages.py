@@ -1942,6 +1942,62 @@ def test_prospective_skips_closed_posting():
     assert [p.title for p in _fetch_prospective("Sensirion", "1000982", client)] == ["Alive"]
 
 
+def _pros_card(url, title, employer, location):
+    # Swiss Life's template, trimmed from career center 1005584 (2026-11-25):
+    # the map-pin icon div carries an XML prolog, a generator comment and an
+    # SVG ahead of the location text.
+    return (
+        f'<a class="job" href="{url}" onclick="window.open(this.href, \'_blank\');return false;"\n>'
+        f'<div class="jobTitle"><h2>{title}</h2>\n<span>{employer}</span></div>'
+        '<div class="jobArbeitsOrt"><div id="placeicon">'
+        '<?xml version="1.0" encoding="iso-8859-1"?>'
+        "<!-- Generator: Adobe Illustrator 19.0.0, SVG Export Plug-In -->"
+        '<svg width="16px"><path d="M256,0z"/></svg></div>'
+        f"\n    {location}\n</div>"
+        '<div class="mehrErfahren">Find out more<svg><path d="M1z"/></svg></div></a>'
+    )
+
+
+def test_prospective_reads_card_template():
+    page = (
+        '<div id="jobWrapper"><div class="anzStellen">2 jobs</div>'
+        + _pros_card("https://jobs.example.ch/offene-stellen/pm/a1", "Produktmanager (w/m/d) 80 - 100%", "Swiss Life AG", "Zürich")
+        + _pros_card("https://jobs.example.ch/offene-stellen/fp/b2", "Finanzplaner (w/m/d) DE/FR 80-100%", "Swiss Life GA Basel", "Basel")
+        + '<div id="pagination"><a href="#" onclick="sendPagination(0);">x</a></div></div>'
+    )
+    client = _AvatureClient(
+        {
+            _pros_key(0): page,
+            "https://jobs.example.ch/offene-stellen/pm/a1": _pros_job_page("Produktmanager (w/m/d) 80 - 100%", "<p>Produktstrategie</p>"),
+            "https://jobs.example.ch/offene-stellen/fp/b2": _pros_job_page("Finanzplaner (w/m/d) DE/FR 80-100%", "<p>Beratung</p>"),
+        }
+    )
+
+    postings = _fetch_prospective("Swiss Life", "1000982", client)
+
+    assert [p.url for p in postings] == [
+        "https://jobs.example.ch/offene-stellen/pm/a1",
+        "https://jobs.example.ch/offene-stellen/fp/b2",
+    ]
+    assert [p.location for p in postings] == ["Zürich", "Basel"]
+    assert postings[0].title == "Produktmanager (w/m/d) 80 - 100%"
+    # the hiring entity leads the description and is kept in raw
+    assert postings[1].description.startswith("Swiss Life GA Basel\n\nBeratung")
+    assert postings[1].raw["employer"] == "Swiss Life GA Basel"
+    assert "Generator" not in postings[0].location
+
+
+def test_prospective_card_template_pages_by_offset():
+    full = "".join(_pros_card(f"https://jobs.example.ch/j/{i}", f"Role {i}", "Swiss Life AG", "Zürich") for i in range(100))
+    last = _pros_card("https://jobs.example.ch/j/100", "Role 100", "Swiss Life AG", "Zürich")
+    pages = {_pros_key(0): full, _pros_key(100): last}
+    pages.update({f"https://jobs.example.ch/j/{i}": _pros_job_page(f"Role {i}", "x") for i in range(101)})
+    client = _AvatureClient(pages)
+
+    assert len(_fetch_prospective("Swiss Life", "1000982", client)) == 101
+    assert [c for c in client.calls if isinstance(c, tuple)] == [_pros_key(0), _pros_key(100)]
+
+
 def test_prospective_empty_center():
     assert _fetch_prospective("Sensirion", "1000982", _AvatureClient({_pros_key(0): "<html>no jobs</html>"})) == []
 

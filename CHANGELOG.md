@@ -4,6 +4,26 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.35.0 — Finance and insurance boards (2026-11-25)
+
+- **Five new boards in finance and insurance.** Add any of these names to
+  your `config/companies.yaml` to scan them:
+  - **Vontobel** (Zurich wealth and asset manager) and **Lombard Odier**
+    (Geneva private bank, only a few Zurich roles), in `ch.yaml`.
+  - **Swiss Life**, in `ch.yaml`. Most of its roughly 100 postings are
+    advisor and sales roles at its regional agencies, which each posting
+    names as its employer. The head-office roles are in Zurich.
+  - **Schroders** (Zurich: Schroders Capital and wealth management) and
+    **Partners Group** (Baar), in `global.yaml`, since both boards also
+    serve London.
+- **Prospective boards in Swiss Life's layout are read.** Prospective career
+  centers come in two page layouts. jobradar read only the one Sensirion's
+  board uses, so a board in the other found no jobs. Postings from either
+  now name their employer at the start of the description when the board
+  gives one.
+- **Baar is recognised as canton Zug** without asking the model, which saves
+  one call per Partners Group posting.
+
 ## 1.34.0 — CV PDF named for the recruiter, visible links (2026-11-25)
 
 - **The CV's PDF is named `CV_<FamilyName>_<Position>.pdf`** instead of

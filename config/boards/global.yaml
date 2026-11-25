@@ -38,3 +38,17 @@ boards:
   - name: Overstory
     ats: ashby
     slug: overstory
+  # UK-HQ asset manager. An Oracle Recruiting Cloud site (~65 postings, a
+  # third of them in London); the connector keeps the market's country in
+  # code. In Switzerland: Schroders Capital (ex-Adveq) and wealth management
+  # in Zurich, a handful of postings.
+  - name: Schroders
+    ats: oracle
+    slug: ekbq.fa.em2.oraclecloud.com:CX_2
+  # Private-markets firm, HQ in Baar ZG. A SuccessFactors board (~65 postings,
+  # most of them in Singapore and Manila) searched by the market's country
+  # ("United Kingdom" finds the London ones). In Switzerland: Baar only, a
+  # handful of postings.
+  - name: Partners Group
+    ats: successfactors
+    slug: jobs.partnersgroup.com

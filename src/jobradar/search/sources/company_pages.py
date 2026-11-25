@@ -1564,7 +1564,7 @@ def _fetch_brassring(
     return postings
 
 
-# --- Prospective Media "career center" (Sensirion) ---
+# --- Prospective Media "career center" (Sensirion, Swiss Life) ---
 
 # Prospective (a Swiss recruiting-media firm) hosts employers' job lists at
 # ohws.prospective.ch/public/v1/careercenter/<id>/ — server-rendered HTML with
@@ -1581,12 +1581,26 @@ _PROSPECTIVE_PAGE_SIZE = 100
 _PROSPECTIVE_LINK_RE = re.compile(r'class="itemlist_jobtitle">\s*<a\s+href="([^"]+)"[^>]*>(.*?)</a>', re.S)
 _PROSPECTIVE_WORKPLACE_RE = re.compile(r'id="workplace">(.*?)</div>', re.S)
 _PROSPECTIVE_WORK_RE = re.compile(r'<div class="work">(.*?)<div id="workplace"', re.S)
+# The second list template (Swiss Life, career center 1005584): each job is one
+# <a class="job"> card, title in <h2> (workload included: "... 80-100%"), the
+# hiring entity in the <span> after it (a regional agency, "Swiss Life GA
+# Basel", or a group company), the site in div.jobArbeitsOrt behind a map-pin
+# icon div. No employment-type line. Verified 2026-11-25.
+_PROSPECTIVE_CARD_HREF_RE = re.compile(r'href="([^"]+)"')
+_PROSPECTIVE_CARD_TITLE_RE = re.compile(r"<h2>(.*?)</h2>", re.S)
+_PROSPECTIVE_CARD_EMPLOYER_RE = re.compile(r"</h2>\s*<span>(.*?)</span>", re.S)
+_PROSPECTIVE_CARD_ICON_RE = re.compile(r'<div id="placeicon">.*?</div>', re.S)
+_PROSPECTIVE_CARD_PLACE_RE = re.compile(r'<div class="jobArbeitsOrt">(.*?)</div>', re.S)
 _LD_JSON_RE = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.S)
 
 
 def _prospective_items(page_html: str) -> list[dict]:
     """One dict per job on a career-center list page: url, title, workload,
-    work (employment type + contract), location."""
+    work (employment type + contract), employer, location. A career center
+    renders one of two templates; each item is read with whichever this page
+    uses."""
+    if '<div class="platform-item">' not in page_html:
+        return _prospective_card_items(page_html)
     items: list[dict] = []
     # Split on the item wrapper rather than regex-matching whole items: the
     # blocks nest divs, so a non-greedy match can't find an item's end.
@@ -1604,7 +1618,34 @@ def _prospective_items(page_html: str) -> list[dict]:
                 "title": strip_html(re.sub(r"<span>.*?</span>", "", title_html, flags=re.S)),
                 "workload": strip_html(workload.group(1)) if workload else "",
                 "work": strip_html(work.group(1)) if work else "",
+                "employer": "",
                 "location": strip_html(workplace.group(1)) if workplace else "",
+            }
+        )
+    return items
+
+
+def _prospective_card_items(page_html: str) -> list[dict]:
+    """The <a class="job"> card template's items, in _prospective_items' shape.
+    The workload stays in the title, where the employment-% heuristic reads it."""
+    items: list[dict] = []
+    for block in page_html.split('<a class="job"')[1:]:
+        href = _PROSPECTIVE_CARD_HREF_RE.search(block)
+        title = _PROSPECTIVE_CARD_TITLE_RE.search(block)
+        if not href or not title:
+            continue
+        employer = _PROSPECTIVE_CARD_EMPLOYER_RE.search(block)
+        # The icon div carries an SVG with an XML prolog and a generator
+        # comment, which would otherwise read as location text.
+        place = _PROSPECTIVE_CARD_PLACE_RE.search(_PROSPECTIVE_CARD_ICON_RE.sub("", block))
+        items.append(
+            {
+                "url": html.unescape(href.group(1)),
+                "title": strip_html(title.group(1)),
+                "workload": "",
+                "work": "",
+                "employer": strip_html(employer.group(1)) if employer else "",
+                "location": strip_html(place.group(1)) if place else "",
             }
         )
     return items
@@ -1678,8 +1719,12 @@ def _fetch_prospective(
         if not description:
             description = strip_html(detail.text)
         # The list's workload ("80-100%") and contract line lead the
-        # description so the employment-% heuristic sees them.
-        header = " | ".join(part for part in (item["workload"], item["work"]) if part)
+        # description so the employment-% heuristic sees them, and the hiring
+        # entity where the list names one (a Swiss Life regional agency reads
+        # as the sales role it is).
+        header = " | ".join(
+            part for part in (item["workload"], item["work"], item["employer"]) if part
+        )
         postings.append(
             RawPosting(
                 source="prospective",
@@ -1691,6 +1736,7 @@ def _fetch_prospective(
                 raw={
                     "workload": item["workload"],
                     "work": item["work"],
+                    "employer": item["employer"],
                     "datePosted": posting.get("datePosted"),
                     "employmentType": posting.get("employmentType"),
                 },
