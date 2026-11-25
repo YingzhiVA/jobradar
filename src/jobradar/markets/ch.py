@@ -38,6 +38,9 @@ CANTON_BY_CITY = {
     # postings (~18 a day since 2026-09-07), which its board spells "Staefa".
     # One municipality.
     "stäfa": "Zurich", "staefa": "Zurich",
+    # Baar: Partners Group's headquarters and the only Swiss site on its board,
+    # which spells it "Baar, CH" (2026-11-25). One municipality.
+    "baar": "Zug",
     "schaffhausen": "Schaffhausen",
     "solothurn": "Solothurn",
     "glarus": "Glarus",
