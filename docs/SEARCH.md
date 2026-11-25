@@ -12,9 +12,9 @@ rank, write up, report. This page covers how to steer it and what it does.
    a board scores every posting currently open on it (see
    [COSTS.md](COSTS.md#your-first-run)).
 
-   `config/boards/` is the catalogue you choose from: for Switzerland, 79
-   boards in `ch.yaml` plus 6 global employers in `global.yaml`, grouped by
-   industry (big tech, AI, software, consulting, finance, pharma,
+   `config/boards/` is the catalogue you choose from: for Switzerland, 82
+   boards in `ch.yaml` plus 8 global employers in `global.yaml`, both grouped
+   by the same industries (big tech, AI, software, consulting, finance, pharma,
    medtech, robotics, industry, property and climate, consumer), with each
    board's ATS, slug and connector quirks. It is maintained upstream, so
    when a company moves to another ATS, `git pull` fixes the board for you.

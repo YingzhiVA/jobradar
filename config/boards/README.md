@@ -24,11 +24,13 @@ your `config/companies.yaml` (that file shows how). A board that is wrong or
 missing for everyone is fixed by a pull request against these files.
 
 What is here is one person's watchlist, kept because each board's quirks are
-written down next to it. Each market's file is grouped by industry, with a
-section index at the top; a company that could sit in two sections appears
-once, so search for its name if it's not where you expect. There is
-deliberately no keyword list: what to surface is decided by scoring against
-your profile, not by job titles.
+written down next to it. Every file, `global.yaml` included, is grouped by
+industry under the same section headings, spelled the same, with a section
+index at the top. The setup page merges the files into one list by industry,
+and a test fails on a `global.yaml` heading that a market file lacks. A
+company that could sit in two sections appears once, so search for its name
+if it's not where you expect. There is deliberately no keyword list: what to
+surface is decided by scoring against your profile, not by job titles.
 
 ## Entry format
 

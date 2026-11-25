@@ -332,11 +332,32 @@ def test_constraints_no_posting_could_pass_are_refused_and_nothing_is_written(ro
 def test_boards_are_grouped_under_the_catalogue_headings(root):
     data = setup.read_boards(root)
     assert [(s["name"], [b["name"] for b in s["boards"]]) for s in data["sections"]] == [
-        (setup.GLOBAL_SECTION, ["Globex"]),
         ("Pharma & biotech", ["Acme Pharma", "Biotix"]),
         ("Software", ["Codeworks"]),
+        (setup.OTHER_SECTION, ["Globex"]),  # under no heading
     ]
     assert data["selected"] == 0 and data["first_run"]
+
+
+def test_global_boards_join_the_market_files_industries(root):
+    # global.yaml uses the market file's headings: its boards are listed under
+    # those, sorted in among the market's own, with no "global" grouping. A
+    # section only global.yaml has follows the market's sections.
+    (root / "config" / "boards" / "global.yaml").write_text(
+        "boards:\n"
+        "  # ── Software ─────────────────────\n"
+        "  - name: Alpha Soft\n    ats: greenhouse\n    slug: alpha\n"
+        "  - name: Zeta Cloud\n    ats: greenhouse\n    slug: zeta\n"
+        "  # ── Energy ───────────────────────\n"
+        "  - name: Gridco\n    ats: lever\n    slug: gridco\n",
+        encoding="utf-8",
+    )
+    data = setup.read_boards(root)
+    assert [(s["name"], [b["name"] for b in s["boards"]]) for s in data["sections"]] == [
+        ("Pharma & biotech", ["Acme Pharma", "Biotix"]),
+        ("Software", ["Alpha Soft", "Codeworks", "Zeta Cloud"]),
+        ("Energy", ["Gridco"]),
+    ]
 
 
 def test_saving_boards_keeps_hand_added_ones(root):
