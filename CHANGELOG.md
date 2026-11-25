@@ -4,6 +4,23 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.37.0 — Retry boards that say too many requests (2026-11-25)
+
+- **A board that says "too many requests" is retried, not skipped.** Since
+  16 November, Workday has answered the daily run on GitHub Actions with
+  `429 Too Many Requests` for nearly every board, so Julius Baer, Roche,
+  Novartis, Swisscom and the other Workday boards found nothing. A 429 used
+  to skip the board at once. Now jobradar waits and tries again: as long as
+  the server's `Retry-After` header says, otherwise about 5, 15 and 45
+  seconds, then skips the board as before. Once two boards on one site have
+  used up their retries, the rest of that site's boards are tried once, so a
+  site that refuses everything adds about two minutes to a run, not a minute
+  per board. The same applies to `503 Service Unavailable`.
+- **The first refusal from each site is logged with its response headers
+  and the start of its body.** They show whether the site is limiting how
+  fast jobradar asks, which waiting cures, or refusing it outright, which it
+  doesn't.
+
 ## 1.36.0 — Boards by industry on the setup page (2026-11-25)
 
 - **The setup page lists every board by industry.** Global employers such as
