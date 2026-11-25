@@ -222,7 +222,7 @@ def report_archive(root: Path, offset: int = 0, limit: int = REPORT_ARCHIVE_PAGE
 
 
 # The files of an application folder worth showing, in reading order.
-_ORDER = ("notes.md", "tailored_cv", "cover_letter", "interview_prep.md", "job_description.md")
+_ORDER = ("notes.md", "tailored_cv", "CV_", "cover_letter", "interview_prep.md", "job_description.md")
 _SHOWN = (".md", ".pdf", ".html")
 # What may be edited in the page: the documents the user sends or pastes into.
 # The documents you send or keep notes in. The job description is the
@@ -420,7 +420,8 @@ def _pdf_problem(root: Path, uid: str, md_path: Path) -> str | None:
     app = _folder(root, uid)[0]
     # A finding names its file first: the .md, its .pdf, or the .html left
     # by a print that fell back.
-    own = {md_path.name, md_path.with_suffix(".pdf").name, md_path.with_suffix(".html").name}
+    title = app.title if app is not None else None
+    own = {md_path.name, pdf.pdf_path_for(md_path, title).name, md_path.with_suffix(".html").name}
     for finding in lint._check_pdfs(md_path.parent, app):
         if finding.code in lint.PDF_STALENESS_CODES and finding.message.split()[0] in own:
             return finding.message

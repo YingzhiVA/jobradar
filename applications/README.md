@@ -23,9 +23,13 @@ across machines.
    - `cover_letter.md`: only when the posting requires one, or on `full` tier
    - `notes.md`: fit assessment, what the tailoring emphasized, gaps, and a
      pre-submission checklist
-   - `tailored_cv.pdf` / `cover_letter.pdf`: generated automatically for
-     quick-tier applications (they are submitted as-is)
-   - `tailored_cv_<lang>.md` (+ `.pdf`): for a non-English posting (German
+   - `CV_<FamilyName>_<Position>.pdf` / `cover_letter.pdf`: generated
+     automatically for quick-tier applications (they are submitted as-is).
+     The CV's PDF is named for the recruiter who receives it: the family name
+     is everything after the first word of the CV's name line, the position is
+     the posting's job title. A CV whose first line isn't a name keeps the
+     plain `tailored_cv.pdf`
+   - `tailored_cv_<lang>.md` (+ `CV_..._<LANG>.pdf`): for a non-English posting (German
      is the common Swiss case), the tailored CV translated into the posting's
      language. This is the version you submit; `tailored_cv.md` stays as the
      English fallback. The cover letter is already written in the posting's
