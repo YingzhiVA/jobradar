@@ -4,7 +4,14 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from jobradar.search.sources.backoff import BackoffTransport, is_bot_challenge, retry_after_seconds
+from jobradar.search.sources.backoff import (
+    USER_AGENT,
+    BackoffTransport,
+    HostPacer,
+    is_bot_challenge,
+    polite_client,
+    retry_after_seconds,
+)
 
 
 def _transport(responses, **kwargs):
@@ -19,7 +26,7 @@ def _transport(responses, **kwargs):
         return httpx.Response(status, headers=headers, content=body)
 
     transport = BackoffTransport(
-        httpx.MockTransport(handler), sleep=slept.append, jitter=lambda delay: 0.0, **kwargs
+        httpx.MockTransport(handler), sleep=slept.append, jitter=lambda delay: 0.0, pacer=None, **kwargs
     )
     return transport, seen, slept
 
@@ -144,3 +151,62 @@ def test_is_bot_challenge_reads_the_cf_mitigated_header():
     assert is_bot_challenge(httpx.Response(403, headers={"CF-Mitigated": " Challenge "}))
     assert not is_bot_challenge(httpx.Response(429, headers={"server": "cloudflare"}))
     assert not is_bot_challenge(httpx.Response(429))
+
+
+class _Clock:
+    """A fake monotonic clock that sleeping advances."""
+
+    def __init__(self):
+        self.now = 100.0
+        self.slept: list[float] = []
+
+    def sleep(self, seconds):
+        self.slept.append(round(seconds, 6))
+        self.now += seconds
+
+
+def _pacer(clock, interval=1.0):
+    return HostPacer(interval, jitter=lambda: 0.0, clock=lambda: clock.now, sleep=clock.sleep)
+
+
+def test_requests_to_one_site_are_spaced_but_the_first_goes_at_once():
+    clock = _Clock()
+    pacer = _pacer(clock)
+    for _ in range(3):
+        pacer.wait("myworkdayjobs.com")
+    assert clock.slept == [1.0, 1.0]
+
+
+def test_the_pace_is_per_site():
+    clock = _Clock()
+    pacer = _pacer(clock)
+    pacer.wait("myworkdayjobs.com")
+    pacer.wait("greenhouse.io")
+    assert clock.slept == []
+
+
+def test_a_request_after_the_interval_has_passed_does_not_wait():
+    clock = _Clock()
+    pacer = _pacer(clock)
+    pacer.wait("swisslife.ch")
+    clock.now += 3.0  # a slow response
+    pacer.wait("swisslife.ch")
+    assert clock.slept == []
+
+
+def test_the_transport_paces_boards_on_one_domain_together():
+    # roche.wd3 and jj.wd5 share myworkdayjobs.com, so they share one pace.
+    clock = _Clock()
+    transport = BackoffTransport(httpx.MockTransport(lambda r: httpx.Response(200)), pacer=_pacer(clock))
+    with httpx.Client(transport=transport) as client:
+        client.get("https://roche.wd3.myworkdayjobs.com/jobs")
+        client.get("https://jj.wd5.myworkdayjobs.com/jobs")
+        client.get("https://boards-api.greenhouse.io/v1/boards/x/jobs")
+    assert clock.slept == [1.0]
+
+
+def test_polite_client_identifies_as_jobradar_not_a_browser():
+    assert USER_AGENT.startswith("jobradar/") and "Mozilla" not in USER_AGENT
+    with polite_client(5.0, headers={"Accept": "text/html"}) as client:
+        assert client.headers["User-Agent"] == USER_AGENT
+        assert client.headers["Accept"] == "text/html"

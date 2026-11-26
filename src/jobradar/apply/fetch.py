@@ -22,7 +22,8 @@ from html.parser import HTMLParser
 
 import httpx
 
-from ..search.liveness import _HEADERS, _MAX_REDIRECTS, _is_public_http_url
+from ..search.liveness import _MAX_REDIRECTS, _is_public_http_url
+from ..search.sources.backoff import polite_client
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,7 @@ class FetchOutcome:
 
 def fetch_page(url: str, client: httpx.Client | None = None) -> FetchOutcome:
     own_client = client is None
-    client = client or httpx.Client(timeout=_TIMEOUT, headers=_HEADERS)
+    client = client or polite_client(_TIMEOUT)
     try:
         current = url
         for _ in range(_MAX_REDIRECTS + 1):

@@ -19,6 +19,7 @@ import logging
 
 import httpx
 
+from .backoff import polite_client
 from .base import FetchResult, RawPosting, strip_html
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ class ArbeitnowSource:
             return FetchResult(self.name, [], ok=True, detail="no keywords configured")
         postings: list[RawPosting] = []
         ok = True
-        with httpx.Client(timeout=_TIMEOUT) as client:
+        with polite_client(_TIMEOUT) as client:
             url: str | None = self._BASE_URL
             page = 0
             while url and page < _MAX_PAGES:

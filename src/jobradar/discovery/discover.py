@@ -66,6 +66,7 @@ from ..config import load_search_settings
 from ..llm import model_for, web_search_tool_type
 from ..markets import CH, MARKETS, Market
 from ..matching import load_profile
+from ..search.sources.backoff import polite_client
 from ..search.sources.company_pages import join_jobs_page, parse_join_company
 from ..search.sources.web_search import _extract_json
 
@@ -463,7 +464,7 @@ def discover(
         candidate_names.append(name)
 
     matches = []
-    with httpx.Client(timeout=_TIMEOUT) as http_client:
+    with polite_client(_TIMEOUT) as http_client:
         for name in candidate_names:
             # Skip any board a human has flagged as a wrong-company collision for
             # this name, so it can never be re-matched (see reject_board).
@@ -519,7 +520,7 @@ def _reject_collisions(specs: list[str], now: datetime | None = None) -> None:
     from whatever remains (usually 'dropped')."""
     now = now or datetime.now(timezone.utc)
     ledger = discovery_ledger.load_ledger(_LEDGER_PATH)
-    with httpx.Client(timeout=_TIMEOUT) as http_client:
+    with polite_client(_TIMEOUT) as http_client:
         for spec in specs:
             try:
                 name, ats, slug = spec.rsplit(":", 2)
