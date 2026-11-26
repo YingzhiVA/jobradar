@@ -1027,6 +1027,20 @@ def score_postings(
     logs and returns None), so one bad posting can't take the pool down.
     """
     model = model or model_for("JOBRADAR_SCORING_MODEL")
+    # A posting whose source gave no description has nothing to screen: the
+    # scorer returns an empty checklist on every attempt. Sent anyway, it cost
+    # two calls a run for as long as it stayed listed (a Personio feed, for
+    # about two weeks from 2026-11-11), because a posting that comes back
+    # unscored is left unseen to be retried. It is still left unseen here, so
+    # it gets scored once a description appears, but no call is made for it.
+    for posting in postings:
+        if not posting.description.strip():
+            logger.warning(
+                "Not scoring %s — %s (%s): its source gave no description; "
+                "it stays unseen and is scored once one appears",
+                posting.company, posting.title, posting.url,
+            )
+    postings = [posting for posting in postings if posting.description.strip()]
     if not postings:
         return []
     workers = _SCORING_WORKERS if workers is None else workers

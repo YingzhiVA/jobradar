@@ -295,11 +295,36 @@ def _fetch_smartrecruiters(
     return postings
 
 
-def _fetch_personio(company_name: str, slug: str, client: httpx.Client) -> list[RawPosting]:
+def _personio_page_description(url: str, client: httpx.Client) -> str:
+    """A Personio posting's description from its job page, whose schema.org
+    JobPosting carries the full ad. Empty when the page can't be read or has
+    none."""
+    try:
+        resp = client.get(url, follow_redirects=True)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.info("Personio posting %s has no description in the feed and its page failed: %s", url, exc)
+        return ""
+    posting = _job_posting_ld(resp.text) or {}
+    description = strip_html(str(posting.get("description") or ""))
+    if not description:
+        logger.warning("Personio posting %s has no description in the feed or on its page", url)
+    return description
+
+
+def _fetch_personio(
+    company_name: str, slug: str, client: httpx.Client, known: KnownPostings = _NOTHING_KNOWN
+) -> list[RawPosting]:
     # Personio exposes a public XML job feed at {slug}.jobs.personio.de/xml
     # (root <workzag-jobs>, one <position> per role). The feed has no apply URL,
     # so it's constructed as /job/{id}. Description lives across one or more
     # <jobDescription><value> HTML blocks.
+    #
+    # Some feeds list a position with no <jobDescriptions> at all (2026-11-26:
+    # all 8 of Legartis's, 1 of Unique's 2). Such a posting reached the scorer
+    # with title, company and location only, came back unscored, and was
+    # retried on every run. Its job page has the full ad, so it is read from
+    # there: one request per new posting, none for a settled one.
     url = f"https://{slug}.jobs.personio.de/xml"
     resp = client.get(url)
     resp.raise_for_status()
@@ -316,21 +341,29 @@ def _fetch_personio(company_name: str, slug: str, client: httpx.Client) -> list[
                 value = desc.findtext("value") or ""
                 if value:
                     sections.append(strip_html(value))
+        job_url = f"https://{slug}.jobs.personio.de/job/{posting_id}"
+        description = "\n\n".join(sections)
+        raw = {
+            "id": posting_id,
+            "office": pos.findtext("office"),
+            "department": pos.findtext("department"),
+            "employmentType": pos.findtext("employmentType"),
+            "schedule": pos.findtext("schedule"),
+        }
+        if not description:
+            if known.exact(job_url):
+                raw[LISTING_ONLY] = True
+            else:
+                description = _personio_page_description(job_url, client)
         postings.append(
             RawPosting(
                 source="personio",
-                url=f"https://{slug}.jobs.personio.de/job/{posting_id}",
+                url=job_url,
                 title=(pos.findtext("name") or "").strip(),
                 company=company_name,
-                description="\n\n".join(sections),
+                description=description,
                 location=(pos.findtext("office") or "").strip() or None,
-                raw={
-                    "id": posting_id,
-                    "office": pos.findtext("office"),
-                    "department": pos.findtext("department"),
-                    "employmentType": pos.findtext("employmentType"),
-                    "schedule": pos.findtext("schedule"),
-                },
+                raw=raw,
             )
         )
     return postings
@@ -2273,7 +2306,7 @@ _SKIPS_KNOWN = frozenset(
     {
         "smartrecruiters", "workday", "bamboohr", "join", "avature",
         "successfactors", "brassring", "prospective", "onlyfy", "breezy",
-        "eightfold", "oracle",
+        "eightfold", "oracle", "personio",
     }
 )
 

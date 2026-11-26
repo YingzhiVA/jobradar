@@ -180,13 +180,23 @@ class _XMLResp:
 
 
 class _PersonioClient:
-    def __init__(self, content):
-        self._content = content
-        self.url = None
+    """Serves job pages ("/job/" URLs) from `pages` (url -> HTML; a missing
+    page answers 404) and the feed for any other URL, so the Google tests can
+    use it too. `url` is the first URL requested, `urls` all of them."""
 
-    def get(self, url):
-        self.url = url
-        return _XMLResp(self._content)
+    def __init__(self, content, pages=None):
+        self._content = content
+        self._pages = pages or {}
+        self.url = None
+        self.urls: list[str] = []
+
+    def get(self, url, follow_redirects=False):
+        self.url = self.url or url
+        self.urls.append(url)
+        if "/job/" not in url:
+            return _XMLResp(self._content)
+        page = self._pages.get(url)
+        return _HtmlResp(page) if page is not None else _HtmlResp("", status=404)
 
 
 def test_personio_parses_positions():
@@ -204,6 +214,50 @@ def test_personio_parses_positions():
     assert "Own the roadmap" in p.description
     assert "SQL" in p.description
     assert "<p>" not in p.description and "&lt;" not in p.description
+
+
+_PERSONIO_NO_DESCRIPTION_XML = b"""<workzag-jobs>
+  <position><id>2885065</id><office>Zurich</office><name>Account Executive</name></position>
+</workzag-jobs>"""
+_PERSONIO_JOB_URL = "https://legartis.jobs.personio.de/job/2885065"
+
+
+def _personio_job_page(description):
+    ld = json.dumps({"@context": "https://schema.org/", "@type": "JobPosting",
+                     "title": "Account Executive", "description": description})
+    return f'<html><head><script type="application/ld+json">{ld}</script></head><body>…</body></html>'
+
+
+def test_personio_reads_the_job_page_when_the_feed_has_no_description():
+    # Legartis's feed, 2026-11-26: positions without <jobDescriptions>.
+    page = _personio_job_page("<h1>Description</h1><p>Sell legal AI to Swiss enterprises.</p>")
+    client = _PersonioClient(_PERSONIO_NO_DESCRIPTION_XML, {_PERSONIO_JOB_URL: page})
+    [posting] = _fetch_personio("Legartis", "legartis", client)
+    assert posting.description == "Description Sell legal AI to Swiss enterprises."
+    assert client.urls == ["https://legartis.jobs.personio.de/xml", _PERSONIO_JOB_URL]
+    assert LISTING_ONLY not in posting.raw
+
+
+def test_personio_does_not_fetch_the_page_of_a_settled_posting():
+    client = _PersonioClient(_PERSONIO_NO_DESCRIPTION_XML)
+    [posting] = _fetch_personio(
+        "Legartis", "legartis", client, known=KnownPostings([_PERSONIO_JOB_URL])
+    )
+    assert client.urls == ["https://legartis.jobs.personio.de/xml"]
+    assert posting.description == "" and posting.raw[LISTING_ONLY] is True
+
+
+def test_personio_keeps_the_posting_when_its_page_fails_or_has_no_description():
+    for pages in ({}, {_PERSONIO_JOB_URL: "<html><body>No JSON-LD</body></html>"}):
+        client = _PersonioClient(_PERSONIO_NO_DESCRIPTION_XML, pages)
+        [posting] = _fetch_personio("Legartis", "legartis", client)
+        assert posting.title == "Account Executive" and posting.description == ""
+
+
+def test_personio_makes_no_page_request_when_the_feed_has_descriptions():
+    client = _PersonioClient(_PERSONIO_XML)
+    _fetch_personio("Planted", "planted", client)
+    assert client.urls == ["https://planted.jobs.personio.de/xml"]
 
 
 def test_personio_empty_feed():
