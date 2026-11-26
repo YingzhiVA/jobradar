@@ -47,6 +47,7 @@ import httpx
 from .boards import BoardsError, catalog_problems, index_catalog, load_companies, read_catalog
 from .config import ConfigError, load_search_settings
 from .markets import MARKETS, Market
+from .search.sources.backoff import polite_client
 from .search.sources.base import RawPosting
 from .search.sources.company_pages import (
     _FETCHERS,
@@ -345,7 +346,7 @@ def main(argv: list[str] | None = None) -> None:
         if not pairs:
             raise SystemExit(f"No board named {args.only!r} in what this command checks.")
 
-    with httpx.Client(timeout=_TIMEOUT) as client:
+    with polite_client(_TIMEOUT) as client:
         results = []
         for m, board in pairs:
             result = check_board(board, client, m)

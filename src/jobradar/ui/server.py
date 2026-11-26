@@ -23,12 +23,10 @@ import mimetypes
 import secrets
 import threading
 import time
-import tomllib
 import webbrowser
 from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from importlib import metadata
 from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, urlsplit
@@ -49,21 +47,6 @@ CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'"
 )
-
-
-def _version(root: Path) -> str:
-    """The version of the code in this folder. Read from pyproject.toml first:
-    people run from a clone and update by pulling, which leaves the installed
-    package's own record at whatever it was on the day of `pip install`."""
-    try:
-        with (root / "pyproject.toml").open("rb") as handle:
-            return str(tomllib.load(handle)["project"]["version"])
-    except (OSError, KeyError, tomllib.TOMLDecodeError):
-        pass
-    try:
-        return metadata.version("jobradar")
-    except metadata.PackageNotFoundError:
-        return ""
 
 
 def _offset(query: dict) -> int:
@@ -89,7 +72,7 @@ class App:
     def state(self, _q: dict) -> dict:
         job = self.runner.job
         return {
-            "version": _version(self.root),
+            "version": updates.code_version(self.root),
             "setup": setup.status(self.root),
             "key": setup.key_status(self.root),
             "job": job.snapshot(len(job.lines)) if job else None,

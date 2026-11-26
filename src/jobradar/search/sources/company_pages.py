@@ -18,7 +18,6 @@ import io
 import json
 import logging
 import re
-import time
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from urllib.parse import unquote, urljoin, urlsplit
@@ -26,7 +25,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 import httpx
 
 from ...markets import CH, Market
-from .backoff import BackoffTransport, is_bot_challenge
+from .backoff import is_bot_challenge, polite_client
 from .base import FetchResult, RawPosting, parse_workplace_type, strip_html
 
 logger = logging.getLogger(__name__)
@@ -933,12 +932,8 @@ def _fetch_join(
 # public job-board API — but their pages are server-rendered HTML (no JS needed),
 # and both platforms' markup is stable and structured enough to parse with a few
 # regexes. Same ToS posture as eth.py: public postings on the company's own
-# careers site, fetched at the pace of one small crawl per day. Sites answer
-# httpx's default UA today; send a browser-ish UA anyway to stay off bot
-# heuristics.
-_HTML_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) jobradar"
-}
+# careers site, fetched at the pace of one small crawl per day, paced per site
+# and identified as jobradar by the client (backoff.polite_client).
 
 # --- Avature ("Careers Marketplace": Siemens, Deloitte CH, Mettler-Toledo) ---
 
@@ -1019,7 +1014,7 @@ def _fetch_avature(
                 new += 1
         return new
 
-    resp = client.get(search_url, headers=_HTML_HEADERS, follow_redirects=True)
+    resp = client.get(search_url, follow_redirects=True)
     resp.raise_for_status()
     collect(resp.text)
     prefix, page_size, page_params = "", 0, {}
@@ -1038,7 +1033,6 @@ def _fetch_avature(
             resp = client.get(
                 search_url,
                 params={**page_params, f"{prefix}Offset": offset},
-                headers=_HTML_HEADERS,
                 follow_redirects=True,
             )
             resp.raise_for_status()
@@ -1058,7 +1052,7 @@ def _fetch_avature(
         # that one posting rather than abort the whole company (same rationale
         # as the Workday fetcher).
         try:
-            detail = client.get(url, headers=_HTML_HEADERS, follow_redirects=True)
+            detail = client.get(url, follow_redirects=True)
             detail.raise_for_status()
         except httpx.HTTPError as exc:
             logger.info("Skipping unavailable %s posting %s: %s", company_name, url, exc)
@@ -1182,7 +1176,6 @@ def _fetch_successfactors(
         resp = client.get(
             f"https://{slug}/search/",
             params={"q": "", "locationsearch": market.country, "startrow": startrow},
-            headers=_HTML_HEADERS,
             follow_redirects=True,
         )
         resp.raise_for_status()
@@ -1204,7 +1197,7 @@ def _fetch_successfactors(
             # Same per-posting skip as Avature/Workday: a posting that closed
             # since the list call 404s here.
             try:
-                detail = client.get(url, headers=_HTML_HEADERS, follow_redirects=True)
+                detail = client.get(url, follow_redirects=True)
                 detail.raise_for_status()
             except httpx.HTTPError as exc:
                 logger.info("Skipping unavailable %s posting %s: %s", company_name, url, exc)
@@ -1280,7 +1273,6 @@ def _fetch_icims(
                 "descending": "false",
                 "internal": "false",
             },
-            headers=_HTML_HEADERS,
         )
         resp.raise_for_status()
         jobs = [job.get("data") or {} for job in resp.json().get("jobs", [])]
@@ -1448,7 +1440,7 @@ def _fetch_brassring(
     site_params = {"partnerid": partner_id, "siteid": site_id}
 
     resp = client.get(
-        page_url, params={**site_params, "PageType": "searchResults"}, headers=_HTML_HEADERS, follow_redirects=True
+        page_url, params={**site_params, "PageType": "searchResults"}, follow_redirects=True
     )
     resp.raise_for_status()
     preload = _brassring_preload(resp.text)
@@ -1486,7 +1478,7 @@ def _fetch_brassring(
         "PageNumber": 1,
         "encryptedsessionvalue": session.group(1) if session else "",
     }
-    headers = {**_HTML_HEADERS, "RFT": rft.group(1) if rft else ""}
+    headers = {"RFT": rft.group(1) if rft else ""}
     seen: set[str] = set()
     listed: list[tuple[str, dict, str]] = []  # (req id, list-call answers, link)
     total: int | None = None
@@ -1523,7 +1515,6 @@ def _fetch_brassring(
             detail = client.get(
                 page_url,
                 params={**site_params, "PageType": "JobDetails", "jobid": req_id},
-                headers=_HTML_HEADERS,
                 follow_redirects=True,
             )
             detail.raise_for_status()
@@ -1685,7 +1676,6 @@ def _fetch_prospective(
         resp = client.get(
             list_url,
             params={"lang": lang, "offset": offset, "limit": _PROSPECTIVE_PAGE_SIZE},
-            headers=_HTML_HEADERS,
             follow_redirects=True,
         )
         resp.raise_for_status()
@@ -1705,7 +1695,7 @@ def _fetch_prospective(
             ))
             continue
         try:
-            detail = client.get(item["url"], headers=_HTML_HEADERS, follow_redirects=True)
+            detail = client.get(item["url"], follow_redirects=True)
             detail.raise_for_status()
         except httpx.HTTPError as exc:
             logger.info("Skipping unavailable %s posting %s: %s", company_name, item["url"], exc)
@@ -1756,9 +1746,8 @@ def _fetch_prospective(
 # multinational board (Leica: 37 postings, 7 countries) is fetched only for
 # its Swiss ones (the filter takes the market's lower-case country code).
 # robots.txt allows both paths and asks for a Crawl-delay of 1 second, which
-# _ONLYFY_DELAY honours between every request. Verified on hexagon-robotics
-# and leica-geosystems-ag, 2026-09-18.
-_ONLYFY_DELAY = 1.0
+# the client's per-site pace (backoff.MIN_INTERVAL) honours between every
+# request. Verified on hexagon-robotics and leica-geosystems-ag, 2026-09-18.
 _ONLYFY_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 _ONLYFY_CARD_RE = re.compile(
     r'data-testid="job-card"[^>]*?href="/[a-z]{2}/job/([a-z0-9]+)[^"]*".*?'
@@ -1814,14 +1803,9 @@ def _fetch_onlyfy(
     if not _ONLYFY_SLUG_RE.fullmatch(slug or ""):
         raise ValueError(f"onlyfy slug must be the career page's subdomain, got {slug!r}")
     base = f"https://{slug}.onlyfy.jobs"
-    requested = False
 
     def get(url: str, params: dict | None = None) -> httpx.Response:
-        nonlocal requested
-        if requested:
-            time.sleep(_ONLYFY_DELAY)
-        requested = True
-        return client.get(url, params=params, headers=_HTML_HEADERS, follow_redirects=True)
+        return client.get(url, params=params, follow_redirects=True)
 
     cards: list[tuple[str, str, str]] = []
     seen: set[str] = set()
@@ -1845,7 +1829,7 @@ def _fetch_onlyfy(
         url = f"{base}/en/job/{job_id}"
         if known.exact(url):
             # Worth the most here: every detail request on this board waits
-            # _ONLYFY_DELAY first, at the site's own request.
+            # out the site's Crawl-delay first.
             postings.append(_listing_only(
                 "onlyfy", url, title, company_name, info.partition("|")[0].strip() or None
             ))
@@ -2369,9 +2353,9 @@ class CompanyPagesSource:
         # Swiss relevance, so a board full of foreign ads still reads as alive.
         company_counts: dict[str, int] = {}
         listing_only_total = 0
-        # BackoffTransport retries a 429/503 instead of losing the board to
-        # its first refusal (Workday, from the Actions runner, 2026-11-16 on).
-        with httpx.Client(timeout=_TIMEOUT, transport=BackoffTransport()) as client:
+        # Paced per site, and a 429/503 is retried instead of losing the board
+        # to its first refusal (see backoff).
+        with polite_client(_TIMEOUT) as client:
             for company in self.companies:
                 name = company.get("name") or "?"
                 # An entry uncommented only partly (a name with no slug, or the

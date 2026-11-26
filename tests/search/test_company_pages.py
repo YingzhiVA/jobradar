@@ -2528,16 +2528,7 @@ def _onlyfy_detail_key(job_id):
     return (f"{_ONLYFY_BASE}/job/show/{job_id}/full", (("lang", "en"), ("mode", "candidate")))
 
 
-@pytest.fixture
-def _no_crawl_delay(monkeypatch):
-    import jobradar.search.sources.company_pages as cp
-
-    sleeps = []
-    monkeypatch.setattr(cp.time, "sleep", sleeps.append)
-    return sleeps
-
-
-def test_onlyfy_pages_to_the_boards_count_and_reads_each_posting(_no_crawl_delay):
+def test_onlyfy_pages_to_the_boards_count_and_reads_each_posting():
     client = _AvatureClient(
         {
             _onlyfy_key(1): _onlyfy_list(
@@ -2566,12 +2557,9 @@ def test_onlyfy_pages_to_the_boards_count_and_reads_each_posting(_no_crawl_delay
     assert "__ignored" not in first.description
     # the count (3) is reached after page 2: no third list request
     assert _onlyfy_key(3) not in client.calls
-    # robots.txt Crawl-delay: one pause before every request but the first
-    assert len(_no_crawl_delay) == len(client.calls) - 1
-    assert set(_no_crawl_delay) == {1.0}
 
 
-def test_onlyfy_stops_when_a_page_brings_nothing_new(_no_crawl_delay):
+def test_onlyfy_stops_when_a_page_brings_nothing_new():
     # No count on the page (markup changed): stop on a page of known jobs
     # rather than paging forever.
     page = _onlyfy_list([("aaa1", "A", "Zürich | Full-time employee | 16.09.2026")], 1, 1, 1)
@@ -2582,7 +2570,7 @@ def test_onlyfy_stops_when_a_page_brings_nothing_new(_no_crawl_delay):
     assert [p.title for p in _fetch_onlyfy("H", "hexagon-robotics", client)] == ["A"]
 
 
-def test_onlyfy_skips_a_closed_posting(_no_crawl_delay):
+def test_onlyfy_skips_a_closed_posting():
     client = _AvatureClient(
         {
             _onlyfy_key(1): _onlyfy_list(
@@ -2597,7 +2585,7 @@ def test_onlyfy_skips_a_closed_posting(_no_crawl_delay):
     assert [p.title for p in _fetch_onlyfy("H", "hexagon-robotics", client)] == ["Open"]
 
 
-def test_onlyfy_empty_board(_no_crawl_delay):
+def test_onlyfy_empty_board():
     client = _AvatureClient({_onlyfy_key(1): "<html><body>No jobs</body></html>"})
     assert _fetch_onlyfy("H", "hexagon-robotics", client) == []
     assert len(client.calls) == 1

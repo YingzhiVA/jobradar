@@ -41,7 +41,7 @@ import httpx
 from dotenv import load_dotenv
 
 from .apply.fetch import _TIMEOUT, fetch_page
-from .search.liveness import _HEADERS
+from .search.sources.backoff import polite_client
 
 logger = logging.getLogger(__name__)
 
@@ -700,7 +700,7 @@ def crawl(
     root_path = _root_path(start)
 
     own_client = client is None
-    client = client or httpx.Client(timeout=_TIMEOUT, headers=_HEADERS)
+    client = client or polite_client(_TIMEOUT)
     result = CrawlResult()
     seen = {start}
     queue: deque[tuple[str, int]] = deque([(start, 0)])

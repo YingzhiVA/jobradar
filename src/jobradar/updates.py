@@ -31,7 +31,11 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tomllib
+from importlib import metadata
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]  # project root, two levels above src/jobradar/
 
 PUBLIC_REPO = "https://github.com/YingzhiVA/jobradar.git"
 
@@ -101,3 +105,19 @@ def update_status(root: Path) -> dict:
         "remote": None,
         "commands": prepare + [f"git remote add upstream {PUBLIC_REPO}", "git fetch upstream", FIRST_MERGE],
     }
+
+
+def code_version(root: Path = ROOT) -> str:
+    """The version of the code in this folder. Read from pyproject.toml first:
+    people run from a clone and update by pulling, which leaves the installed
+    package's own record at whatever it was on the day of `pip install`.
+    Empty when neither is readable."""
+    try:
+        with (root / "pyproject.toml").open("rb") as handle:
+            return str(tomllib.load(handle)["project"]["version"])
+    except (OSError, KeyError, tomllib.TOMLDecodeError):
+        pass
+    try:
+        return metadata.version("jobradar")
+    except metadata.PackageNotFoundError:
+        return ""

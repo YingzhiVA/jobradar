@@ -20,13 +20,13 @@ import re
 import httpx
 
 from ...config import DEFAULT_ETH_JOB_TYPES
+from .backoff import polite_client
 from .base import FetchResult, RawPosting, strip_html
 
 logger = logging.getLogger(__name__)
 
 _BASE = "https://jobs.ethz.ch"
 _TIMEOUT = 20.0
-_HEADERS = {"User-Agent": "Mozilla/5.0 jobradar"}
 # The jobtype_id values known from the board's filter form (Stellentyp) live in
 # jobradar.config (ETH_JOB_TYPES), next to the setting that picks them.
 
@@ -88,7 +88,7 @@ class EthJobsSource:
     def fetch(self) -> FetchResult:
         postings: list[RawPosting] = []
         try:
-            with httpx.Client(timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=True) as client:
+            with polite_client(_TIMEOUT, follow_redirects=True) as client:
                 token = _extract_csrf(client.get(_BASE + "/").text)
                 for jobtype_id in self.jobtype_ids:
                     resp = client.post(

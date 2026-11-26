@@ -4,6 +4,30 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.39.0 — Ask each site politely (2026-11-26)
+
+- **jobradar paces its requests to each site.** It used to send a board's
+  requests back to back: on 25 November Johnson & Johnson's Workday board got
+  20 requests in 3 seconds and refused the posting pages that came right
+  after. Requests to one site are now at least a second apart, plus a little
+  at random, and boards that share a site share the pace (all Workday boards,
+  for example). Most boards take one or two requests, so a normal day's run
+  takes a minute or two longer; a first run over many boards takes longer
+  than that.
+- **Every part of jobradar asks the same way.** Link checks, discovery, the
+  monthly board check, the ETH board, Arbeitnow, and `apply`'s posting fetch
+  and evidence crawl now go through the same paced connection as the company
+  boards. So they too wait and try again when a site says "too many
+  requests", and stop at a site whose bot check refuses them.
+- **jobradar says who it is.** Its requests now identify as
+  `jobradar/<version> (job search tool)`. Before, link checks claimed to be
+  Chrome and board fetches sent a half-browser label. A link a site refuses
+  (403) is still kept and marked unverified, but jobradar no longer asks a
+  second time under a different label.
+- **Proxy settings in the environment are no longer used.** jobradar's web
+  requests ignore `HTTP_PROXY` and `HTTPS_PROXY` now. The company boards
+  already did since 1.37.0. If you need a proxy, open an issue.
+
 ## 1.38.0 — Name boards a bot check blocks (2026-11-26)
 
 - **Boards that a bot check blocks are named in the report and the email.**

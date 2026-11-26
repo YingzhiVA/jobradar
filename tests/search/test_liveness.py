@@ -37,20 +37,16 @@ class _FakeStream:
 
 
 class _FakeClient:
-    """Maps URLs to status codes (or a _FakeResponse, or an Exception to raise).
-
-    A mapped value may also be a dict {"browser": ..., "retry": ...} to return a
-    different result depending on the UA: is_url_live passes headers=None for the
-    primary (browser-UA) probe and a retry-header dict for the 403 escalation.
-    """
+    """Maps URLs to status codes (or a _FakeResponse, or an Exception to raise),
+    recording each URL requested."""
 
     def __init__(self, status_by_url):
         self._status_by_url = status_by_url
+        self.requested: list[str] = []
 
-    def stream(self, method, url, follow_redirects=False, headers=None):
+    def stream(self, method, url, follow_redirects=False):
+        self.requested.append(url)
         result = self._status_by_url.get(url, 200)
-        if isinstance(result, dict):
-            result = result["retry" if headers else "browser"]
         if isinstance(result, (Exception, _FakeResponse)):
             return _FakeStream(result)
         return _FakeStream(_FakeResponse(result))
@@ -84,27 +80,14 @@ def test_other_4xx_is_kept():
     assert is_url_live("https://8.8.8.8/unauth", client) is True
 
 
-def test_403_that_stays_403_on_retry_is_kept():
-    # Bot-blocked-but-live: browser UA gets 403, retry UA also 403 (no proof of
-    # gone) -> recall bias keeps it.
+def test_403_is_kept_and_asked_once():
+    # Bot-blocked-but-live is possible (no proof of gone) -> recall bias keeps
+    # it. No second request under another User-Agent: that would be getting
+    # around the block, not respecting it.
     url = "https://8.8.8.8/forbidden"
-    client = _FakeClient({url: {"browser": 403, "retry": 403}})
+    client = _FakeClient({url: 403})
     assert is_url_live(url, client) is True
-
-
-def test_403_that_is_gone_on_retry_is_dropped():
-    # The datacareer.ch failure mode: the site 403s our browser UA site-wide but
-    # a plainer UA sees the real 404 -> drop. This is the miss this change fixes.
-    url = "https://8.8.8.8/stale"
-    client = _FakeClient({url: {"browser": 403, "retry": 404}})
-    assert is_url_live(url, client) is False
-
-
-def test_403_that_is_live_on_retry_is_kept():
-    # Browser UA blocked (403) but the retry UA gets a normal 200 -> keep.
-    url = "https://8.8.8.8/blocked-but-live"
-    client = _FakeClient({url: {"browser": 403, "retry": 200}})
-    assert is_url_live(url, client) is True
+    assert client.requested == [url]
 
 
 def test_5xx_is_kept():
@@ -218,21 +201,14 @@ def test_gone_url_is_dead():
 
 
 def test_persistent_403_is_unverified_not_confirmed():
-    # The 2026-08-17 Swiss Re failure: swissre.com 403'd the CI runner's IP under
-    # both UAs while serving 410 elsewhere. Recall bias still KEEPS the link (the
-    # host may just be bot-blocking a live role) but it must not be reported as
+    # The 2026-08-17 Swiss Re failure: swissre.com 403'd the CI runner's IP
+    # while serving 410 elsewhere. Recall bias still KEEPS the link (the host
+    # may just be bot-blocking a live role) but it must not be reported as
     # verified — that is what let two closed roles reach the daily report.
     url = "https://8.8.8.8/forbidden"
-    client = _FakeClient({url: {"browser": 403, "retry": 403}})
+    client = _FakeClient({url: 403})
     assert is_url_live(url, client) is True
     assert check_url(url, client) == LIVENESS_UNVERIFIED
-
-
-def test_403_rescued_by_retry_ua_is_confirmed():
-    # A UA-keyed block that the plain-UA retry gets past is genuinely resolved.
-    url = "https://8.8.8.8/blocked-but-live"
-    client = _FakeClient({url: {"browser": 403, "retry": 200}})
-    assert check_url(url, client) == LIVENESS_CONFIRMED
 
 
 def test_network_error_is_unverified():
@@ -257,7 +233,7 @@ def test_filter_live_stamps_liveness_on_kept_postings():
     client = _FakeClient(
         {
             "https://8.8.8.8/live": 200,
-            blocked: {"browser": 403, "retry": 403},
+            blocked: 403,
             "https://8.8.8.8/dead": 404,
         }
     )

@@ -1,13 +1,37 @@
-"""Retry a board's request when the server says to slow down (429, 503).
+"""Ask every site politely: pace requests per site, identify honestly, and
+retry when the server says to slow down (429, 503).
 
-Since 2026-11-16 Workday has answered the GitHub Actions runner's first
+Every HTTP client jobradar opens to a job board or a posting page comes from
+polite_client(), which puts BackoffTransport under it and sends USER_AGENT.
+
+Pacing. jobradar used to send a board's requests back to back: on the
+2026-11-25 run J&J's Workday board got 20 requests in 3 seconds (5.9 a
+second) and answered the posting pages after that burst with 429, and Swiss
+Life got 105 in 47 seconds. From a home connection a site's own rate limits
+and burst-sensitive bot checks are the realistic risk, so requests to one
+site are spaced at least MIN_INTERVAL seconds apart, plus up to PACE_JITTER
+seconds at random. "One site" is _domain(), so all *.myworkdayjobs.com boards
+share one pace. The pace is kept process-wide (_PACER), so a link check
+right after a board fetch on the same host waits as well. It covers
+onlyfy.jobs's robots.txt Crawl-delay of 1 second too.
+
+Identification. USER_AGENT names jobradar and its version, instead of a
+Chrome label on a Python client (a known bot signal) or a bare
+"Mozilla/5.0 ... jobradar". It carries no repo URL, which would send the
+GitHub username to every site.
+
+Not this: rotating identifiers, imitating a browser more closely, or routing
+through other IP addresses. Those get around a site's protection instead of
+respecting it.
+
+Retrying. Since 2026-11-16 Workday has answered the GitHub Actions runner's first
 request to nearly every board with 429 Too Many Requests, on every datacenter
 (wd1 to wd502), while the same requests from a home machine answer 200. A 429
 used to cost the whole board at once: the connector raised, the board was
 skipped, and the next board's request went out a second later into the same
 limit.
 
-BackoffTransport sits under the board connectors' httpx client and, for a 429
+BackoffTransport sits under every polite_client and, for a 429
 or 503 only, waits and sends the request again: as long as the response's
 Retry-After header says, else about 5, 15 and 45 seconds, then gives up and
 returns the refusal so the board is skipped as before. Other errors (404, 403)
@@ -38,6 +62,7 @@ import html
 import logging
 import random
 import re
+import threading
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -46,7 +71,15 @@ from email.utils import parsedate_to_datetime
 
 import httpx
 
+from ...updates import code_version
+
 logger = logging.getLogger(__name__)
+
+USER_AGENT = f"jobradar/{code_version() or 'dev'} (job search tool)"
+# Requests to one site are at least this many seconds apart...
+MIN_INTERVAL = 1.0
+# ...plus up to this many more, at random, so the pace isn't a metronome.
+PACE_JITTER = 0.5
 
 RETRY_STATUSES = frozenset({429, 503})
 # Waits before the 1st, 2nd and 3rd retry when the server names none.
@@ -122,9 +155,53 @@ def describe_refusal(response: httpx.Response) -> str:
     return f"headers: {headers or '(none)'}\n  {label}: {body or '(empty)'}"
 
 
+class HostPacer:
+    """Spaces requests to one domain at least `interval` seconds apart (plus
+    jitter). Thread-safe: each request reserves its slot under the lock, then
+    sleeps outside it, so concurrent callers queue up instead of bursting."""
+
+    def __init__(
+        self,
+        interval: float = MIN_INTERVAL,
+        *,
+        jitter: Callable[[], float] = lambda: random.uniform(0, PACE_JITTER),
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self._interval = interval
+        self._jitter = jitter
+        self._clock = clock
+        self._sleep = sleep
+        self._lock = threading.Lock()
+        self._next: dict[str, float] = {}
+
+    def wait(self, domain: str) -> None:
+        """Return once a request to `domain` may go out."""
+        with self._lock:
+            now = self._clock()
+            start = max(now, self._next.get(domain, now))
+            self._next[domain] = start + self._interval + self._jitter()
+        if start > now:
+            self._sleep(start - now)
+
+
+# Shared by every BackoffTransport in the process, so the pace holds across
+# clients (board fetch, link checks, posting fetch) and not only within one.
+_PACER = HostPacer()
+
+
+def polite_client(timeout: float, **kwargs) -> httpx.Client:
+    """An httpx client for talking to job boards and posting pages: paced per
+    site, retrying 429/503, and sending USER_AGENT. `headers` add to (or
+    override) the User-Agent; other keyword arguments go to httpx.Client."""
+    headers = {"User-Agent": USER_AGENT, **(kwargs.pop("headers", None) or {})}
+    return httpx.Client(timeout=timeout, headers=headers, transport=BackoffTransport(), **kwargs)
+
+
 class BackoffTransport(httpx.BaseTransport):
-    """An httpx transport that retries 429 and 503 responses with backoff; see
-    the module docstring."""
+    """An httpx transport that paces requests per site and retries 429 and 503
+    responses with backoff; see the module docstring. `pacer=None` turns the
+    pacing off."""
 
     def __init__(
         self,
@@ -134,8 +211,10 @@ class BackoffTransport(httpx.BaseTransport):
         max_wait: float = MAX_WAIT,
         sleep: Callable[[float], None] = time.sleep,
         jitter: Callable[[float], float] = lambda delay: random.uniform(0, delay * 0.2),
+        pacer: HostPacer | None = _PACER,
     ) -> None:
         self._inner = inner or httpx.HTTPTransport()
+        self._pacer = pacer
         self._delays = delays
         self._max_wait = max_wait
         self._sleep = sleep
@@ -150,6 +229,8 @@ class BackoffTransport(httpx.BaseTransport):
         request.read()
         attempt = 0
         while True:
+            if self._pacer is not None:
+                self._pacer.wait(domain)
             response = self._inner.handle_request(request)
             if response.status_code not in RETRY_STATUSES:
                 return response

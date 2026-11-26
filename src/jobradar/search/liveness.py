@@ -13,18 +13,17 @@ clear failures" design:
     redirecting to the company's job list with `?error=true` /
     `?not_found=true`, which then loads fine. A live posting is the common
     case; we don't want to discard a good role over a transient blip.
-  * A 403 doesn't drop on its own, but some sites bot-block our browser-y UA
-    site-wide and 403 *every* URL — which would hide a real 404 on a closed
-    posting. So a 403 triggers one retry with a plainer UA; only if that retry
-    reports the posting gone is the link dropped.
+  * A 403 doesn't drop: it may be a live role behind bot protection. The
+    check identifies itself honestly (backoff.USER_AGENT) and doesn't retry
+    under another label.
   * Network errors / timeouts KEEP the link (benefit of the doubt) rather than
     silently dropping a role because a server was briefly slow.
   * An empty URL is dropped — a lead you can't open is not actionable.
 
 Kept is not the same as checked, so the two are not reported the same way. Every
 kept posting carries a `liveness` of LIVENESS_CONFIRMED (we fetched it and it
-answered) or LIVENESS_UNVERIFIED (the fetch settled nothing: a 403 that survived
-the retry UA, a network error, an exhausted redirect budget), and that state
+answered) or LIVENESS_UNVERIFIED (the fetch settled nothing: a 403, a network
+error, an exhausted redirect budget), and that state
 rides through the pipeline to the report. The recall bias is about what we keep;
 it was never a licence to present a guess as a verified link.
 
@@ -50,6 +49,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
+from .sources.backoff import polite_client
 from .sources.base import LIVENESS_CONFIRMED, LIVENESS_UNVERIFIED, RawPosting
 
 logger = logging.getLogger(__name__)
@@ -71,21 +71,6 @@ _DEAD_STATUSES = {404, 410}
 _GONE_REDIRECT_PARAMS = {"error": "true", "not_found": "true"}
 # Bound manual redirect-following so a redirect loop can't spin forever.
 _MAX_REDIRECTS = 5
-# Some career/ATS sites reject the default httpx User-Agent; present a browser-y
-# one so a live posting isn't misread as dead.
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-    )
-}
-# A 403 is ambiguous: some sites bot-block our browser-y UA site-wide and return
-# 403 for *every* URL — which masks a real 404/410 on a closed posting. When the
-# primary fetch is 403, we take a second look with this plainer UA (which such
-# sites often serve normally) and only drop the link if that retry proves it gone.
-# The retry is additive evidence only — anything short of a hard "gone" still keeps
-# the link, so a genuinely bot-blocked-but-live role isn't discarded.
-_RETRY_HEADERS = {"User-Agent": "jobradar-linkcheck/1.0 (+liveness)"}
 
 
 def _is_public_http_url(url: str) -> bool:
@@ -118,10 +103,10 @@ def _is_gone_redirect(url: str) -> bool:
     )
 
 
-def _probe(url: str, client: httpx.Client, headers: dict | None) -> str:
+def _probe(url: str, client: httpx.Client) -> str:
     """Follow redirects manually and classify the terminal state as one of
     'gone' (404/410, or a redirect to an ATS's not-found marker), 'unsafe' (fails the SSRF guard at some hop), 'blocked'
-    (403 — ambiguous, may be a site-wide UA block), 'inconclusive' (a network
+    (403 — ambiguous: a bot block, or a closed posting behind one), 'inconclusive' (a network
     error or an exhausted redirect budget: the fetch settled nothing either
     way), or 'live' (a status we actually got back and that isn't any of the
     above). The body is streamed and never read, so a hostile oversized page
@@ -130,16 +115,13 @@ def _probe(url: str, client: httpx.Client, headers: dict | None) -> str:
     'inconclusive' and 'live' are both KEPT downstream — the recall bias is
     unchanged — but they are not the same evidence, so they aren't the same
     verdict: see check_url.
-
-    `headers` overrides the client's default request headers for this probe;
-    pass None to use the client's headers (the browser-y UA).
     """
     for _ in range(_MAX_REDIRECTS + 1):
         if not _is_public_http_url(url):
             logger.info("liveness: dropping unsafe/non-public URL %s", url)
             return "unsafe"
         try:
-            with client.stream("GET", url, follow_redirects=False, headers=headers) as resp:
+            with client.stream("GET", url, follow_redirects=False) as resp:
                 nxt = resp.next_request
                 if nxt is None:
                     if resp.status_code in _DEAD_STATUSES:
@@ -166,44 +148,28 @@ def check_url(url: str, client: httpx.Client) -> str:
     guard; the body is streamed and never read, so a hostile oversized page can't
     be pulled into memory.
 
-    A 403 doesn't drop on its own (recall bias — could be a live role behind bot
-    protection), but because some sites 403 our browser-y UA site-wide and thereby
-    hide a real 404, a 403 triggers one retry with a plainer UA; only if that retry
-    reports the posting gone is the link dropped. When the retry is also blocked,
-    the result is UNVERIFIED rather than confirmed-live: the host is refusing to
-    answer, and on 2026-08-17 that exact case (swissre.com 403-ing the CI runner's
-    IP while serving 410 elsewhere) put two closed roles in the daily report as if
-    they were open. The UA retry only defeats a UA-keyed block; an IP-keyed one
-    survives it, so the honest answer is "don't know" and the report says so.
+    A 403 doesn't drop (recall bias — could be a live role behind bot
+    protection), and it isn't confirmed-live either: the host is refusing to
+    answer, and on 2026-08-17 that case (swissre.com 403-ing the CI runner's IP
+    while serving 410 elsewhere) put two closed roles in the daily report as if
+    they were open. So it is UNVERIFIED, and the report says so.
+
+    A 403 to a Chrome User-Agent used to be retried under a plain
+    "jobradar-linkcheck" one, for sites that refuse browser labels from
+    non-browsers (datacareer.ch). The check now sends the honest
+    backoff.USER_AGENT in the first place, and the only other label left to
+    try would be a browser's, which is getting around a block rather than
+    respecting it.
     """
     url = (url or "").strip()
     if not url:
         return DEAD
-    verdict = _probe(url, client, headers=None)
+    verdict = _probe(url, client)
     if verdict in ("gone", "unsafe"):
         return DEAD
-    if verdict == "inconclusive":
-        return LIVENESS_UNVERIFIED
-    if verdict == "blocked":
-        # Our default UA got a 403 — possibly a site-wide block masking a real
-        # 404/410. Take a second look with a plainer UA; only a hard 'gone' drops.
-        retry = _probe(url, client, headers=_RETRY_HEADERS)
-        if retry in ("gone", "unsafe"):
-            logger.info(
-                "liveness: %s returned 403 to browser UA but is gone under retry UA; dropping",
-                url,
-            )
-            return DEAD
-        if retry == "live":
-            # A UA-keyed block the plainer UA got past: the host answered, so
-            # this one is genuinely settled.
-            return LIVENESS_CONFIRMED
-        logger.info(
-            "liveness: %s did not resolve under the retry UA either (%s); "
-            "keeping it as unverified",
-            url,
-            retry,
-        )
+    if verdict in ("inconclusive", "blocked"):
+        if verdict == "blocked":
+            logger.info("liveness: %s answered 403; keeping it as unverified", url)
         return LIVENESS_UNVERIFIED
     return LIVENESS_CONFIRMED
 
@@ -231,7 +197,7 @@ def filter_live(
     if not postings:
         return [], []
     own_client = client is None
-    client = client or httpx.Client(timeout=_TIMEOUT, headers=_HEADERS)
+    client = client or polite_client(_TIMEOUT)
     try:
         kept: list[RawPosting] = []
         dropped: list[RawPosting] = []
