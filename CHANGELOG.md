@@ -4,6 +4,15 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.41.1 — Keep write-up bullet points (2026-11-26)
+
+- **`apply` keeps the bullet points of a match's write-up.** When it read a
+  match back from the daily report, it skipped every line starting with
+  "- " as if it were the Link, Location or score line above the write-up.
+  So a write-up that used a bullet list, often for what to highlight when
+  applying, reached the CV and cover letter without those points. Only the
+  facts under the match's heading are skipped now.
+
 ## 1.41.0 — Flag warnings worth a look (2026-11-26)
 
 - **The report flags warnings worth a look.** A run now remembers what went
