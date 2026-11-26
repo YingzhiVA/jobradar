@@ -4,6 +4,19 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.40.0 — Read Personio ads from the job page (2026-11-26)
+
+- **Personio postings without a description in the feed are scored now.**
+  Some employers' Personio feeds list a job with no description at all: on
+  26 November that was all eight of Legartis's postings and one of Unique's.
+  These were sent for scoring with only a title, came back unscored, and were
+  tried again on every run, so they never reached a report. jobradar now
+  reads the description from the job's own page, once per new posting.
+- **A posting with no description is no longer sent for scoring.** There is
+  nothing in it to check against your CV, so scoring it cost two model calls a
+  run and came back empty every time. It now waits, unseen, and is scored on
+  the first run that finds a description for it. The run log names it.
+
 ## 1.39.0 — Ask each site politely (2026-11-26)
 
 - **jobradar paces its requests to each site.** It used to send a board's

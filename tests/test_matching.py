@@ -857,6 +857,30 @@ def test_score_postings_empty_input_makes_no_calls():
     assert messages.call_titles == []
 
 
+def test_score_postings_makes_no_call_for_a_posting_without_a_description(caplog):
+    """Nothing to screen, so the scorer would return an empty checklist on every
+    attempt; the posting comes back unscored, which leaves it unseen for a
+    later run (ranking.ids_to_leave_unmarked)."""
+    postings = _postings(3)
+    postings[1].description = "  "
+    messages = _FakeMessages()
+    with caplog.at_level(logging.WARNING, logger="jobradar.matching"):
+        scored = score_postings(postings, "profile", _FakeClient(messages), workers=1)
+    assert [s.posting.title for s in scored] == ["job-0", "job-2"]
+    assert "job-1" not in messages.call_titles
+    assert "source gave no description" in caplog.text
+    assert "Scoring dropped" not in caplog.text  # not a scoring failure
+
+
+def test_score_postings_with_only_empty_descriptions_makes_no_calls():
+    postings = _postings(2)
+    for posting in postings:
+        posting.description = ""
+    messages = _FakeMessages()
+    assert score_postings(postings, "profile", _FakeClient(messages)) == []
+    assert messages.call_titles == []
+
+
 def test_score_postings_single_worker_stays_sequential():
     messages = _FakeMessages(delays={f"job-{i}": 0.02 for i in range(5)})
     scored = score_postings(_postings(5), "profile", _FakeClient(messages), workers=1)
