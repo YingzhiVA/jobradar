@@ -2,6 +2,7 @@
 same day adds to the day's report instead of replacing it."""
 
 import json
+import logging
 from types import SimpleNamespace
 from datetime import date, datetime
 
@@ -14,6 +15,7 @@ from jobradar.schedule import is_practice_run, last_run_date
 from jobradar.search import main as search_main
 from jobradar.search.observability import write_practice_record
 from jobradar.search.report import PRACTICE_REPORT, source_label, write_report
+from jobradar.search.sources.base import FetchResult
 from jobradar.ui import views
 
 DAY = date(2026, 11, 18)
@@ -212,3 +214,29 @@ def test_a_practice_run_shows_samples_below_your_floors_and_says_so(practice_roo
 def test_a_real_report_never_carries_the_floor_note(tmp_path):
     write_report([_final("https://a.example/1", "Real")], DAY, tmp_path)
     assert "Below your floors" not in (tmp_path / "2026-11-18.md").read_text(encoding="utf-8")
+
+
+def test_a_warning_on_three_real_runs_in_a_row_is_flagged_in_the_report_and_email(
+    practice_root, monkeypatch
+):
+    board_log = logging.getLogger("jobradar.search.sources.company_pages")
+
+    def fetch_all(sources):
+        board_log.warning("Skipping %s (%s): %s", "Optiml", "join", "404 Not Found")
+        return [FetchResult("company_pages", [])]
+
+    monkeypatch.setattr(search_main, "_build_sources", lambda *a, **k: [])
+    monkeypatch.setattr(search_main, "_fetch_all", fetch_all)
+    for _ in range(3):
+        search_main.run()
+
+    reports = practice_root / "reports"
+    records = [json.loads(line) for line in (reports / "runs.jsonl").read_text().splitlines()]
+    assert [r["health"]["warnings"][0]["subjects"] for r in records] == [{"Optiml": 1}] * 3
+    summary = json.loads((reports / "latest.json").read_text())
+    [flag] = summary["health"]
+    assert (flag["kind"], flag["runs"], flag["subjects"], flag["email"]) == (
+        "persistent", 3, ["Optiml"], True
+    )
+    [report] = reports.glob("20*.md")
+    assert report.read_text().count("## Run health") == 1  # the third run only

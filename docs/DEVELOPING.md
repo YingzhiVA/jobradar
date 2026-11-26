@@ -78,6 +78,9 @@ checks that every market has one and that no stray file sits beside them.
 documents the record shape and carries `jq` one-liners for the questions it
 was built to answer: which queries web search chose, how the funnel narrowed,
 what happened to each scored posting, and why each unscored one was dropped.
+Its `health.warnings` are the run's warnings counted by template, which
+`search/run_health.py` compares across runs for the report's Run health
+section.
 
 ## Contributing
 

@@ -6,8 +6,9 @@ however you like. The repo ships a daily GitHub Actions schedule
 without your machine being on:
 
 1. It runs the pipeline, then emails the `reports/latest.json` headline and
-   matches (only on signal days — matches found or a degraded run; quiet days
-   stay silent, override with `JOBRADAR_NOTIFY_ALWAYS=1`). The email has a
+   matches (only on signal days — matches found, a degraded run, boards a bot
+   check blocked, or a run-health warning worth a look; quiet days stay
+   silent, override with `JOBRADAR_NOTIFY_ALWAYS=1`). The email has a
    plain-text and an HTML version.
 2. It commits the dedup state and the day's report back to the repo, so the
    next run doesn't re-notify you about the same postings. Each cloud run
