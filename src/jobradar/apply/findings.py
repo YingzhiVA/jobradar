@@ -45,6 +45,15 @@ def parse_report(text: str, report_date: str) -> list[Finding]:
     findings: list[Finding] = []
     current: dict | None = None
     body: list[str] = []
+    # The report writes a match's metadata (Link, Location, scores, CV, the
+    # unverified-link note) as one run of "- " bullets under its heading, then
+    # a blank line, then the write-up. Only that first run is metadata: a
+    # bullet after it belongs to the write-up, which used to lose every bullet
+    # point it had (13 matches from 2026-07 to 2026-10, mostly the "what to
+    # highlight" points the apply pipeline is there to use).
+    # "before": heading seen, no metadata yet; "metadata": in that run;
+    # "writeup": everything after it.
+    part = "before"
 
     def flush() -> None:
         if current is not None and current.get("url"):
@@ -72,6 +81,7 @@ def parse_report(text: str, report_date: str) -> list[Finding]:
                 "company": section.group(3).strip(),
             }
             body = []
+            part = "before"
             continue
         if line.startswith("## "):  # any other section ends the match block
             flush()
@@ -80,17 +90,19 @@ def parse_report(text: str, report_date: str) -> list[Finding]:
             continue
         if current is None:
             continue
-        if match := _LINK_RE.match(line):
-            current["url"] = normalize_url(match.group(1))
-        elif match := _SCORES_RE.match(line):
-            current["skill"] = int(match.group(1))
-            current["interest"] = int(match.group(2))
-        elif match := _CV_RE.match(line):
-            current["best_cv"] = match.group(1).strip()
-        elif line.startswith("- "):
-            continue  # other metadata bullets (Location etc.)
-        else:
-            body.append(line)
+        if line.startswith("- ") and part != "writeup":
+            part = "metadata"
+            if match := _LINK_RE.match(line):
+                current["url"] = normalize_url(match.group(1))
+            elif match := _SCORES_RE.match(line):
+                current["skill"] = int(match.group(1))
+                current["interest"] = int(match.group(2))
+            elif match := _CV_RE.match(line):
+                current["best_cv"] = match.group(1).strip()
+            continue  # the other metadata bullets (Location etc.)
+        if part == "metadata" or line.strip():
+            part = "writeup"
+        body.append(line)
     flush()
     return findings
 
