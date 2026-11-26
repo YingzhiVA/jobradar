@@ -64,7 +64,10 @@ from .sources.base import FetchResult, RawPosting
 #    values the LLM gap-fill supplied. Before this only the funnel counts were
 #    kept, so a wrongly dropped posting (2026-10-08: an on-site role that Haiku
 #    read as 5 office days) could only be explained by replaying the run.
-SCHEMA_VERSION = 6
+# 7: added `health` — the run's warnings counted by message template, with
+#    the subjects they named (search/run_health.py). The next run compares
+#    against it to flag new, persistent and spiking warnings.
+SCHEMA_VERSION = 7
 RUNS_FILENAME = "runs.jsonl"
 # A practice run's record. runs.jsonl is tracked and appended to by the cloud
 # run, so a practice record there would sit in the history for good and make
@@ -156,6 +159,7 @@ def build_run_record(
     filtered_out: list[FilterResult] | None = None,
     min_skill: int = DEFAULT_MIN_SKILL,
     min_interest: int = DEFAULT_MIN_INTEREST,
+    health_warnings: list[dict] | None = None,
 ) -> dict:
     """Assemble the full observability record for one run (not yet written).
 
@@ -170,6 +174,8 @@ def build_run_record(
     `min_skill` / `min_interest` are the floors this run selected with; they are
     recorded under `settings` and used to label each outcome, so a log line can
     still be read correctly after the config has been retuned.
+
+    `health_warnings` is the run's run_health.WarningCounter snapshot.
     """
     return {
         "schema_version": SCHEMA_VERSION,
@@ -211,6 +217,7 @@ def build_run_record(
             _posting_outcome(s, tier_by_id.get(s.posting.id), min_skill, min_interest)
             for s in scored
         ],
+        "health": {"warnings": list(health_warnings or [])},
     }
 
 

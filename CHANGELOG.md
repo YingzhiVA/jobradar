@@ -4,6 +4,26 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.41.0 — Flag warnings worth a look (2026-11-26)
+
+- **The report flags warnings worth a look.** A run now remembers what went
+  wrong, so the next run can tell a new problem, or one that won't go away,
+  from the usual noise. When something stands out, a **Run health** section
+  at the end of the day's report names it:
+  - a warning no earlier run logged;
+  - the same warning about the same posting, board or site on three runs or
+    more in a row (a Personio posting failed scoring on every run for about
+    two weeks before anyone noticed);
+  - a warning far more frequent than usual (a site suddenly refusing the
+    run).
+- **The email says so too, once.** It mentions new warnings, and a recurring
+  one on the run it reaches three in a row, even on a day with no matches.
+  It doesn't repeat it on later runs, and it leaves out the "more than usual"
+  kind, so it doesn't become daily noise. The first new-warning flags appear
+  after five runs with this version, which they need as a baseline.
+- **`reports/runs.jsonl` counts every warning** of the run, by message, with
+  what each was about (`health`). A practice run records and flags nothing.
+
 ## 1.40.0 — Read Personio ads from the job page (2026-11-26)
 
 - **Personio postings without a description in the feed are scored now.**

@@ -45,6 +45,7 @@ from ..models import Constraints
 from .normalize import fill_gaps, heuristic_normalize
 from .observability import (
     CORPUS_DIR_VAR,
+    RUNS_FILENAME,
     append_run_record,
     write_practice_record,
     build_run_record,
@@ -53,6 +54,7 @@ from .observability import (
 from .ranking import ids_to_leave_unmarked, near_floor_ids, select_with_settings
 from ..schedule import decide as decide_run_day, last_run_date
 from .report import write_report
+from .run_health import WarningCounter, assess, counting_warnings, load_history
 from .sources.base import (
     CORROBORATION_ABSENT,
     LIVENESS_UNVERIFIED,
@@ -281,6 +283,18 @@ def _fixture_postings() -> list[RawPosting]:
 def run(
     *, dry_run: bool = False, use_web_search: bool = True, respect_schedule: bool = False
 ) -> None:
+    # Every warning the run logs is counted, for the run-health record and
+    # the flags compared against earlier runs (search/run_health.py).
+    with counting_warnings() as warnings:
+        _run(
+            dry_run=dry_run, use_web_search=use_web_search,
+            respect_schedule=respect_schedule, warnings=warnings,
+        )
+
+
+def _run(
+    *, dry_run: bool, use_web_search: bool, respect_schedule: bool, warnings: WarningCounter
+) -> None:
     load_dotenv(ROOT / ".env")
 
     # The user-steerable dials (how many matches, what score floors, how often)
@@ -458,6 +472,19 @@ def run(
         tier_by_id = {f.scored.posting.id: f.tier for f in finals}
         surfaced_ids = set(tier_by_id)
 
+        # Taken before the report is written, so the report, the email and
+        # the run record agree; the few warnings that can come after (marking
+        # postings seen) are not counted. A practice run's made-up postings
+        # say nothing about the real pipeline, so it flags nothing and
+        # records no warnings.
+        health_warnings = [] if dry_run else warnings.snapshot()
+        health_flags = (
+            [] if dry_run
+            else assess(health_warnings, load_history(ROOT / "reports" / RUNS_FILENAME))
+        )
+        for flag in health_flags:
+            logger.info("Run health: %s — %s (%s)", flag.kind, flag.template, flag.logger)
+
         run_date = date.today()
         markdown_path, summary_path = write_report(
             finals,
@@ -468,6 +495,7 @@ def run(
             blocked_boards=blocked_boards,
             practice=dry_run,
             floors=(thresholds.min_skill, thresholds.min_interest) if dry_run else None,
+            health=health_flags,
         )
 
         # Postings to score again on a later run rather than write off: the
@@ -525,6 +553,7 @@ def run(
             filtered_out=filtered_out,
             min_skill=thresholds.min_skill,
             min_interest=thresholds.min_interest,
+            health_warnings=health_warnings,
         )
         if dry_run:
             runs_path = write_practice_record(run_record, ROOT / "reports")

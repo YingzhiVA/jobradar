@@ -5,7 +5,8 @@ emails it. SMTP settings come from environment variables (set as CI secrets).
 
 Degrades gracefully — if there's nothing to send or SMTP isn't configured, it
 logs and exits 0 rather than failing the scheduled job. By default it only
-emails on a signal day (matches found, or a degraded run); quiet "no matches"
+emails on a signal day (matches found, a degraded run, blocked boards, or a
+run-health warning worth an interruption); quiet "no matches"
 days stay silent to avoid notification fatigue. Set JOBRADAR_NOTIFY_ALWAYS=1 to
 email on every run.
 
@@ -45,7 +46,14 @@ def should_send(summary: dict) -> bool:
         bool(summary.get("matches"))
         or bool(summary.get("degraded"))
         or bool(summary.get("blocked_boards"))
+        or bool(_health_to_email(summary))
     )
+
+
+def _health_to_email(summary: dict) -> list[dict]:
+    """The run-health flags the email mentions: new warnings, and ones that
+    just became persistent (search/run_health.py decides, as `email`)."""
+    return [f for f in summary.get("health") or [] if isinstance(f, dict) and f.get("email")]
 
 
 def build_message(summary: dict) -> tuple[str, str]:
@@ -89,6 +97,20 @@ def build_message(summary: dict) -> tuple[str, str]:
             f"{', '.join(blocked)}. Their postings are missing. The check goes by where a run "
             "comes from: it currently refuses GitHub Actions and answers most home connections."
         )
+        lines.append("")
+    health = _health_to_email(summary)
+    if health:
+        lines.append("Run health - warnings worth a look (details at the end of the day's report):")
+        for flag in health:
+            if flag.get("kind") == "persistent":
+                about = ", ".join((flag.get("subjects") or [])[:3])
+                lines.append(
+                    f"- {flag.get('runs')} runs in a row: {flag.get('template')}"
+                    + (f" (for {about})" if about else "")
+                )
+            else:
+                count = flag.get("count") or 0
+                lines.append(f"- New: {flag.get('template')} ({count} time{'s' if count != 1 else ''})")
         lines.append("")
     if summary.get("date"):
         lines.append(f"Run date: {summary['date']}")
@@ -162,7 +184,7 @@ def main() -> None:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
     if not should_send(summary):
-        logger.info("Quiet day (no matches, not degraded, no boards blocked) - skipping email")
+        logger.info("Quiet day (no matches, not degraded, no boards blocked, no health warnings) - skipping email")
         return
 
     config = _smtp_config()

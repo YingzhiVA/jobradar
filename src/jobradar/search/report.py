@@ -16,6 +16,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from ..models import FinalPosting
+from .run_health import NEW, PERSISTENT, Flag
 from .sources.base import LIVENESS_UNVERIFIED
 
 # Shown against the link of a posting whose URL nothing in this run could confirm
@@ -83,6 +84,50 @@ def blocked_note(blocked_boards: list[str]) -> str:
     )
 
 
+def _code(text: str) -> str:
+    """Text as inline code, so a template's %s and a URL's underscores show
+    as written. Backticks inside become quotes: they would end the span."""
+    return "`" + " ".join(text.replace("`", "'").split()) + "`"
+
+
+def render_health(flags: list[Flag]) -> list[str]:
+    """The report's "Run health" section (see search/run_health.py), or no
+    lines when nothing is flagged. Its own "## " heading ends the last match
+    above it for every reader of the report (apply/findings.py, ui/views.py)."""
+    if not flags:
+        return []
+    lines = [
+        "",
+        "## Run health",
+        "",
+        "Warnings from this run worth a look: new ones, ones that came back on "
+        "several runs in a row, and ones far more frequent than usual. The counts "
+        "for every warning are in reports/runs.jsonl.",
+        "",
+    ]
+    for flag in flags:
+        times = f"{flag.count} time{'s' if flag.count != 1 else ''}"
+        if flag.kind == NEW:
+            text = f"**New:** {_code(flag.template)} ({flag.logger}), {times}."
+        elif flag.kind == PERSISTENT:
+            about = ""
+            if flag.subjects:
+                shown = ", ".join(_code(s) for s in flag.subjects[:3])
+                more = len(flag.subjects) - 3
+                about = f" for {shown}" + (f" and {more} more" if more > 0 else "")
+            text = (
+                f"**{flag.runs} runs in a row:** {_code(flag.template)} ({flag.logger}){about}."
+            )
+        else:
+            usual = f"{flag.usual:g}"
+            text = f"**More than usual:** {_code(flag.template)} ({flag.logger}), {times}, usually {usual}."
+        lines.append(f"- {text}")
+        if flag.example:
+            lines.append(f"  Example: {_code(flag.example)}")
+    lines.append("")
+    return lines
+
+
 def render_markdown(
     finals: list[FinalPosting],
     run_date: date,
@@ -91,12 +136,14 @@ def render_markdown(
     failed_sources: list[str] | None = None,
     floors: tuple[int, int] | None = None,
     blocked_boards: list[str] | None = None,
+    health: list[Flag] | None = None,
 ) -> str:
     lines = [f"# Job matches — {run_date.isoformat()}", ""]
     lines += _render_run(
         finals, degraded=degraded, failed_sources=failed_sources, floors=floors,
         blocked_boards=blocked_boards,
     )
+    lines += render_health(health or [])
     return "\n".join(lines)
 
 
@@ -119,6 +166,7 @@ def render_later_run(
     degraded: bool = False,
     failed_sources: list[str] | None = None,
     blocked_boards: list[str] | None = None,
+    health: list[Flag] | None = None,
 ) -> str:
     """A further run on a day that already has a report, as a section to add
     to it. Its own "## " heading ends the last match above it for every
@@ -128,6 +176,7 @@ def render_later_run(
         finals, degraded=degraded, failed_sources=failed_sources,
         blocked_boards=blocked_boards, empty="No new matches in this run.",
     )
+    lines += render_health(health or [])
     return "\n".join(lines)
 
 
@@ -198,6 +247,7 @@ def render_summary(
     degraded: bool = False,
     failed_sources: list[str] | None = None,
     blocked_boards: list[str] | None = None,
+    health: list[Flag] | None = None,
 ) -> dict:
     failed_sources = failed_sources or []
     blocked_boards = blocked_boards or []
@@ -237,6 +287,9 @@ def render_summary(
         "blocked_boards": blocked_boards,
         "best_count": len(best),
         "okay_count": len(okay),
+        # Run-health flags (search/run_health.py); the email reads the ones
+        # marked `email`.
+        "health": [flag.to_dict() for flag in health or []],
         "matches": [
             {
                 "tier": f.tier,
@@ -268,6 +321,7 @@ def write_report(
     run_at: datetime | None = None,
     floors: tuple[int, int] | None = None,
     blocked_boards: list[str] | None = None,
+    health: list[Flag] | None = None,
 ) -> tuple[Path, Path | None]:
     """Write the day's report and latest.json.
 
@@ -303,6 +357,7 @@ def write_report(
                     degraded=degraded,
                     failed_sources=failed_sources,
                     blocked_boards=blocked_boards,
+                    health=health,
                 )
             )
     else:
@@ -313,6 +368,7 @@ def write_report(
                 degraded=degraded,
                 failed_sources=failed_sources,
                 blocked_boards=blocked_boards,
+                health=health,
             ),
             encoding="utf-8",
         )
@@ -322,7 +378,7 @@ def write_report(
         json.dumps(
             render_summary(
                 finals, run_date, degraded=degraded, failed_sources=failed_sources,
-                blocked_boards=blocked_boards,
+                blocked_boards=blocked_boards, health=health,
             ),
             indent=2,
         ),

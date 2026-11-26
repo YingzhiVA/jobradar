@@ -136,6 +136,24 @@ scoring was dropped (`filtered_out`: the stage, the failed checks, the values
 that failed them, and whether the gap-fill model supplied those values). See `search/observability.py` for the
 record shape and `jq` examples.
 
+The record also counts every warning the run logged, by message template
+(`health`). The next run compares its own warnings with up to 30 earlier
+ones and flags three kinds in a **Run health** section at the end of the
+report:
+
+- **new**: a warning none of the earlier runs logged (judged once five runs
+  have a health record);
+- **runs in a row**: the same warning about the same posting, board or site
+  on three runs or more in a row, such as a posting that fails scoring on
+  every run;
+- **more than usual**: a warning at least three times its usual count and
+  ten more, such as a site refusing a run it used to answer.
+
+The email mentions new warnings, and a recurring one on the run it reaches
+three in a row, but not again after that, so it doesn't become daily noise.
+A practice run records and flags nothing. The thresholds are constants at the
+top of `search/run_health.py`.
+
 ## How a run works
 
 1. **Fetch** — pull postings from the boards selected in

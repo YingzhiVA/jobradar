@@ -125,7 +125,7 @@ updates") and whether the merge driver is configured.
 | --- | --- | --- |
 | `reports/<date>.md`, `reports/latest.json` | The daily report (a section per run on a day with several) and the latest run's summary | reports: only by the cloud run |
 | `reports/practice.md`, `reports/practice.json` | The latest practice run's report and run record | no |
-| `reports/runs.jsonl` | One line per run: sources, funnel, outcomes | yes |
+| `reports/runs.jsonl` | One line per run: sources, funnel, outcomes, warnings | yes |
 | `data/seen_postings.json` | What has already been seen, so nothing is re-scored | yes |
 | `applications/<id>_<date>_<company>_<title>/` | One folder per application | yes |
 | `applications/applications.json` | The submission log | yes |
