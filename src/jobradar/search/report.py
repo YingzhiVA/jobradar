@@ -67,6 +67,22 @@ def _degraded_note(failed_sources: list[str]) -> str:
     )
 
 
+def blocked_note(blocked_boards: list[str]) -> str:
+    """Why some boards found nothing: Cloudflare's bot protection refused the
+    run (see sources/backoff.is_bot_challenge). It is said apart from the
+    degraded note because a handful of blocked boards doesn't degrade the run,
+    and because no retry cures it: it depends on where the run comes from."""
+    count = len(blocked_boards)
+    return (
+        f"⚠️ {count} board{'s' if count != 1 else ''} could not be searched: "
+        + ", ".join(blocked_boards)
+        + ". Cloudflare's bot check, in front of these job sites, refused this "
+        "run's requests, so their postings are missing from it. Waiting doesn't "
+        "help: the check goes by where a request comes from. It currently "
+        "refuses GitHub Actions' servers and answers most home connections."
+    )
+
+
 def render_markdown(
     finals: list[FinalPosting],
     run_date: date,
@@ -74,9 +90,13 @@ def render_markdown(
     degraded: bool = False,
     failed_sources: list[str] | None = None,
     floors: tuple[int, int] | None = None,
+    blocked_boards: list[str] | None = None,
 ) -> str:
     lines = [f"# Job matches — {run_date.isoformat()}", ""]
-    lines += _render_run(finals, degraded=degraded, failed_sources=failed_sources, floors=floors)
+    lines += _render_run(
+        finals, degraded=degraded, failed_sources=failed_sources, floors=floors,
+        blocked_boards=blocked_boards,
+    )
     return "\n".join(lines)
 
 
@@ -98,6 +118,7 @@ def render_later_run(
     *,
     degraded: bool = False,
     failed_sources: list[str] | None = None,
+    blocked_boards: list[str] | None = None,
 ) -> str:
     """A further run on a day that already has a report, as a section to add
     to it. Its own "## " heading ends the last match above it for every
@@ -105,7 +126,7 @@ def render_later_run(
     lines = ["", f"## Later run at {run_at.strftime('%H:%M')}", ""]
     lines += _render_run(
         finals, degraded=degraded, failed_sources=failed_sources,
-        empty="No new matches in this run.",
+        blocked_boards=blocked_boards, empty="No new matches in this run.",
     )
     return "\n".join(lines)
 
@@ -116,6 +137,7 @@ def _render_run(
     degraded: bool = False,
     failed_sources: list[str] | None = None,
     floors: tuple[int, int] | None = None,
+    blocked_boards: list[str] | None = None,
     empty: str = (
         "No matches today. This is a valid, expected outcome — not every "
         "day has a posting worth surfacing."
@@ -124,6 +146,9 @@ def _render_run(
     lines: list[str] = []
     if degraded:
         lines.append(_degraded_note(failed_sources or []))
+        lines.append("")
+    if blocked_boards:
+        lines.append(blocked_note(blocked_boards))
         lines.append("")
 
     best = [f for f in finals if f.tier == "best"]
@@ -172,14 +197,20 @@ def render_summary(
     *,
     degraded: bool = False,
     failed_sources: list[str] | None = None,
+    blocked_boards: list[str] | None = None,
 ) -> dict:
     failed_sources = failed_sources or []
+    blocked_boards = blocked_boards or []
     best = [f for f in finals if f.tier == "best"]
     okay = [f for f in finals if f.tier == "okay"]
 
     if not finals and degraded:
         # Don't let a broken run masquerade as a quiet day in the push headline.
         headline = f"No matches — run incomplete ({', '.join(failed_sources)} failed)"
+    elif not finals and blocked_boards:
+        # Not a confirmed quiet day either: say so where it is read first.
+        count = len(blocked_boards)
+        headline = f"No matches today ({count} board{'s' if count != 1 else ''} blocked)"
     elif not finals:
         headline = "No matches today"
     elif best:
@@ -203,6 +234,7 @@ def render_summary(
         "headline": headline,
         "degraded": degraded,
         "failed_sources": failed_sources,
+        "blocked_boards": blocked_boards,
         "best_count": len(best),
         "okay_count": len(okay),
         "matches": [
@@ -235,6 +267,7 @@ def write_report(
     practice: bool = False,
     run_at: datetime | None = None,
     floors: tuple[int, int] | None = None,
+    blocked_boards: list[str] | None = None,
 ) -> tuple[Path, Path | None]:
     """Write the day's report and latest.json.
 
@@ -269,6 +302,7 @@ def write_report(
                     run_at or datetime.now(),
                     degraded=degraded,
                     failed_sources=failed_sources,
+                    blocked_boards=blocked_boards,
                 )
             )
     else:
@@ -278,6 +312,7 @@ def write_report(
                 run_date,
                 degraded=degraded,
                 failed_sources=failed_sources,
+                blocked_boards=blocked_boards,
             ),
             encoding="utf-8",
         )
@@ -285,7 +320,10 @@ def write_report(
     summary_path = reports_dir / "latest.json"
     summary_path.write_text(
         json.dumps(
-            render_summary(finals, run_date, degraded=degraded, failed_sources=failed_sources),
+            render_summary(
+                finals, run_date, degraded=degraded, failed_sources=failed_sources,
+                blocked_boards=blocked_boards,
+            ),
             indent=2,
         ),
         encoding="utf-8",

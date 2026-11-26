@@ -366,6 +366,12 @@ def run(
     # "nothing matched today" apart from "discovery silently broke".
     failed_sources = [r.name for r in fetch_results if not r.ok]
     degraded = bool(failed_sources)
+    # Boards a bot check refused (company_pages' meta): too few, as a rule, to
+    # degrade the run, but the report and email name them, since no retry or
+    # later run from the same place will reach them.
+    blocked_boards = [
+        name for r in fetch_results for name in (r.meta or {}).get("bot_challenged", [])
+    ]
     if degraded:
         logger.warning("Run is degraded — failed/unreliable sources: %s", ", ".join(failed_sources))
     logger.info(
@@ -459,6 +465,7 @@ def run(
             ROOT / "reports",
             degraded=degraded,
             failed_sources=failed_sources,
+            blocked_boards=blocked_boards,
             practice=dry_run,
             floors=(thresholds.min_skill, thresholds.min_interest) if dry_run else None,
         )

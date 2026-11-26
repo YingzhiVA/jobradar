@@ -119,3 +119,31 @@ def test_summary_headline_singular_for_one_strong_match():
 def test_markdown_summary_line_counts_both_tiers():
     markdown = render_markdown([_final(tier="best"), _final(tier="best"), _final(tier="okay")], RUN_DATE)
     assert "2 strong matches, 1 okay match" in markdown
+
+
+def test_summary_names_boards_a_bot_check_blocked():
+    summary = render_summary([], RUN_DATE, blocked_boards=["Roche", "Novartis"])
+    assert summary["headline"] == "No matches today (2 boards blocked)"
+    assert summary["blocked_boards"] == ["Roche", "Novartis"]
+    assert summary["degraded"] is False  # a few blocked boards don't degrade a run
+
+
+def test_summary_with_matches_keeps_its_headline_when_boards_are_blocked():
+    summary = render_summary([_final()], RUN_DATE, blocked_boards=["Roche"])
+    assert summary["headline"].startswith("1 strong match: Analytics Engineer @ Swiss Re")
+    assert summary["blocked_boards"] == ["Roche"]
+
+
+def test_summary_without_blocked_boards_lists_none():
+    assert render_summary([], RUN_DATE)["blocked_boards"] == []
+
+
+def test_markdown_explains_blocked_boards():
+    md = render_markdown([_final()], RUN_DATE, blocked_boards=["Roche", "Novartis"])
+    assert "2 boards could not be searched: Roche, Novartis" in md
+    assert "Cloudflare" in md and "GitHub Actions" in md
+    assert "Analytics Engineer" in md
+
+
+def test_markdown_without_blocked_boards_says_nothing_of_them():
+    assert "Cloudflare" not in render_markdown([], RUN_DATE)
