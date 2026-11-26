@@ -39,8 +39,13 @@ ROOT = Path(__file__).resolve().parents[3]
 def should_send(summary: dict) -> bool:
     if os.environ.get("JOBRADAR_NOTIFY_ALWAYS") == "1":
         return True
-    # Signal days only: something matched, or the run was degraded (worth knowing).
-    return bool(summary.get("matches")) or bool(summary.get("degraded"))
+    # Signal days only: something matched, the run was degraded, or a bot check
+    # blocked boards (their postings are missing, and nothing else says so).
+    return (
+        bool(summary.get("matches"))
+        or bool(summary.get("degraded"))
+        or bool(summary.get("blocked_boards"))
+    )
 
 
 def build_message(summary: dict) -> tuple[str, str]:
@@ -76,6 +81,14 @@ def build_message(summary: dict) -> tuple[str, str]:
     if summary.get("degraded"):
         failed = ", ".join(summary.get("failed_sources") or [])
         lines.append(f"Degraded run - source(s) failed: {failed}. Result may be incomplete.")
+        lines.append("")
+    blocked = summary.get("blocked_boards") or []
+    if blocked:
+        lines.append(
+            f"Not searched - {len(blocked)} board(s) refused this run at Cloudflare's bot check: "
+            f"{', '.join(blocked)}. Their postings are missing. The check goes by where a run "
+            "comes from: it currently refuses GitHub Actions and answers most home connections."
+        )
         lines.append("")
     if summary.get("date"):
         lines.append(f"Run date: {summary['date']}")
@@ -149,7 +162,7 @@ def main() -> None:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
     if not should_send(summary):
-        logger.info("Quiet day (no matches, not degraded) - skipping email")
+        logger.info("Quiet day (no matches, not degraded, no boards blocked) - skipping email")
         return
 
     config = _smtp_config()

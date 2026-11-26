@@ -4,6 +4,27 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.38.0 — Name boards a bot check blocks (2026-11-26)
+
+- **Boards that a bot check blocks are named in the report and the email.**
+  The Workday boards' "too many requests" answers on GitHub Actions turned
+  out not to be a rate limit: Cloudflare, in front of Workday's job sites,
+  answers the run with a bot check that only a web browser can pass. Waiting
+  doesn't help, because the check goes by where a request comes from. It
+  currently refuses GitHub Actions' servers and lets most home connections
+  through (a run from home reached all 11 Workday boards it searched). Until
+  now these boards were only skipped in the run's log. Now the report says
+  which boards could not be searched and why, the email says so too, and a
+  day with no matches but blocked boards reads "No matches today (N boards
+  blocked)" and still sends the email, instead of passing for a quiet day.
+- **A blocked site is not retried.** When Cloudflare's bot check answers, that
+  board is skipped at once and the site's other boards are tried once each,
+  so the GitHub run no longer spends about two and a half minutes retrying
+  Workday.
+- **Refusal pages are logged as readable text.** The run log shows what a
+  refusing site's page says, not the first few hundred characters of its
+  styling.
+
 ## 1.37.0 — Retry boards that say too many requests (2026-11-25)
 
 - **A board that says "too many requests" is retried, not skipped.** Since

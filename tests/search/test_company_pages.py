@@ -1167,6 +1167,42 @@ def test_company_pages_stays_ok_when_a_few_boards_are_flaky(monkeypatch):
     assert "1 of 10 companies skipped" in result.detail
 
 
+def _challenged(name, slug, client):
+    request = httpx.Request("POST", f"https://{slug}.wd3.myworkdayjobs.com/jobs")
+    response = httpx.Response(429, headers={"cf-mitigated": "challenge"}, request=request)
+    raise httpx.HTTPStatusError("429 Too Many Requests", request=request, response=response)
+
+
+def _rate_limited(name, slug, client):
+    request = httpx.Request("GET", f"https://{slug}.example.com/jobs")
+    response = httpx.Response(429, request=request)
+    raise httpx.HTTPStatusError("429 Too Many Requests", request=request, response=response)
+
+
+def test_company_pages_names_boards_behind_a_cloudflare_challenge(monkeypatch):
+    monkeypatch.setitem(_FETCHERS, "fake", _working)
+    monkeypatch.setitem(_FETCHERS, "challenged", _challenged)
+    monkeypatch.setitem(_FETCHERS, "limited", _rate_limited)
+    companies = _companies(working=8, broken=0) + [
+        {"name": "Roche", "ats": "challenged", "slug": "roche"},
+        {"name": "Novartis", "ats": "challenged", "slug": "novartis"},
+        {"name": "Plain", "ats": "limited", "slug": "plain"},
+    ]
+
+    result = CompanyPagesSource(companies).fetch()
+
+    assert "3 of 11 companies skipped: Roche, Novartis, Plain" in result.detail
+    assert result.detail.endswith("; blocked by a Cloudflare bot challenge: Roche, Novartis")
+    assert result.meta["bot_challenged"] == ["Roche", "Novartis"]
+
+
+def test_company_pages_without_a_challenge_says_nothing_of_cloudflare(monkeypatch):
+    monkeypatch.setitem(_FETCHERS, "fake", _working)
+    result = CompanyPagesSource(_companies(working=9, broken=1)).fetch()
+    assert "Cloudflare" not in result.detail
+    assert result.meta["bot_challenged"] == []
+
+
 def test_company_pages_degrades_when_every_board_fails():
     result = CompanyPagesSource(_companies(working=0, broken=3)).fetch()
 

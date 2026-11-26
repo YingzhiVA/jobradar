@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from jobradar.search.sources.backoff import BackoffTransport, retry_after_seconds
+from jobradar.search.sources.backoff import BackoffTransport, is_bot_challenge, retry_after_seconds
 
 
 def _transport(responses, **kwargs):
@@ -83,8 +83,36 @@ def test_the_first_refusal_per_host_is_logged_with_headers_and_body(caplog):
     described = [r.getMessage() for r in caplog.records if "the response:" in r.getMessage()]
     assert len(described) == 1  # once per host, not per retry
     assert "retry-after: 1" in described[0] and "x-ratelimit-remaining: 0" in described[0]
-    assert "<html> Access Denied </html>" in described[0]
+    assert "body text: Access Denied" in described[0]
     assert "secret" not in described[0] and "set-cookie: <redacted>" in described[0]
+
+
+def test_an_html_refusal_is_logged_as_its_visible_text(caplog):
+    page = (
+        b"<!DOCTYPE html><html><head><style>body { text-align: center; }"
+        + b" .wdayLogo { padding: 16px; }" * 40
+        + b"</style><script>var x = '<b>no</b>';</script><title>Workday</title></head>"
+        b"<body><!-- tracking --><div class='graphicsContainer'></div>"
+        b"<p>Your request was blocked &amp; logged.</p></body></html>"
+    )
+    refusal = (429, {"Content-Type": "text/html; charset=UTF-8"}, page)
+    transport, _, _ = _transport([refusal, (200, {}, b"")])
+    with caplog.at_level(logging.WARNING, logger="jobradar.search.sources.backoff"):
+        with httpx.Client(transport=transport) as client:
+            client.post("https://acme.wd3.myworkdayjobs.com/jobs", json={})
+    described = next(r.getMessage() for r in caplog.records if "the response:" in r.getMessage())
+    assert "body text: Workday Your request was blocked & logged." in described
+    assert "wdayLogo" not in described and "var x" not in described and "tracking" not in described
+
+
+def test_a_json_refusal_is_logged_as_is(caplog):
+    refusal = (429, {"Content-Type": "application/json"}, b'{"error": "rate <limit>"}')
+    transport, _, _ = _transport([refusal, (200, {}, b"")])
+    with caplog.at_level(logging.WARNING, logger="jobradar.search.sources.backoff"):
+        with httpx.Client(transport=transport) as client:
+            client.get("https://api.example.com/jobs")
+    described = next(r.getMessage() for r in caplog.records if "the response:" in r.getMessage())
+    assert 'body: {"error": "rate <limit>"}' in described
 
 
 def test_retry_after_parses_seconds_and_dates():
@@ -93,3 +121,26 @@ def test_retry_after_parses_seconds_and_dates():
     assert retry_after_seconds("Wed, 25 Nov 2026 17:00:20 GMT", now=now) == 20.0
     assert retry_after_seconds("Wed, 25 Nov 2026 16:00:00 GMT", now=now) == 0.0
     assert retry_after_seconds(None) is None and retry_after_seconds("soon") is None
+
+
+def test_a_cloudflare_challenge_is_not_retried_and_stops_retries_on_its_domain(caplog):
+    challenge = (429, {"cf-mitigated": "challenge", "Content-Type": "text/html"}, b"<title>Just a moment...</title>")
+    plain = (429, {}, b"")
+    transport, seen, slept = _transport([challenge, plain, plain, (200, {}, b"")])
+    with caplog.at_level(logging.WARNING, logger="jobradar.search.sources.backoff"):
+        with httpx.Client(transport=transport) as client:
+            assert client.post("https://nvidia.wd5.myworkdayjobs.com/jobs", json={}).status_code == 429
+            # Another board on the same domain: sent once, not retried.
+            assert client.post("https://roche.wd3.myworkdayjobs.com/jobs", json={}).status_code == 429
+            # A different domain still gets its retries.
+            assert client.get("https://api.example.com/jobs").status_code == 200
+    assert slept == [5.0]  # only example.com's one retry
+    assert len(seen) == 4
+    assert any("Cloudflare bot challenge" in r.getMessage() for r in caplog.records)
+
+
+def test_is_bot_challenge_reads_the_cf_mitigated_header():
+    assert is_bot_challenge(httpx.Response(429, headers={"cf-mitigated": "challenge"}))
+    assert is_bot_challenge(httpx.Response(403, headers={"CF-Mitigated": " Challenge "}))
+    assert not is_bot_challenge(httpx.Response(429, headers={"server": "cloudflare"}))
+    assert not is_bot_challenge(httpx.Response(429))

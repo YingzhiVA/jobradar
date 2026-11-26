@@ -13,8 +13,13 @@ Retry-After header says, else about 5, 15 and 45 seconds, then gives up and
 returns the refusal so the board is skipped as before. Other errors (404, 403)
 don't improve with time and pass straight through.
 
-Two things keep a hard block (a refused IP range, which no waiting cures) from
-costing a minute per board:
+Three things keep a hard block (a refused IP range, which no waiting cures)
+from costing a minute per board:
+- a Cloudflare bot challenge (a response with `cf-mitigated: challenge`) is
+  not retried at all, and the rest of the run sends that domain's requests
+  once, unretried. Workday's 429s from 2026-11-16 are this: Cloudflare in
+  front of myworkdayjobs.com answers the GitHub Actions runner with a page
+  that only a browser running its JavaScript can pass, whatever the pace;
 - after two requests on one domain ("myworkdayjobs.com") have used up their
   retries, the rest of the run sends that domain's requests once, unretried;
 - a Retry-After longer than MAX_WAIT seconds is not waited out.
@@ -22,13 +27,17 @@ costing a minute per board:
 The first refusal from each host is logged with its response headers and the
 start of its body. That is the evidence for telling a rate limit (Retry-After,
 RateLimit-* headers, a JSON error) from a block (a CDN's "Access Denied"
-page), which the bare status line can't show.
+page), which the bare status line can't show. An HTML body is logged as its
+visible text: Workday's refusal page opens with several hundred characters of
+CSS, so its raw start says nothing about why it refused.
 """
 
 from __future__ import annotations
 
+import html
 import logging
 import random
+import re
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -47,9 +56,13 @@ MAX_WAIT = 60.0
 # Requests on one domain that may use up their retries before that domain's
 # requests stop being retried for the rest of the run.
 EXHAUSTED_LIMIT = 2
-# How much of a refusal's body is logged.
-BODY_CHARS = 300
+# How much of a refusal's body (an HTML body's visible text) is logged.
+BODY_CHARS = 600
 _REDACTED_HEADERS = frozenset({"set-cookie", "cookie"})
+# What of an HTML page isn't visible text: style and script blocks, comments,
+# and the tags themselves.
+_HTML_HIDDEN = re.compile(r"<(style|script)\b.*?</\1\s*>|<!--.*?-->", re.IGNORECASE | re.DOTALL)
+_HTML_TAG = re.compile(r"<[^>]*>")
 
 
 def _domain(host: str) -> str:
@@ -78,18 +91,35 @@ def retry_after_seconds(value: str | None, now: datetime | None = None) -> float
     return max(0.0, (when - (now or datetime.now(timezone.utc))).total_seconds())
 
 
+def is_bot_challenge(response: httpx.Response) -> bool:
+    """Whether Cloudflare's bot protection answered instead of the site: it
+    marks a challenge page with `cf-mitigated: challenge`. Waiting doesn't
+    pass one; only a browser that runs the page's JavaScript does."""
+    return response.headers.get("cf-mitigated", "").strip().lower() == "challenge"
+
+
+def visible_text(page: str) -> str:
+    """An HTML page's text as a reader would see it: no style, script,
+    comments or tags, entities decoded. Rough, but a refusal page is simple."""
+    return html.unescape(_HTML_TAG.sub(" ", _HTML_HIDDEN.sub(" ", page)))
+
+
 def describe_refusal(response: httpx.Response) -> str:
-    """The response's headers (cookies redacted) and the start of its body, on
-    one line each, for the log."""
+    """The response's headers (cookies redacted) and the start of its body (an
+    HTML body's visible text), on one line each, for the log."""
     headers = "; ".join(
         f"{name}: {'<redacted>' if name.lower() in _REDACTED_HEADERS else value}"
         for name, value in response.headers.items()
     )
     try:
-        body = " ".join(response.read().decode("utf-8", "replace").split())[:BODY_CHARS]
+        text = response.read().decode("utf-8", "replace")
     except httpx.HTTPError:
-        body = "<unreadable>"
-    return f"headers: {headers or '(none)'}\n  body: {body or '(empty)'}"
+        return f"headers: {headers or '(none)'}\n  body: <unreadable>"
+    label = "body"
+    if "html" in response.headers.get("content-type", "").lower() or text.lstrip().startswith("<"):
+        text, label = visible_text(text), "body text"
+    body = " ".join(text.split())[:BODY_CHARS]
+    return f"headers: {headers or '(none)'}\n  {label}: {body or '(empty)'}"
 
 
 class BackoffTransport(httpx.BaseTransport):
@@ -131,6 +161,14 @@ class BackoffTransport(httpx.BaseTransport):
                 )
             if self._exhausted[domain] >= EXHAUSTED_LIMIT:
                 return response  # this domain is refusing everything: don't wait
+            if is_bot_challenge(response):
+                self._exhausted[domain] = EXHAUSTED_LIMIT
+                logger.warning(
+                    "%s answered with a Cloudflare bot challenge (cf-mitigated: challenge), "
+                    "which waiting doesn't pass: not retrying %s for the rest of the run",
+                    host, domain,
+                )
+                return response
             if attempt >= len(self._delays):
                 self._give_up(domain, f"still {response.status_code} after {attempt} retries")
                 return response

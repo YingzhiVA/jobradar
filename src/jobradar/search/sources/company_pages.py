@@ -26,7 +26,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 import httpx
 
 from ...markets import CH, Market
-from .backoff import BackoffTransport
+from .backoff import BackoffTransport, is_bot_challenge
 from .base import FetchResult, RawPosting, parse_workplace_type, strip_html
 
 logger = logging.getLogger(__name__)
@@ -2357,6 +2357,10 @@ class CompanyPagesSource:
     def fetch(self) -> FetchResult:
         postings: list[RawPosting] = []
         skipped: list[str] = []
+        # The skipped boards Cloudflare's bot protection refused, which no
+        # retry passes (see backoff.is_bot_challenge): named apart in the
+        # detail so a block doesn't read as a flaky board.
+        challenged: list[str] = []
         # Per-company raw posting count (0 when skipped, raised, or genuinely
         # empty). Carried in meta so it lands in runs.jsonl, giving the monthly
         # health check a per-company liveness history — a board silently going
@@ -2403,7 +2407,14 @@ class CompanyPagesSource:
                     # ValueError covers a malformed connector-specific slug (e.g.
                     # a Workday "tenant:host:site") — skip that one company, don't
                     # crash the whole run.
-                    logger.warning("Skipping %s (%s): %s", name, ats, exc)
+                    if isinstance(exc, httpx.HTTPStatusError) and is_bot_challenge(exc.response):
+                        logger.warning(
+                            "Skipping %s (%s): blocked by a Cloudflare bot challenge (%d)",
+                            name, ats, exc.response.status_code,
+                        )
+                        challenged.append(name)
+                    else:
+                        logger.warning("Skipping %s (%s): %s", name, ats, exc)
                     skipped.append(name)
                     company_counts[name] = 0
                     continue
@@ -2421,6 +2432,8 @@ class CompanyPagesSource:
             if skipped
             else ""
         )
+        if challenged:
+            detail += f"; blocked by a Cloudflare bot challenge: {', '.join(challenged)}"
         # A flaky board or two doesn't invalidate the source, but a large share
         # failing does: the result is then materially incomplete, and reporting
         # ok would pass it off as a quiet day. This used to degrade only when
@@ -2437,5 +2450,9 @@ class CompanyPagesSource:
             detail=detail,
             # listing_only lands in runs.jsonl, so the saving is measurable run
             # over run rather than only visible in one log.
-            meta={"company_counts": company_counts, "listing_only": listing_only_total},
+            meta={
+                "company_counts": company_counts,
+                "listing_only": listing_only_total,
+                "bot_challenged": challenged,
+            },
         )

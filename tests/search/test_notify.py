@@ -143,3 +143,19 @@ def test_compose_email_has_plain_and_html_parts():
     html_part = msg.get_body(preferencelist=("html",))
     assert plain is not None and "line one" in plain.get_content()
     assert html_part is not None and '<a href="https://example.com/x">' in html_part.get_content()
+
+
+def test_build_message_names_blocked_boards():
+    summary = {"headline": "No matches today (2 boards blocked)", "matches": [], "blocked_boards": ["Roche", "Novartis"]}
+    _subject, body = build_message(summary)
+    assert "2 board(s) refused this run at Cloudflare's bot check: Roche, Novartis" in body
+
+
+def test_build_message_without_blocked_boards_says_nothing_of_them():
+    _subject, body = build_message({"headline": "No matches today", "matches": []})
+    assert "Cloudflare" not in body
+
+
+def test_should_send_on_a_quiet_day_with_blocked_boards():
+    assert should_send({"matches": [], "degraded": False, "blocked_boards": ["Roche"]}) is True
+    assert should_send({"matches": [], "degraded": False, "blocked_boards": []}) is False
