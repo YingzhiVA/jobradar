@@ -27,15 +27,16 @@ _WRITEUP_PROMPT = """\
 Write an application-ready rationale for why this job posting is a {tier} match \
 for the candidate, using their CV "{best_cv}" and their stated career identity.
 
-Cover, in a few short paragraphs:
-- Why it fits (skills + interest), referencing specifics from the posting.
-- What to highlight when applying (most relevant experience/achievements).
-- Any concerns or gaps worth being aware of going in.
+Cover, in a few short paragraphs and in this order:
+- **Why it fits.** Skills and interest, referencing specifics from the posting.
+- **Concerns and gaps.** Anything worth being aware of going in.
+- **What to highlight when applying.** The most relevant experience and \
+achievements.
 
 Keep it concise and concrete — no generic filler. Reply with the write-up \
 itself in Markdown: no preamble, no closing remark, and no # headings (the \
-report already heads it with the posting's title); use a bold lead-in for each \
-part instead.
+report already heads it with the posting's title); open each part with its \
+bold lead-in above instead.
 
 Job posting:
 Title: {title}
@@ -96,8 +97,8 @@ def write_rationale(
             # was about to start ("...satisfies the").
             response = client.messages.create(
                 model=model,
-                # The rationale is a 3-section write-up (fit / highlights /
-                # concerns). 1024 truncated the longer ones mid-sentence; 2048
+                # The rationale is a 3-section write-up (fit / concerns /
+                # highlights). 1024 truncated the longer ones mid-sentence; 2048
                 # still does occasionally, which the retry and the visible note
                 # below handle.
                 max_tokens=2048,

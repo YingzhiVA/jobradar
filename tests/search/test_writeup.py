@@ -130,3 +130,12 @@ def test_headings_are_demoted_so_the_report_keeps_its_structure():
         "**Manager, Acme**\n\n**Why it fits**\n\nIt fits.\n\n#hashtag stays"
     )
 
+
+
+def test_the_prompt_asks_for_fit_then_gaps_then_highlights():
+    from jobradar.search.writeup import _WRITEUP_PROMPT
+
+    order = [_WRITEUP_PROMPT.index(s) for s in (
+        "**Why it fits.**", "**Concerns and gaps.**", "**What to highlight when applying.**",
+    )]
+    assert order == sorted(order)

@@ -4,6 +4,19 @@ What changed, newest first. Users run jobradar from a clone, so the practical
 way to get these is `git pull upstream master` (see docs/SETUP.md); the
 version numbers exist to give changes a name.
 
+## 1.42.0 — Run health first in the email (2026-11-27)
+
+- **The email starts with run health.** Failed sources, boards that a bot
+  check blocked, and warnings worth a look now come first, under a
+  **Run health** heading, before the matches. They used to come last, after
+  every write-up. A clean run has no such section, and the matches have a
+  **Matches** heading of their own.
+- **A match's write-up gives the fit and the gaps first.** The order is now
+  why it fits, then concerns and gaps, then what to highlight when applying,
+  in the email and in the report. The browser page still shows the fit and
+  the concerns side by side, with the advice folded under them, for old
+  reports and new ones alike.
+
 ## 1.41.1 — Keep write-up bullet points (2026-11-26)
 
 - **`apply` keeps the bullet points of a match's write-up.** When it read a

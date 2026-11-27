@@ -62,7 +62,12 @@ def build_message(summary: dict) -> tuple[str, str]:
     subject = f"jobradar — {headline}"
 
     lines = [headline, ""]
+    # Run health comes first: when the run missed postings or something keeps
+    # failing, that changes how much the matches below can be trusted.
+    lines += _health_section(summary)
     matches = summary.get("matches") or []
+    if matches:
+        lines += ["## Matches", ""]
     for i, m in enumerate(matches):
         if i > 0:
             lines.append("---")
@@ -86,6 +91,15 @@ def build_message(summary: dict) -> tuple[str, str]:
             lines.append("")
             lines.append(m["writeup"])
         lines.append("")
+    if summary.get("date"):
+        lines.append(f"Run date: {summary['date']}")
+    return subject, "\n".join(lines)
+
+
+def _health_section(summary: dict) -> list[str]:
+    """The email's "Run health" section: failed sources, boards a bot check
+    blocked, and the run-health warnings worth a look. Nothing on a clean run."""
+    lines: list[str] = []
     if summary.get("degraded"):
         failed = ", ".join(summary.get("failed_sources") or [])
         lines.append(f"Degraded run - source(s) failed: {failed}. Result may be incomplete.")
@@ -100,7 +114,7 @@ def build_message(summary: dict) -> tuple[str, str]:
         lines.append("")
     health = _health_to_email(summary)
     if health:
-        lines.append("Run health - warnings worth a look (details at the end of the day's report):")
+        lines.append("Warnings worth a look (details at the end of the day's report):")
         for flag in health:
             if flag.get("kind") == "persistent":
                 about = ", ".join((flag.get("subjects") or [])[:3])
@@ -112,9 +126,7 @@ def build_message(summary: dict) -> tuple[str, str]:
                 count = flag.get("count") or 0
                 lines.append(f"- New: {flag.get('template')} ({count} time{'s' if count != 1 else ''})")
         lines.append("")
-    if summary.get("date"):
-        lines.append(f"Run date: {summary['date']}")
-    return subject, "\n".join(lines)
+    return ["## Run health", "", *lines] if lines else []
 
 
 def _smtp_config() -> dict | None:

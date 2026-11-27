@@ -1052,10 +1052,10 @@ let pasteOpen = false;
 let pasteText = "";
 
 // A write-up has three parts, by the prompt that writes it (search/writeup.py):
-// why the posting fits, what to highlight when applying, and the concerns.
-// Each starts with a paragraph that opens in bold. Deciding whether to apply
-// takes the first and the last, so the card sets those side by side and folds
-// the middle one, which is advice for after the decision. Returns null for
+// why the posting fits, the concerns and gaps, and what to highlight when
+// applying. Each starts with a paragraph that opens in bold. Deciding whether
+// to apply takes the fit and the concerns, so the card sets those side by side
+// and folds the advice, which is for after the decision. Returns null for
 // text of any other shape, which is then shown as it is.
 function writeupParts(html) {
   const box = h("div", { html });
@@ -1081,7 +1081,12 @@ const openAdvice = new Set();
 function writeup(m) {
   const parts = writeupParts(m.writeup_html);
   if (!parts) return h("div", { class: "prose", html: m.writeup_html });
-  const [why, advice, concerns] = parts;
+  // The advice part is found by its title: write-ups until 2026-11-27 put it
+  // in the middle, later ones last. A title without "highlight" falls back to
+  // the middle, the old order.
+  const at = parts.findIndex((part) => /highlight/i.test(part.title));
+  const [advice] = parts.splice(at < 0 ? 1 : at, 1);
+  const [why, concerns] = parts;
   const column = (part) => h("section", {}, h("h4", {}, part.title), part.body);
   return h("div", { class: "prose writeup" },
     column(why), column(concerns),
