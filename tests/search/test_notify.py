@@ -159,3 +159,38 @@ def test_build_message_without_blocked_boards_says_nothing_of_them():
 def test_should_send_on_a_quiet_day_with_blocked_boards():
     assert should_send({"matches": [], "degraded": False, "blocked_boards": ["Roche"]}) is True
     assert should_send({"matches": [], "degraded": False, "blocked_boards": []}) is False
+
+
+def test_build_message_puts_run_health_before_the_matches():
+    summary = {
+        "headline": "1 okay match (run incomplete)",
+        "date": "2026-11-27",
+        "degraded": True,
+        "failed_sources": ["web_search"],
+        "blocked_boards": ["Roche"],
+        "health": [{"kind": "new", "template": "liveness: %s answered 403", "count": 2, "email": True}],
+        "matches": [{"tier": "okay", "title": "PM", "company": "Co", "url": "https://x", "writeup": "Fits."}],
+    }
+    _subject, body = build_message(summary)
+    order = [body.index(s) for s in (
+        "## Run health", "Degraded run", "Cloudflare", "New: liveness: %s answered 403 (2 times)",
+        "## Matches", "[OKAY] PM @ Co", "Run date: 2026-11-27",
+    )]
+    assert order == sorted(order)
+    assert body.count("## Run health") == 1
+
+
+def test_build_message_has_no_run_health_section_on_a_clean_run():
+    summary = {"headline": "1 okay match", "matches": [{"tier": "okay", "title": "PM", "company": "Co"}]}
+    _subject, body = build_message(summary)
+    assert "Run health" not in body
+    assert body.startswith("1 okay match\n\n## Matches\n\n[OKAY] PM @ Co")
+
+
+def test_build_html_renders_the_section_headings():
+    subject, body = build_message({
+        "headline": "h", "degraded": True, "failed_sources": ["x"],
+        "matches": [{"tier": "okay", "title": "PM", "company": "Co"}],
+    })
+    out = build_html(subject, body)
+    assert "<h2>Run health</h2>" in out and "<h2>Matches</h2>" in out
